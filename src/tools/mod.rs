@@ -46,9 +46,32 @@ pub trait EngineTool {
 
 /// The JSON schema of a type, as an MCP schema object.
 pub fn schema_of<T: JsonSchema>() -> JsonObject {
-    match serde_json::to_value(schemars::schema_for!(T)) {
-        Ok(serde_json::Value::Object(map)) => map,
+    let mut value = serde_json::to_value(schemars::schema_for!(T)).unwrap_or_default();
+    remove_number_formats(&mut value);
+    match value {
+        serde_json::Value::Object(map) => map,
         _ => unreachable!("a derived schema is a JSON object"),
+    }
+}
+
+/// Removes the number formats schemars adds, such as "uint32" and "double".
+/// They aren't standard JSON Schema formats, so clients warn about them, and
+/// the ranges are already given by minimum and maximum.
+fn remove_number_formats(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            let numeric = map.get("format").and_then(|f| f.as_str()).is_some_and(|f| {
+                f.starts_with("int") || f.starts_with("uint") || f == "float" || f == "double"
+            });
+            if numeric {
+                map.remove("format");
+            }
+            for v in map.values_mut() {
+                remove_number_formats(v);
+            }
+        }
+        serde_json::Value::Array(items) => items.iter_mut().for_each(remove_number_formats),
+        _ => {}
     }
 }
 
@@ -171,6 +194,14 @@ mod tests {
             let out = tool.output_schema.as_ref().expect("output schema");
             assert_eq!(out.get("type"), Some(&"object".into()), "{}", tool.name);
             assert!(tool.description.as_deref().is_some_and(|d| d.len() > 40));
+        }
+    }
+
+    #[test]
+    fn schemas_use_only_standard_formats() {
+        let all = serde_json::to_string(&all_definitions()).unwrap();
+        for f in ["uint", "int8", "int16", "int32", "int64", "double", "float"] {
+            assert!(!all.contains(&format!("\"format\":\"{f}")), "format {f}");
         }
     }
 

@@ -672,7 +672,6 @@
           "properties": {
             "column": {
               "description": "Column number, starting at 1, when known.",
-              "format": "uint32",
               "minimum": 1,
               "type": [
                 "integer",
@@ -688,7 +687,6 @@
             },
             "line": {
               "description": "Line number, starting at 1, when known.",
-              "format": "uint32",
               "minimum": 1,
               "type": [
                 "integer",
@@ -721,12 +719,10 @@
           "description": "How much of one FPGA resource the design uses.",
           "properties": {
             "available": {
-              "format": "uint64",
               "minimum": 0,
               "type": "integer"
             },
             "used": {
-              "format": "uint64",
               "minimum": 0,
               "type": "integer"
             }
@@ -764,7 +760,6 @@
         },
         "timing": {
           "additionalProperties": {
-            "format": "double",
             "type": "number"
           },
           "description": "The maximum frequency each clock can run at, in MHz, by clock net\nname. A clock that misses its target isn't an error: compare these\nwith the design's needs.",
@@ -1031,14 +1026,12 @@
           "properties": {
             "bus": {
               "description": "USB bus number.",
-              "format": "uint8",
               "maximum": 255,
               "minimum": 0,
               "type": "integer"
             },
             "device": {
               "description": "USB device number on its bus.",
-              "format": "uint8",
               "maximum": 255,
               "minimum": 0,
               "type": "integer"
@@ -1170,14 +1163,12 @@
           "properties": {
             "bus": {
               "description": "USB bus number.",
-              "format": "uint8",
               "maximum": 255,
               "minimum": 0,
               "type": "integer"
             },
             "device": {
               "description": "USB device number on its bus.",
-              "format": "uint8",
               "maximum": 255,
               "minimum": 0,
               "type": "integer"
