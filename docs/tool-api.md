@@ -161,7 +161,7 @@ Synthesizes the design, places and routes it, and generates the bitstream in the
 
 **Build record.** When a build succeeds, the engine writes a build record into the build folder. It holds the full board spec the build used and its checksum. The `program_board` tool reads it to get the board. A build that fails removes the old record, so `program_board` can't program a stale bitstream.
 
-**Build folder files.** The engine creates the build folder if needed, and first writes a marker file, `.logix-build`, which tells the [clean tool](#clean-tool) the folder is a build folder. Each build replaces the files the previous build made, such as the bitstream, intermediate files and reports. When a build has to run again, it deletes the previous build's outputs first, so a failed build never leaves an old bitstream that looks current. An up-to-date build keeps them. The engine never deletes files in the build folder that it didn't make, such as files put there by the host or the user.
+**Build folder files.** The engine creates the build folder if needed, and first writes a marker file, `.logix-build`, which tells the [clean_build tool](#clean_build-tool) the folder is a build folder. Each build replaces the files the previous build made, such as the bitstream, intermediate files and reports. When a build has to run again, it deletes the previous build's outputs first, so a failed build never leaves an old bitstream that looks current. An up-to-date build keeps them. The engine never deletes files in the build folder that it didn't make, such as files put there by the host or the user.
 
 **Example**
 
@@ -413,7 +413,7 @@ Output:
 }
 ```
 
-## clean tool
+## clean_build tool
 
 Deletes build folders, like `apio clean`. It is given a folder and deletes only build folders, which the engine marks with a `.logix-build` file when it first builds in them:
 
@@ -422,13 +422,13 @@ Deletes build folders, like `apio clean`. It is given a folder and deletes only 
 
 It never deletes a folder without the marker or files outside the build folders, so a wrong path from a host can't remove the user's files. The folder must satisfy the build folder path rules. A folder that doesn't exist is not an error: nothing is deleted.
 
-**Table 20.** clean tool inputs
+**Table 20.** clean_build tool inputs
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `folder` | build folder path | Yes | A build folder, or a folder whose direct subfolders are build folders |
 
-**Table 21.** clean tool outputs
+**Table 21.** clean_build tool outputs
 
 | Field | Type | Description |
 | --- | --- | --- |
