@@ -14,6 +14,38 @@
 #
 # Uses the claude command on the PATH, or else the one bundled with the
 # Claude Code VS Code extension.
+#
+# Prerequisites:
+#
+#   - macOS on Apple Silicon (the only platform in Milestone 1).
+#   - This repo, cloned locally:
+#       git clone https://github.com/openlogix/logix-engine.git
+#   - Rust, installed with rustup. On macOS: brew install rustup
+#     (see https://rustup.rs for other ways). The first build installs the
+#     Rust version pinned in rust-toolchain.toml.
+#   - Claude Code, signed in to a Claude account: either the claude command
+#     (https://claude.com/claude-code) or the Claude Code extension for
+#     VS Code. Run claude once by hand to sign in.
+#
+# Registering the engine instead (optional):
+#
+#   This script hands the engine to Claude Code for one session only, with
+#   these claude options:
+#
+#     --strict-mcp-config --mcp-config '{"mcpServers": {"logix-engine":
+#       {"command": "<repo>/target/release/logix-engine",
+#        "args": ["--engine-folder", "<home>/.logix-dev/engine"]}}}'
+#     --allowedTools mcp__logix-engine
+#
+#   To have the engine in every claude session instead, register it once.
+#   scripts/serve.sh builds the engine if needed and runs it as an MCP
+#   server, so the registered engine is always the latest build:
+#
+#     claude mcp add --scope user logix-engine -- <repo>/scripts/serve.sh
+#
+#   Then start claude in any folder. Check with `claude mcp list`, and undo
+#   with `claude mcp remove --scope user logix-engine`. Start a new claude
+#   session after a code change to get the new build.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
