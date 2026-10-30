@@ -5,6 +5,7 @@
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/_rust-env.sh
 
 cargo build --release --locked
 ls -l target/release/logix-engine

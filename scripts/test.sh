@@ -5,6 +5,7 @@
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/_rust-env.sh
 
 echo "== Format check"
 cargo fmt --check

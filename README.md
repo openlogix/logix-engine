@@ -21,7 +21,7 @@ In development. The engine runs as an MCP server with its first tool, `get_engin
 
 The engine is written in Rust. Install it with [rustup](https://rustup.rs), which reads the Rust version pinned in [rust-toolchain.toml](rust-toolchain.toml) and installs it automatically on first build.
 
-- **macOS with Homebrew:** run `brew install rustup`, then add `$(brew --prefix rustup)/bin` to your `PATH`.
+- **macOS with Homebrew:** run `brew install rustup`. The scripts below find it on their own. To use `cargo` directly, also add `$(brew --prefix rustup)/bin` to your `PATH`.
 - **Other platforms:** follow the instructions at [rustup.rs](https://rustup.rs).
 
 Check the setup with `cargo --version`.

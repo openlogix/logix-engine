@@ -25,7 +25,7 @@ macOS arm64 only, iCE40 only, with the Alhambra II (`alhambra-ii`) as the refere
 - `build.rs` sets the engine version: the `LOGIX_ENGINE_VERSION` env var for releases (the release tag), otherwise today's UTC date.
 - Tests: unit tests next to the code; `tests/cli.rs` (command line), `tests/mcp.rs` (end to end: launches the binary and talks MCP), `tests/schemas.rs` (published schemas).
 - **Before committing, run `scripts/test.sh`.** After a deliberate schema change, run `scripts/update-schemas.sh` and review the diff in `schemas/tools.json`.
-- Rust is pinned in `rust-toolchain.toml`. With Homebrew's rustup, `cargo` is in `/opt/homebrew/opt/rustup/bin`.
+- Rust is pinned in `rust-toolchain.toml`. With Homebrew's rustup, `cargo` is in `/opt/homebrew/opt/rustup/bin`, which isn't on the PATH by default. Every script sources `scripts/_rust-env.sh`, which adds it when `cargo` isn't found.
 
 ## CI and releases
 
