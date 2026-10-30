@@ -3,6 +3,7 @@
 //! types, so the code, the validation and the exported schemas agree.
 
 pub mod get_engine_info;
+pub mod install_packages;
 
 use std::sync::Arc;
 
@@ -11,8 +12,18 @@ use schemars::JsonSchema;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+use tokio_util::sync::CancellationToken;
+
 use crate::errors::ToolError;
+use crate::progress::ProgressSink;
 use crate::state::EngineState;
+
+/// What a tool call gets besides its input: where to send progress, and a
+/// token that is cancelled when the host cancels the call.
+pub struct Call {
+    pub progress: Arc<dyn ProgressSink>,
+    pub cancel: CancellationToken,
+}
 
 /// A tool's name, description and types.
 pub trait EngineTool {
@@ -22,6 +33,8 @@ pub trait EngineTool {
     const DESCRIPTION: &'static str;
     /// True if the tool changes nothing, on disk or on a board.
     const READ_ONLY: bool;
+    /// True if the tool may use the network, such as to download packages.
+    const OPEN_WORLD: bool = false;
     type Input: DeserializeOwned + JsonSchema;
     type Output: Serialize + JsonSchema;
 }
@@ -39,7 +52,7 @@ pub fn definition<T: EngineTool>() -> Tool {
     let mut annotations = ToolAnnotations::default();
     annotations.read_only_hint = Some(T::READ_ONLY);
     annotations.destructive_hint = Some(false);
-    annotations.open_world_hint = Some(false);
+    annotations.open_world_hint = Some(T::OPEN_WORLD);
     Tool::new(T::NAME, T::DESCRIPTION, Arc::new(schema_of::<T::Input>()))
         .with_raw_output_schema(Arc::new(schema_of::<T::Output>()))
         .with_annotations(annotations)
@@ -47,7 +60,10 @@ pub fn definition<T: EngineTool>() -> Tool {
 
 /// All tools, in the order `tools/list` returns them.
 pub fn all_definitions() -> Vec<Tool> {
-    vec![definition::<get_engine_info::GetEngineInfo>()]
+    vec![
+        definition::<get_engine_info::GetEngineInfo>(),
+        definition::<install_packages::InstallPackages>(),
+    ]
 }
 
 /// Parses a tool's arguments. A request that doesn't match the input schema
@@ -90,12 +106,18 @@ pub async fn call(
     state: &EngineState,
     name: &str,
     arguments: Option<JsonObject>,
+    call: &Call,
 ) -> Option<CallToolResult> {
     use get_engine_info::GetEngineInfo;
+    use install_packages::InstallPackages;
     let result = match name {
         GetEngineInfo::NAME => to_call_result(
             parse_input::<GetEngineInfo>(arguments).and_then(|i| get_engine_info::run(state, i)),
         ),
+        InstallPackages::NAME => to_call_result(match parse_input::<InstallPackages>(arguments) {
+            Ok(input) => install_packages::run(state, input, call).await,
+            Err(e) => Err(e),
+        }),
         _ => return None,
     };
     Some(result)

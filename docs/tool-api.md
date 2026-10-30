@@ -109,7 +109,7 @@ Every operation that can take more than a second or two reports progress by phas
 
 Before running, each tool checks that the packages it needs from the manifest are installed and intact. It installs missing packages and repairs broken ones itself, as Apio does. A package is broken when its install record is missing or incomplete, or when one of its tools fails to start. Install progress is sent as the operation's progress notifications, and cancelling the operation cancels the install. A lock in the engine folder stops two instances from installing the same package at once.
 
-The `--no-auto-install` command-line argument, described in [Command line](command-line.md), turns this off for offline or managed setups. A missing or broken package is then a setup error with `install_packages`, and so is an install that fails, such as when there's no network.
+The `--no-auto-install` command-line argument, described in [Command line](command-line.md), turns this off for offline or managed setups. A missing or broken package is then a setup error with `install_packages`, and so is an install that fails, such as when there's no network. To install, the host calls the [install_packages tool](#install_packages-tool), which works whether automatic install is on or off.
 
 Install progress is one phase per package, such as "Installing oss-cad-suite". Its percentage covers the download (the first 80%) and then unpacking.
 
@@ -368,6 +368,44 @@ Output:
   "packages": [
     { "name": "oss-cad-suite", "version": "2026-11-20", "status": "installed" },
     { "name": "examples", "version": "2026-10-15", "status": "missing" }
+  ]
+}
+```
+
+## install_packages tool
+
+Installs or repairs the engine's packages. Packages that are already installed and intact are left alone. Other tools install the packages they need on their own, so a host calls this only to install ahead of time, such as before going offline, or to act on the `install_packages` action, such as when automatic install is off. It installs whether or not automatic install is on, since the host asked. It reports progress, one phase per package, and can be cancelled.
+
+**Table 18.** install_packages tool inputs
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `packages` | list of text | No | Names of the packages to install or repair, as `get_engine_info` lists them. Omitted means every package in the manifest |
+
+**Table 19.** install_packages tool outputs
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `installed` | list of text | Names of the packages this call installed or repaired. Empty when they were all installed already |
+| `packages` | list of packages | Every package in the manifest with its status afterwards, as in `get_engine_info` |
+
+**Errors:** request errors for unknown package names. Setup errors with `install_packages` when a download or install fails. Engine errors and cancellation.
+
+**Example**
+
+Input:
+
+```json
+{}
+```
+
+Output:
+
+```json
+{
+  "installed": ["oss-cad-suite"],
+  "packages": [
+    { "name": "oss-cad-suite", "version": "2026-10-22", "status": "installed" }
   ]
 }
 ```

@@ -1,6 +1,7 @@
 //! The MCP server: one session over stdin/stdout, with the engine's tools.
 
 use std::borrow::Cow;
+use std::sync::Arc;
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, Implementation, ListToolsResult,
@@ -9,6 +10,8 @@ use rmcp::model::{
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer, ServerHandler};
 
+use crate::mcp_progress::McpProgress;
+use crate::progress::{NoProgress, ProgressSink};
 use crate::state::{self, EngineState};
 use crate::tools;
 
@@ -61,11 +64,29 @@ impl ServerHandler for EngineServer {
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
         let name = request.name.to_string();
         log::info!("Tool call: {name}");
-        match tools::call(&self.state, &name, request.arguments).await {
+        let token = context
+            .meta
+            .get_progress_token()
+            .or_else(|| request.meta.as_ref().and_then(|m| m.get_progress_token()));
+        let mcp_progress =
+            token.map(|token| Arc::new(McpProgress::new(context.peer.clone(), token)));
+        let progress: Arc<dyn ProgressSink> = match &mcp_progress {
+            Some(p) => p.clone(),
+            None => Arc::new(NoProgress),
+        };
+        let call = tools::Call {
+            progress,
+            cancel: context.ct.clone(),
+        };
+        let result = tools::call(&self.state, &name, request.arguments, &call).await;
+        if let Some(p) = mcp_progress {
+            p.finish().await;
+        }
+        match result {
             Some(result) => Ok(result.into()),
             None => Err(McpError::invalid_params(
                 format!("Unknown tool: {name}"),

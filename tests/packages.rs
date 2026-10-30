@@ -14,7 +14,9 @@ use logix_engine::errors::{ActionCode, Category};
 use logix_engine::packages::manifest::{self, Manifest};
 use logix_engine::packages::{PackageManager, RECORD_FILE};
 use logix_engine::progress::{NoProgress, Phases, ProgressSink};
+use logix_engine::state::EngineState;
 use logix_engine::tools::get_engine_info::PackageStatus;
+use logix_engine::tools::{Call, install_packages};
 use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
 
@@ -434,6 +436,82 @@ async fn entries_outside_the_package_folder_are_refused() {
         assert!(!Path::new("/tmp/logix-engine-evil.txt").exists(), "{what}");
         assert!(entries(&s.engine.join("packages/pkg")).is_empty(), "{what}");
     }
+}
+
+// ----- The install_packages tool.
+
+fn state_for(s: &Setup, auto_install: bool) -> EngineState {
+    EngineState {
+        engine_folder: s.engine.display().to_string(),
+        engine_folder_resolved: s.engine.clone(),
+        auto_install,
+        command_line: vec![],
+        log_file: s.engine.join("logs/test.log"),
+        packages: s.pm.clone(),
+    }
+}
+
+#[derive(Default)]
+struct Messages(Mutex<Vec<(f64, f64, Option<String>)>>);
+impl ProgressSink for Messages {
+    fn report(&self, progress: f64, total: f64, message: Option<String>) {
+        self.0.lock().unwrap().push((progress, total, message));
+    }
+}
+
+#[tokio::test]
+async fn install_packages_tool_installs_once_even_with_auto_install_off() {
+    let s = setup(good_package(), None, None);
+    let state = state_for(&s, false);
+    let rec = Arc::new(Messages::default());
+    let call = Call {
+        progress: rec.clone(),
+        cancel: CancellationToken::new(),
+    };
+
+    let out = install_packages::run(&state, Default::default(), &call)
+        .await
+        .unwrap();
+    assert_eq!(out.installed, vec!["pkg"]);
+    assert_eq!(out.packages.len(), 1);
+    assert_eq!(out.packages[0].status, PackageStatus::Installed);
+    let reports = rec.0.lock().unwrap().clone();
+    assert_eq!(reports[0], (0.0, 100.0, Some("Installing pkg".into())));
+
+    // Again: nothing to do, no download, no progress.
+    let rec2 = Arc::new(Messages::default());
+    let call = Call {
+        progress: rec2.clone(),
+        cancel: CancellationToken::new(),
+    };
+    let input: install_packages::InstallPackagesInput =
+        serde_json::from_value(serde_json::json!({"packages": ["pkg", "pkg"]})).unwrap();
+    let out = install_packages::run(&state, input, &call).await.unwrap();
+    assert!(out.installed.is_empty());
+    assert!(rec2.0.lock().unwrap().is_empty());
+    assert_eq!(s.server.requests.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn install_packages_tool_refuses_unknown_packages() {
+    let s = setup(good_package(), None, None);
+    let state = state_for(&s, true);
+    let call = Call {
+        progress: Arc::new(NoProgress),
+        cancel: CancellationToken::new(),
+    };
+    let input: install_packages::InstallPackagesInput =
+        serde_json::from_value(serde_json::json!({"packages": ["nope"]})).unwrap();
+    let err = install_packages::run(&state, input, &call)
+        .await
+        .unwrap_err();
+    assert_eq!(err.category, Category::Request);
+    assert!(
+        err.message.contains("\"nope\"") && err.message.contains("pkg"),
+        "{}",
+        err.message
+    );
+    assert_eq!(s.server.requests.load(Ordering::SeqCst), 0);
 }
 
 /// Downloads and installs the real oss-cad-suite (about 526 MB) into a

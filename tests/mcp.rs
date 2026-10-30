@@ -4,7 +4,14 @@
 use std::path::Path;
 
 use rmcp::ServiceExt;
-use rmcp::model::{CallToolRequestParams, CallToolResult, JsonObject};
+use std::sync::{Arc, Mutex};
+
+use rmcp::ClientHandler;
+use rmcp::model::{
+    CallToolRequestParams, CallToolResult, JsonObject, NumberOrString, ProgressNotificationParam,
+    ProgressToken, RequestMetaObject,
+};
+use rmcp::service::NotificationContext;
 use rmcp::service::{RoleClient, RunningService};
 use rmcp::transport::TokioChildProcess;
 use serde_json::{Value, json};
@@ -153,5 +160,65 @@ async fn tools_list_matches_the_published_schemas() {
         listed, published,
         "run `scripts/update-schemas.sh` and review the change"
     );
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn install_packages_refuses_unknown_packages() {
+    let tmp = tempfile::tempdir().unwrap();
+    let client = start(&tmp.path().join("engine"), &[]).await;
+    let result = call(&client, "install_packages", json!({"packages": ["nope"]})).await;
+    assert_eq!(result.is_error, Some(true));
+    assert_eq!(result.structured_content.unwrap()["category"], "request");
+    client.cancel().await.unwrap();
+}
+
+/// A client that records progress notifications.
+#[derive(Clone, Default)]
+struct ProgressClient(Arc<Mutex<Vec<ProgressNotificationParam>>>);
+
+impl ClientHandler for ProgressClient {
+    async fn on_progress(
+        &self,
+        params: ProgressNotificationParam,
+        _context: NotificationContext<RoleClient>,
+    ) {
+        self.0.lock().unwrap().push(params);
+    }
+}
+
+/// Installs the real oss-cad-suite (about 526 MB) through MCP, with
+/// progress. Run: cargo test --test mcp -- --ignored
+#[tokio::test]
+#[ignore]
+async fn real_install_packages_with_progress() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut cmd = Command::new(ENGINE);
+    cmd.arg("--engine-folder").arg(tmp.path().join("engine"));
+    let handler = ProgressClient::default();
+    let client = handler
+        .clone()
+        .serve(TokioChildProcess::new(cmd).unwrap())
+        .await
+        .unwrap();
+
+    let mut params = CallToolRequestParams::new("install_packages");
+    let mut meta = RequestMetaObject::new();
+    meta.set_progress_token(ProgressToken(NumberOrString::Number(7)));
+    params.meta = Some(meta);
+    let result = client.call_tool(params).await.unwrap();
+    assert_ne!(result.is_error, Some(true), "{result:?}");
+    let out = result.structured_content.unwrap();
+    assert_eq!(out["installed"], json!(["oss-cad-suite"]));
+    assert_eq!(out["packages"][0]["status"], "installed");
+
+    let progress = handler.0.lock().unwrap().clone();
+    assert!(progress.len() > 10, "{}", progress.len());
+    assert_eq!(
+        progress[0].message.as_deref(),
+        Some("Installing oss-cad-suite")
+    );
+    assert!(progress.iter().all(|p| p.total == Some(100.0)));
+    assert!(progress.windows(2).all(|w| w[1].progress > w[0].progress));
     client.cancel().await.unwrap();
 }

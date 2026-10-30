@@ -121,5 +121,107 @@
       "destructiveHint": false,
       "openWorldHint": false
     }
+  },
+  {
+    "name": "install_packages",
+    "description": "Installs or repairs the engine's toolchain packages, downloading them from the internet. Packages that are already installed and intact are left alone. Other tools install the packages they need on their own, so call this only to install ahead of time, such as before going offline, or when a tool returns a setup error with the install_packages action (for example when the engine was launched with automatic install turned off). A download can take a few minutes; the tool reports progress and can be cancelled.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Which packages to install or repair.",
+      "properties": {
+        "packages": {
+          "default": null,
+          "description": "Names of the packages to install or repair, as get_engine_info lists\nthem, such as oss-cad-suite. Omitted means every package in the\nengine's manifest.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "title": "InstallPackagesInput",
+      "type": "object"
+    },
+    "outputSchema": {
+      "$defs": {
+        "PackageInfo": {
+          "additionalProperties": false,
+          "description": "A toolchain package and whether it's installed.",
+          "properties": {
+            "name": {
+              "description": "The package name, such as oss-cad-suite.",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/$defs/PackageStatus"
+            },
+            "version": {
+              "description": "The package release, as a date tag (yyyy-mm-dd).",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(-[1-9][0-9]*)?$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "version",
+            "status"
+          ],
+          "type": "object"
+        },
+        "PackageStatus": {
+          "description": "Whether a package is ready to use.",
+          "oneOf": [
+            {
+              "const": "installed",
+              "description": "Installed and intact.",
+              "type": "string"
+            },
+            {
+              "const": "missing",
+              "description": "Not installed.",
+              "type": "string"
+            },
+            {
+              "const": "broken",
+              "description": "Installed but incomplete or damaged. It is repaired when a tool needs\nit, unless auto-install is off.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "What was installed, and every package's status afterwards.",
+      "properties": {
+        "installed": {
+          "description": "Names of the packages this call installed or repaired. Empty when\nthey were all installed already.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "packages": {
+          "description": "Every package in the engine's manifest, with its status.",
+          "items": {
+            "$ref": "#/$defs/PackageInfo"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "installed",
+        "packages"
+      ],
+      "title": "InstallPackagesOutput",
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": true
+    }
   }
 ]

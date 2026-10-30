@@ -94,16 +94,21 @@ pub fn run(
         auto_install: state.auto_install,
         command_line: state.command_line.clone(),
         log_file: state.log_file.display().to_string(),
-        packages: state
-            .packages
-            .manifest()
-            .packages
-            .iter()
-            .map(|spec| PackageInfo {
-                name: spec.name.clone(),
-                version: spec.version.clone(),
-                status: state.packages.status(spec),
-            })
-            .collect(),
+        packages: package_list(state),
     })
+}
+
+/// Every package in the manifest, with its status.
+pub fn package_list(state: &EngineState) -> Vec<PackageInfo> {
+    state
+        .packages
+        .manifest()
+        .packages
+        .iter()
+        .map(|spec| PackageInfo {
+            name: spec.name.clone(),
+            version: spec.version.clone(),
+            status: state.packages.status(spec),
+        })
+        .collect()
 }

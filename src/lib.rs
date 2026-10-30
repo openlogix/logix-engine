@@ -7,6 +7,7 @@
 
 pub mod errors;
 pub mod logging;
+pub mod mcp_progress;
 pub mod packages;
 pub mod paths;
 pub mod progress;
