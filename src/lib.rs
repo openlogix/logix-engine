@@ -7,7 +7,9 @@
 
 pub mod errors;
 pub mod logging;
+pub mod packages;
 pub mod paths;
+pub mod progress;
 pub mod server;
 pub mod state;
 pub mod text;

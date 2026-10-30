@@ -1,0 +1,19 @@
+{
+  "packages": [
+    {
+      "name": "oss-cad-suite",
+      "version": "2026-10-22",
+      "description": "Yosys, nextpnr, icepack, openFPGALoader and other open source FPGA tools, from Apio's packages",
+      "files": {
+        "darwin-arm64": {
+          "owner": "fpgawars",
+          "repo": "tools-oss-cad-suite",
+          "tag": "2026-10-22",
+          "file": "apio-oss-cad-suite-darwin-arm64-20261022.tgz",
+          "size": 525983321,
+          "sha256": "5fdbffd3c0c64de04f6181ab5d27d8a340374d1c581a8c6e49beb45214be9f1b"
+        }
+      }
+    }
+  ]
+}

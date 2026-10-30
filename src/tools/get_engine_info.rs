@@ -94,7 +94,16 @@ pub fn run(
         auto_install: state.auto_install,
         command_line: state.command_line.clone(),
         log_file: state.log_file.display().to_string(),
-        // The package manager and its manifest come in a later step.
-        packages: Vec::new(),
+        packages: state
+            .packages
+            .manifest()
+            .packages
+            .iter()
+            .map(|spec| PackageInfo {
+                name: spec.name.clone(),
+                version: spec.version.clone(),
+                status: state.packages.status(spec),
+            })
+            .collect(),
     })
 }

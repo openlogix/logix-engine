@@ -3,10 +3,12 @@
 
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use clap::{Parser, ValueEnum};
 use rmcp::ServiceExt;
 
+use logix_engine::packages::{PackageManager, manifest};
 use logix_engine::state::{self, EngineState};
 use logix_engine::{logging, paths, server};
 
@@ -77,9 +79,16 @@ fn main() -> ExitCode {
         .join("logs")
         .join(log_path.file_name().unwrap_or_default());
 
+    let packages = PackageManager::new(
+        &resolved,
+        Arc::new(manifest::builtin().clone()),
+        &state::platform(),
+        manifest::GITHUB,
+    );
     let state = EngineState {
         engine_folder: args.engine_folder.clone(),
         engine_folder_resolved: resolved,
+        packages,
         auto_install: !args.no_auto_install,
         command_line,
         log_file,

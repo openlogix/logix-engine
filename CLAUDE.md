@@ -22,8 +22,9 @@ macOS arm64 only, iCE40 only, with the Alhambra II (`alhambra-ii`) as the refere
 - `src/main.rs`: the command line. Everything else is a library (`src/lib.rs`), so tests can use it.
 - `src/server.rs`: the MCP server (rmcp). `src/tools/`: one file per tool, each with its input and output types and an `EngineTool` impl. Add a tool to `all_definitions()` and `call()` in `src/tools/mod.rs`.
 - `src/errors.rs`: the error model. `src/paths.rs`: path checks. `src/logging.rs`: log files. `src/text.rs`: the text forms. `src/state.rs`: launch settings, engine version, protocol versions, platform.
+- `src/packages/`: the package manager. `manifest.json` pins each package's release, file, size and SHA-256 per platform. To update a package, take the asset's size and digest from the GitHub release (`gh release view <tag> -R <owner>/<repo> --json assets`). `src/progress.rs`: progress by phase.
 - `build.rs` sets the engine version: the `LOGIX_ENGINE_VERSION` env var for releases (the release tag), otherwise today's UTC date.
-- Tests: unit tests next to the code; `tests/cli.rs` (command line), `tests/mcp.rs` (end to end: launches the binary and talks MCP), `tests/schemas.rs` (published schemas).
+- Tests: unit tests next to the code; `tests/cli.rs` (command line), `tests/mcp.rs` (end to end: launches the binary and talks MCP), `tests/schemas.rs` (published schemas), `tests/packages.rs` (package install against a local test server). The ignored test `real_oss_cad_suite_install` downloads the real package (526 MB): `cargo test --test packages -- --ignored`. Run it after changing the manifest or the install code.
 - **Before committing, run `scripts/test.sh`.** After a deliberate schema change, run `scripts/update-schemas.sh` and review the diff in `schemas/tools.json`.
 - Rust is pinned in `rust-toolchain.toml`. With Homebrew's rustup, `cargo` is in `/opt/homebrew/opt/rustup/bin`, which isn't on the PATH by default. Every script sources `scripts/_rust-env.sh`, which adds it when `cargo` isn't found.
 

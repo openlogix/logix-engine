@@ -111,6 +111,19 @@ Before running, each tool checks that the packages it needs from the manifest ar
 
 The `--no-auto-install` command-line argument, described in [Command line](command-line.md), turns this off for offline or managed setups. A missing or broken package is then a setup error with `install_packages`, and so is an install that fails, such as when there's no network.
 
+Install progress is one phase per package, such as "Installing oss-cad-suite". Its percentage covers the download (the first 80%) and then unpacking.
+
+**Engine folder layout.** Hosts don't need to know it, but it helps when troubleshooting:
+
+| Path in the engine folder | Contents |
+| --- | --- |
+| `packages/<name>/<version>/` | An installed package, such as `packages/oss-cad-suite/2026-10-22/`. Several versions can sit side by side. Its install record, `logix-install.json`, is written last |
+| `downloads/` | Partial downloads, deleted when an install ends |
+| `locks/` | One lock file per package, held while installing it |
+| `logs/` | Log files, described in [Command line](command-line.md) |
+
+A package is unpacked into a temporary folder and renamed into place only when it is complete, so an interrupted install never looks installed. Every file in a package must unpack inside its folder, or the install fails.
+
 ## build tool
 
 Synthesizes the design, places and routes it, and generates the bitstream in the build folder. A build with no changes since the last one returns quickly with `up_to_date` set.

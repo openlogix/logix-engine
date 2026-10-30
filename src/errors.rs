@@ -119,6 +119,22 @@ impl ToolError {
         Self::new(Category::Engine, message)
     }
 
+    pub fn setup(message: impl Into<String>) -> Self {
+        Self::new(Category::Setup, message)
+    }
+
+    pub fn cancelled(message: impl Into<String>) -> Self {
+        Self::new(Category::Cancelled, message)
+    }
+
+    pub fn with_action(mut self, code: ActionCode, description: impl Into<String>) -> Self {
+        self.action = Some(Action {
+            code,
+            description: description.into(),
+        });
+        self
+    }
+
     pub fn with_details(mut self, details: impl Into<String>) -> Self {
         self.details = crate::text::to_multiline_text(&details.into());
         self

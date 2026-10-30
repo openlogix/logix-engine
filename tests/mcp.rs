@@ -81,7 +81,11 @@ async fn get_engine_info_reports_the_launch_settings() {
         out["protocol_versions"],
         json!(["2026-07-28", "2025-11-25"])
     );
-    assert_eq!(out["packages"], json!([]));
+    // A fresh engine folder has the manifest's package, not yet installed.
+    assert_eq!(
+        out["packages"],
+        json!([{"name": "oss-cad-suite", "version": "2026-10-22", "status": "missing"}])
+    );
 
     // The log file is in the engine folder's logs subfolder, named
     // yyyymmdd-<pid>.log, and has the startup line.

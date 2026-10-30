@@ -39,6 +39,8 @@ pub struct EngineState {
     /// The command-line arguments, as given, without the program name.
     pub command_line: Vec<String>,
     pub log_file: PathBuf,
+    /// Installs and finds the toolchain packages in the engine folder.
+    pub packages: crate::packages::PackageManager,
 }
 
 #[cfg(test)]
