@@ -1,0 +1,285 @@
+{
+  "source": "Imported from Apio's definitions 2026-10-26 and oss-cad-suite 2026-10-22 packages by scripts/import-apio-catalog.py.",
+  "fpgas": {
+    "ice40hx1k-cb132": {
+      "architecture": "ice40",
+      "part_number": "ICE40HX1K-CB132",
+      "size": "1k",
+      "nextpnr_device": "hx1k",
+      "nextpnr_package": "cb132"
+    },
+    "ice40hx1k-tq144": {
+      "architecture": "ice40",
+      "part_number": "ICE40HX1K-TQ144",
+      "size": "1k",
+      "nextpnr_device": "hx1k",
+      "nextpnr_package": "tq144"
+    },
+    "ice40hx1k-vq100": {
+      "architecture": "ice40",
+      "part_number": "ICE40HX1K-VQ100",
+      "size": "1k",
+      "nextpnr_device": "hx1k",
+      "nextpnr_package": "vq100"
+    },
+    "ice40hx4k-bg121": {
+      "architecture": "ice40",
+      "part_number": "ICE40HX4K-BG121",
+      "size": "4k",
+      "nextpnr_device": "hx4k",
+      "nextpnr_package": "bg121"
+    },
+    "ice40hx4k-bg121-8k": {
+      "architecture": "ice40",
+      "part_number": "ICE40HX4K-BG121",
+      "size": "8k",
+      "nextpnr_device": "hx8k",
+      "nextpnr_package": "bg121:4k"
+    },
+    "ice40hx4k-cb132": {
+      "architecture": "ice40",
+      "part_number": "ICE40HX4K-CB132",
+      "size": "4k",
+      "nextpnr_device": "hx4k",
+      "nextpnr_package": "cb132"
+    },
+    "ice40hx4k-cb132-8k": {
+      "architecture": "ice40",
+      "part_number": "ICE40HX4K-CB132",
+      "size": "8k",
+      "nextpnr_device": "hx8k",
+      "nextpnr_package": "cb132:4k"
+    },
+    "ice40hx4k-tq144": {
+      "architecture": "ice40",
+      "part_number": "ICE40HX4K-TQ144",
+      "size": "4k",
+      "nextpnr_device": "hx4k",
+      "nextpnr_package": "tq144"
+    },
+    "ice40hx4k-tq144-8k": {
+      "architecture": "ice40",
+      "part_number": "ICE40HX4K-TQ144",
+      "size": "8k",
+      "nextpnr_device": "hx8k",
+      "nextpnr_package": "tq144:4k"
+    },
+    "ice40hx8k-bg121": {
+      "architecture": "ice40",
+      "part_number": "ICE40HX8K-BG121",
+      "size": "8k",
+      "nextpnr_device": "hx8k",
+      "nextpnr_package": "bg121"
+    },
+    "ice40hx8k-cb132": {
+      "architecture": "ice40",
+      "part_number": "ICE40HX8K-CB132",
+      "size": "8k",
+      "nextpnr_device": "hx8k",
+      "nextpnr_package": "cb132"
+    },
+    "ice40hx8k-cm225": {
+      "architecture": "ice40",
+      "part_number": "ICE40HX8K-CM225",
+      "size": "8k",
+      "nextpnr_device": "hx8k",
+      "nextpnr_package": "cm225"
+    },
+    "ice40hx8k-ct256": {
+      "architecture": "ice40",
+      "part_number": "ICE40HX8K-CT256",
+      "size": "8k",
+      "nextpnr_device": "hx8k",
+      "nextpnr_package": "ct256"
+    },
+    "ice40lp1k-cb121": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP1K-CB121",
+      "size": "1k",
+      "nextpnr_device": "lp1k",
+      "nextpnr_package": "cb121"
+    },
+    "ice40lp1k-cb81": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP1K-CB81",
+      "size": "1k",
+      "nextpnr_device": "lp1k",
+      "nextpnr_package": "cb81"
+    },
+    "ice40lp1k-cm121": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP1K-CM121",
+      "size": "1k",
+      "nextpnr_device": "lp1k",
+      "nextpnr_package": "cm121"
+    },
+    "ice40lp1k-cm36": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP1K-CM36",
+      "size": "1k",
+      "nextpnr_device": "lp1k",
+      "nextpnr_package": "cm36"
+    },
+    "ice40lp1k-cm49": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP1K-CM49",
+      "size": "1k",
+      "nextpnr_device": "lp1k",
+      "nextpnr_package": "cm49"
+    },
+    "ice40lp1k-cm81": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP1K-CM81",
+      "size": "1k",
+      "nextpnr_device": "lp1k",
+      "nextpnr_package": "cm81"
+    },
+    "ice40lp1k-qn84": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP1K-QN84",
+      "size": "1k",
+      "nextpnr_device": "lp1k",
+      "nextpnr_package": "qn84"
+    },
+    "ice40lp1k-swg16tr": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP1K-SWG16TR",
+      "size": "1k",
+      "nextpnr_device": "lp1k",
+      "nextpnr_package": "swg16tr"
+    },
+    "ice40lp384-cm36": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP384-CM36",
+      "size": "384",
+      "nextpnr_device": "lp384",
+      "nextpnr_package": "cm36"
+    },
+    "ice40lp384-cm49": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP384-CM49",
+      "size": "384",
+      "nextpnr_device": "lp384",
+      "nextpnr_package": "cm49"
+    },
+    "ice40lp384-qn32": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP384-QN32",
+      "size": "384",
+      "nextpnr_device": "lp384",
+      "nextpnr_package": "qn32"
+    },
+    "ice40lp4k-cm121": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP4K-CM121",
+      "size": "4k",
+      "nextpnr_device": "lp4k",
+      "nextpnr_package": "cm121"
+    },
+    "ice40lp4k-cm121-8k": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP4K-CM121",
+      "size": "8k",
+      "nextpnr_device": "lp8k",
+      "nextpnr_package": "cm121:4k"
+    },
+    "ice40lp4k-cm225": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP4K-CM225",
+      "size": "4k",
+      "nextpnr_device": "lp4k",
+      "nextpnr_package": "cm225"
+    },
+    "ice40lp4k-cm225-8k": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP4K-CM225",
+      "size": "8k",
+      "nextpnr_device": "lp8k",
+      "nextpnr_package": "cm225:4k"
+    },
+    "ice40lp4k-cm81": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP4K-CM81",
+      "size": "4k",
+      "nextpnr_device": "lp4k",
+      "nextpnr_package": "cm81"
+    },
+    "ice40lp4k-cm81-8k": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP4K-CM81",
+      "size": "8k",
+      "nextpnr_device": "lp8k",
+      "nextpnr_package": "cm81:4k"
+    },
+    "ice40lp8k-cm121": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP8K-CM121",
+      "size": "8k",
+      "nextpnr_device": "lp8k",
+      "nextpnr_package": "cm121"
+    },
+    "ice40lp8k-cm225": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP8K-CM225",
+      "size": "8k",
+      "nextpnr_device": "lp8k",
+      "nextpnr_package": "cm225"
+    },
+    "ice40lp8k-cm81": {
+      "architecture": "ice40",
+      "part_number": "ICE40LP8K-CM81",
+      "size": "8k",
+      "nextpnr_device": "lp8k",
+      "nextpnr_package": "cm81"
+    },
+    "ice40up3k-sg48": {
+      "architecture": "ice40",
+      "part_number": "ICE40UP3K-SG48",
+      "size": "3k",
+      "nextpnr_device": "up3k",
+      "nextpnr_package": "sg48"
+    },
+    "ice40up3k-uwg30": {
+      "architecture": "ice40",
+      "part_number": "ICE40UP3K-UWG30",
+      "size": "3k",
+      "nextpnr_device": "up3k",
+      "nextpnr_package": "uwg30"
+    },
+    "ice40up5k-sg48": {
+      "architecture": "ice40",
+      "part_number": "ICE40UP5K-SG48",
+      "size": "5k",
+      "nextpnr_device": "up5k",
+      "nextpnr_package": "sg48"
+    },
+    "ice40up5k-uwg30": {
+      "architecture": "ice40",
+      "part_number": "ICE40UP5K-UWG30",
+      "size": "5k",
+      "nextpnr_device": "up5k",
+      "nextpnr_package": "uwg30"
+    },
+    "ice5lp1k-sg48": {
+      "architecture": "ice40",
+      "part_number": "ICE5LP1K-SG48",
+      "size": "1k",
+      "nextpnr_device": "u1k",
+      "nextpnr_package": "sg48"
+    },
+    "ice5lp2k-sg48": {
+      "architecture": "ice40",
+      "part_number": "ICE5LP2K-SG48",
+      "size": "2k",
+      "nextpnr_device": "u2k",
+      "nextpnr_package": "sg48"
+    },
+    "ice5lp4k-sg48": {
+      "architecture": "ice40",
+      "part_number": "ICE5LP4K-SG48",
+      "size": "4k",
+      "nextpnr_device": "u4k",
+      "nextpnr_package": "sg48"
+    }
+  }
+}

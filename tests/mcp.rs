@@ -222,3 +222,50 @@ async fn real_install_packages_with_progress() {
     assert!(progress.windows(2).all(|w| w[1].progress > w[0].progress));
     client.cancel().await.unwrap();
 }
+
+#[tokio::test]
+async fn get_catalog_returns_the_requested_entries() {
+    let tmp = tempfile::tempdir().unwrap();
+    let client = start(&tmp.path().join("engine"), &[]).await;
+    let tools = client.list_all_tools().await.unwrap();
+    let tool = tools.iter().find(|t| t.name == "get_catalog").unwrap();
+
+    // Nothing asked: empty sections.
+    let out = call(&client, "get_catalog", json!({}))
+        .await
+        .structured_content
+        .unwrap();
+    assert_eq!(out, json!({"boards": {}, "fpgas": {}}));
+
+    // One board and all FPGAs.
+    let result = call(
+        &client,
+        "get_catalog",
+        json!({"boards": {"fetch": true, "ids": ["alhambra-ii"]}, "fpgas": {"fetch": true}}),
+    )
+    .await;
+    let out = result.structured_content.unwrap();
+    assert_matches_schema(tool.output_schema.as_ref().unwrap(), &out);
+    let boards = out["boards"].as_object().unwrap();
+    assert_eq!(boards.len(), 1);
+    let alhambra = &boards["alhambra-ii"];
+    assert_eq!(alhambra["description"], "Alhambra II");
+    assert_eq!(alhambra["fpga_id"], "ice40hx4k-tq144-8k");
+    assert_eq!(
+        alhambra["variants"]["flash"]["usb"]["product_regex"],
+        "^Alhambra II.*"
+    );
+    assert_eq!(out["fpgas"].as_object().unwrap().len(), 40);
+    assert_eq!(out["fpgas"]["ice40hx4k-tq144-8k"]["architecture"], "ice40");
+
+    // An unknown ID is a request error.
+    let result = call(
+        &client,
+        "get_catalog",
+        json!({"boards": {"fetch": true, "ids": ["nope"]}}),
+    )
+    .await;
+    assert_eq!(result.is_error, Some(true));
+    assert_eq!(result.structured_content.unwrap()["category"], "request");
+    client.cancel().await.unwrap();
+}

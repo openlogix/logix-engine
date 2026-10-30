@@ -2,6 +2,7 @@
 //! type and an output type. Their JSON schemas are generated from the Rust
 //! types, so the code, the validation and the exported schemas agree.
 
+pub mod get_catalog;
 pub mod get_engine_info;
 pub mod install_packages;
 
@@ -63,6 +64,7 @@ pub fn all_definitions() -> Vec<Tool> {
     vec![
         definition::<get_engine_info::GetEngineInfo>(),
         definition::<install_packages::InstallPackages>(),
+        definition::<get_catalog::GetCatalog>(),
     ]
 }
 
@@ -108,11 +110,15 @@ pub async fn call(
     arguments: Option<JsonObject>,
     call: &Call,
 ) -> Option<CallToolResult> {
+    use get_catalog::GetCatalog;
     use get_engine_info::GetEngineInfo;
     use install_packages::InstallPackages;
     let result = match name {
         GetEngineInfo::NAME => to_call_result(
             parse_input::<GetEngineInfo>(arguments).and_then(|i| get_engine_info::run(state, i)),
+        ),
+        GetCatalog::NAME => to_call_result(
+            parse_input::<GetCatalog>(arguments).and_then(|i| get_catalog::run(state, i)),
         ),
         InstallPackages::NAME => to_call_result(match parse_input::<InstallPackages>(arguments) {
             Ok(input) => install_packages::run(state, input, call).await,

@@ -228,5 +228,228 @@
       "destructiveHint": false,
       "openWorldHint": true
     }
+  },
+  {
+    "name": "get_catalog",
+    "description": "Returns board and FPGA definitions from the engine's read-only catalog. Use it to find a board's catalog ID, such as alhambra-ii, to pass as the board of other tools, or to see a board's FPGA and how it is programmed. Each section is returned only when asked for: {\"boards\": {\"fetch\": true}} returns all boards, and {\"boards\": {\"fetch\": true, \"ids\": [\"alhambra-ii\"]}} only the listed ones. Board descriptions are the boards' names for people.",
+    "inputSchema": {
+      "$defs": {
+        "CatalogQuery": {
+          "additionalProperties": false,
+          "description": "Selects entries from one catalog section.",
+          "properties": {
+            "fetch": {
+              "default": false,
+              "description": "Whether to return this section. Defaults to false.",
+              "type": "boolean"
+            },
+            "ids": {
+              "default": null,
+              "description": "Catalog IDs of the entries to return. Omitted means all entries. An\nID that isn't in the section is an error.",
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Which catalog entries to return.",
+      "properties": {
+        "boards": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CatalogQuery"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Which boards to return. Omitted means none."
+        },
+        "fpgas": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CatalogQuery"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Which FPGAs to return. Omitted means none."
+        }
+      },
+      "title": "GetCatalogInput",
+      "type": "object"
+    },
+    "outputSchema": {
+      "$defs": {
+        "Architecture": {
+          "description": "FPGA families. Milestone 1 supports iCE40 only.",
+          "oneOf": [
+            {
+              "const": "ice40",
+              "description": "Lattice iCE40.",
+              "type": "string"
+            }
+          ]
+        },
+        "BoardDefinition": {
+          "additionalProperties": false,
+          "description": "A board: its FPGA and how to program it.",
+          "properties": {
+            "default_variant": {
+              "description": "The name of the programming variant used by default, such as flash.",
+              "type": "string"
+            },
+            "description": {
+              "description": "The board's name for people, such as \"Alhambra II\".",
+              "type": "string"
+            },
+            "fpga_id": {
+              "description": "The board's FPGA, as a catalog ID of the fpgas section, such as\nice40hx4k-tq144-8k.",
+              "pattern": "^[a-z0-9-]+$",
+              "type": "string"
+            },
+            "variants": {
+              "additionalProperties": {
+                "$ref": "#/$defs/ProgrammingVariant"
+              },
+              "description": "The ways to program the board, by variant name.",
+              "type": "object"
+            }
+          },
+          "required": [
+            "description",
+            "fpga_id",
+            "default_variant",
+            "variants"
+          ],
+          "type": "object"
+        },
+        "FpgaDefinition": {
+          "additionalProperties": false,
+          "description": "An FPGA: its architecture, part and toolchain parameters.",
+          "properties": {
+            "architecture": {
+              "$ref": "#/$defs/Architecture",
+              "description": "The FPGA family: ice40."
+            },
+            "nextpnr_device": {
+              "description": "The device type nextpnr uses, such as hx8k.",
+              "type": "string"
+            },
+            "nextpnr_package": {
+              "description": "The package nextpnr uses, such as tq144:4k.",
+              "type": "string"
+            },
+            "part_number": {
+              "description": "The vendor's part number, such as ICE40HX4K-TQ144.",
+              "type": "string"
+            },
+            "size": {
+              "description": "The device size, such as 8k.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "architecture",
+            "part_number",
+            "size",
+            "nextpnr_device",
+            "nextpnr_package"
+          ],
+          "type": "object"
+        },
+        "ProgrammingVariant": {
+          "additionalProperties": false,
+          "description": "One way to program a board, such as to flash with a particular cable.",
+          "properties": {
+            "args": {
+              "description": "The programmer's arguments, as a template. The engine replaces\n${VID}, ${PID}, ${BUS} and ${DEV} with the device's USB vendor ID,\nproduct ID, bus and device number, ${SERIAL} with its serial number,\nand ${BITSTREAM} with the bitstream path.",
+              "type": "string"
+            },
+            "programmer": {
+              "description": "The programmer to run: openfpgaloader or iceprog.",
+              "type": "string"
+            },
+            "usb": {
+              "$ref": "#/$defs/UsbFilter",
+              "description": "The USB filter that finds the board's device."
+            }
+          },
+          "required": [
+            "programmer",
+            "args",
+            "usb"
+          ],
+          "type": "object"
+        },
+        "UsbFilter": {
+          "additionalProperties": false,
+          "description": "Which USB devices are this board.",
+          "properties": {
+            "pid": {
+              "description": "USB product ID, four lowercase hex digits, such as 6010.",
+              "pattern": "^[0-9a-f]{4}$",
+              "type": "string"
+            },
+            "product_regex": {
+              "description": "A regular expression the device's product name must match, when\nseveral boards share the same USB IDs. Omitted means any product name.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "vid": {
+              "description": "USB vendor ID, four lowercase hex digits, such as 0403.",
+              "pattern": "^[0-9a-f]{4}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "vid",
+            "pid"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "The requested catalog entries. Sections that weren't fetched are empty.",
+      "properties": {
+        "boards": {
+          "additionalProperties": {
+            "$ref": "#/$defs/BoardDefinition"
+          },
+          "description": "Board definitions, by catalog ID.",
+          "type": "object"
+        },
+        "fpgas": {
+          "additionalProperties": {
+            "$ref": "#/$defs/FpgaDefinition"
+          },
+          "description": "FPGA definitions, by catalog ID.",
+          "type": "object"
+        }
+      },
+      "required": [
+        "boards",
+        "fpgas"
+      ],
+      "title": "GetCatalogOutput",
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
   }
 ]

@@ -6,7 +6,7 @@ The engine is a single native executable, written in Rust, that offers FPGA oper
 
 ## Status
 
-In development. The engine runs as an MCP server with its first two tools: `get_engine_info`, and `install_packages`, which downloads and installs the FPGA toolchain. The build and board tools come next. Daily development builds are on the [Releases](https://github.com/openlogix/logix-engine/releases) page. The first target is **Milestone 1**, a proof of concept on macOS for iCE40 boards with seven tools: `get_engine_info`, `install_packages`, `get_catalog`, `build`, `clean_build`, `list_devices` and `program_board`. It is done when an AI coding agent, such as Claude Code, connected over MCP with no other frontend, creates an iCE40 design from prompts, builds it and programs it on an Alhambra II board.
+In development. The engine runs as an MCP server with its first tools: `get_engine_info`, `install_packages`, which downloads and installs the FPGA toolchain, and `get_catalog`, with 22 iCE40 boards. The build and board tools come next. Daily development builds are on the [Releases](https://github.com/openlogix/logix-engine/releases) page. The first target is **Milestone 1**, a proof of concept on macOS for iCE40 boards with seven tools: `get_engine_info`, `install_packages`, `get_catalog`, `build`, `clean_build`, `list_devices` and `program_board`. It is done when an AI coding agent, such as Claude Code, connected over MCP with no other frontend, creates an iCE40 design from prompts, builds it and programs it on an Alhambra II board.
 
 ## Documentation
 
@@ -33,6 +33,7 @@ Check the setup with `cargo --version`.
 | `scripts/run.sh` | Builds if needed and starts Claude Code with the engine connected, so you can prompt it. Claude works in `~/.logix-dev/playground`, and the engine uses `~/.logix-dev/engine` |
 | `scripts/serve.sh` | Builds if needed and runs the engine as an MCP server on stdin/stdout, for other MCP clients |
 | `scripts/clean.sh` | Deletes the build output |
+| `scripts/import-apio-catalog.py` | Regenerates the board and FPGA catalog in [catalog/](catalog/) from Apio's definitions in `~/.apio/packages` |
 | `scripts/update-schemas.sh` | Regenerates [schemas/tools.json](schemas/tools.json), the published copy of the tool schemas, after a deliberate change |
 
 To try the engine with Claude Code as the host, run `scripts/run.sh` and type prompts, such as "What version is the Logix engine?". It uses the `claude` command, or the one bundled with the Claude Code VS Code extension. To try it with another MCP client, such as the [MCP Inspector](https://github.com/modelcontextprotocol/inspector), point the client at `scripts/serve.sh`:

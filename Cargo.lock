@@ -1193,6 +1193,7 @@ dependencies = [
  "hex",
  "jsonschema",
  "log",
+ "regex",
  "reqwest",
  "rmcp",
  "schemars",

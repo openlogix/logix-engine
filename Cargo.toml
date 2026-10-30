@@ -14,6 +14,7 @@ clap = { version = "4", features = ["derive"] }
 flate2 = "1"
 hex = "0.4"
 log = { version = "0.4", features = ["std"] }
+regex = "1"
 reqwest = "0.13"
 rmcp = { version = "3.8", features = ["server", "transport-io"] }
 schemars = "1"

@@ -1,0 +1,356 @@
+{
+  "source": "Imported from Apio's definitions 2026-10-26 and oss-cad-suite 2026-10-22 packages by scripts/import-apio-catalog.py.",
+  "boards": {
+    "alchitry-cu": {
+      "description": "Alchitry Cu Development Board",
+      "fpga_id": "ice40hx8k-cb132",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6010",
+            "product_regex": "^Alchitry Cu"
+          }
+        }
+      }
+    },
+    "alhambra-ii": {
+      "description": "Alhambra II",
+      "fpga_id": "ice40hx4k-tq144-8k",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "openfpgaloader",
+          "args": "--force-terminal-mode --verify -b ice40_generic --vid ${VID} --pid ${PID} --busdev-num ${BUS}:${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6010",
+            "product_regex": "^Alhambra II.*"
+          }
+        }
+      }
+    },
+    "arice1": {
+      "description": "ARiCE v1",
+      "fpga_id": "ice40up5k-sg48",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6014",
+            "product_regex": "^Single RS232-HS"
+          }
+        }
+      }
+    },
+    "azukar2": {
+      "description": "AZUKAR v2",
+      "fpga_id": "ice40hx4k-tq144-8k",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6010",
+            "product_regex": "^--.. Azukar FPGA ..--"
+          }
+        }
+      }
+    },
+    "edu-ciaa-fpga": {
+      "description": "EDU-CIAA-FPGA",
+      "fpga_id": "ice40hx4k-tq144-8k",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6010",
+            "product_regex": "^Dual RS232-HS"
+          }
+        }
+      }
+    },
+    "fpga101": {
+      "description": "FPGA 101 - Workshop Badge",
+      "fpga_id": "ice40up5k-sg48",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6014",
+            "product_regex": "^Single RS232-HS"
+          }
+        }
+      }
+    },
+    "go-board": {
+      "description": "The Go Board",
+      "fpga_id": "ice40hx1k-vq100",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6010",
+            "product_regex": "^Dual RS232-HS"
+          }
+        }
+      }
+    },
+    "ice40-hx8k": {
+      "description": "iCE40-HX8K Breakout Board",
+      "fpga_id": "ice40hx8k-ct256",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6010",
+            "product_regex": "^(Dual RS232-HS)|(Lattice FTUSB Interface Cable)"
+          }
+        }
+      }
+    },
+    "ice40-up5k": {
+      "description": "iCE40 UltraPlus Breakout",
+      "fpga_id": "ice40up5k-sg48",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6010",
+            "product_regex": "^(USB <-> Serial Converter)|(Lattice iCE40UP5K Breakout)"
+          }
+        }
+      }
+    },
+    "icebreaker": {
+      "description": "iCEBreaker",
+      "fpga_id": "ice40up5k-sg48",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6010",
+            "product_regex": "^(Dual RS232-HS)|(iCEBreaker.*)"
+          }
+        }
+      }
+    },
+    "icenode": {
+      "description": "ICENode",
+      "fpga_id": "ice40up5k-sg48",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6010"
+          }
+        }
+      }
+    },
+    "icestick": {
+      "description": "iCEstick Eval Kit",
+      "fpga_id": "ice40hx1k-tq144",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6010",
+            "product_regex": "^(Dual RS232-HS)|(Lattice FTUSB Interface Cable)"
+          }
+        }
+      }
+    },
+    "icezum": {
+      "description": "Icezum Alhambra",
+      "fpga_id": "ice40hx1k-tq144",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6010",
+            "product_regex": "^IceZUM Alhambra.*"
+          }
+        }
+      }
+    },
+    "kefir": {
+      "description": "Kéfir I iCE40-HX4K",
+      "fpga_id": "ice40hx4k-tq144-8k",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} -I B ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6010",
+            "product_regex": "^Milk JTAG:u"
+          }
+        }
+      }
+    },
+    "ok-ice40pro": {
+      "description": "OK-iCE40Pro",
+      "fpga_id": "ice40up5k-sg48",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6010",
+            "product_regex": "^Dual RS232-HS"
+          }
+        }
+      }
+    },
+    "thetamachines-eth4k": {
+      "description": "Theta Machines ETH4K",
+      "fpga_id": "ice40hx4k-tq144-8k",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6010",
+            "product_regex": "^ETH4K"
+          }
+        }
+      }
+    },
+    "upduino": {
+      "description": "UPDuino v1.0",
+      "fpga_id": "ice40up5k-sg48",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6014",
+            "product_regex": "^Single RS232-HS"
+          }
+        }
+      }
+    },
+    "upduino2": {
+      "description": "UPDuino v2.0",
+      "fpga_id": "ice40up5k-sg48",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6014",
+            "product_regex": "^Single RS232-HS"
+          }
+        }
+      }
+    },
+    "upduino21": {
+      "description": "UPduino v2.1",
+      "fpga_id": "ice40up5k-sg48",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6014",
+            "product_regex": "^(Single RS232-HS)|(UPduino v2.*)"
+          }
+        }
+      }
+    },
+    "upduino3": {
+      "description": "UPduino v3.0",
+      "fpga_id": "ice40up5k-sg48",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6014",
+            "product_regex": "^UPduino v3\\.0"
+          }
+        }
+      }
+    },
+    "upduino31": {
+      "description": "UPduino v3.1",
+      "fpga_id": "ice40up5k-sg48",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6014",
+            "product_regex": "^UPduino v3\\.1"
+          }
+        }
+      }
+    },
+    "vsdsquadron-fm": {
+      "description": "VSDSquadron FPGA Mini",
+      "fpga_id": "ice40up5k-sg48",
+      "default_variant": "flash",
+      "variants": {
+        "flash": {
+          "programmer": "iceprog",
+          "args": "-d d:${BUS}/${DEV} ${BITSTREAM}",
+          "usb": {
+            "vid": "0403",
+            "pid": "6014",
+            "product_regex": "^.*Single RS232.*"
+          }
+        }
+      }
+    }
+  }
+}

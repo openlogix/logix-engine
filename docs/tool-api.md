@@ -27,9 +27,9 @@ The Type columns in this document use these logical types. Each maps to a JSON t
 | build folder path | string | An absolute path that satisfies the path keyword rules |
 | catalog ID | string | Lowercase letters, digits and hyphens |
 | board specification | string or object | A catalog ID, or a full board definition |
-| board definition | object | A board entry in the catalog format, with its description, its FPGA, a map of programming variants keyed by variant name, and the name of its default variant |
-| FPGA definition | object | An FPGA entry in the catalog format, with its architecture, part number, size and toolchain parameters |
-| programming variant | object | One way to program a board, such as flash or sram, or a particular cable, such as FT232 or FT2232. It names the programmer to run, such as `openfpgaloader`, and gives the full argument template for it, with variables such as `${VID}`, `${PID}`, `${BUS}`, `${DEV}`, `${SERIAL}` and `${BITSTREAM}`, and the USB filter that finds the device. The engine maps the programmer name to its executable and the package that provides it, so there are no separate programmer definitions |
+| board definition | object | A board entry in the catalog format: its `description`, its FPGA as `fpga_id`, a map of programming variants keyed by variant name (`variants`), and the name of its default variant (`default_variant`) |
+| FPGA definition | object | An FPGA entry in the catalog format: its `architecture` (`ice40` for now), `part_number`, `size`, and the toolchain parameters `nextpnr_device` and `nextpnr_package` |
+| programming variant | object | One way to program a board, such as flash or sram, or a particular cable, such as FT232 or FT2232. It names the programmer to run, such as `openfpgaloader`, and gives the full argument template for it, with variables such as `${VID}`, `${PID}`, `${BUS}`, `${DEV}`, `${SERIAL}` and `${BITSTREAM}`, and the USB filter that finds the device: `vid`, `pid` and an optional `product_regex`, a regular expression the device's product name must match, for boards that share USB IDs. The engine maps the programmer name to its executable and the package that provides it, so there are no separate programmer definitions. Milestone 1 supports the programmers `openfpgaloader` and `iceprog` |
 | catalog query | object | Selects entries from one catalog section. It has `fetch`, a boolean that defaults to false, and `ids`, an optional list of catalog IDs. When `fetch` is true, the section is returned with only the listed IDs, or with all its entries when `ids` is omitted. An ID that isn't in the section is a request error |
 | date tag | string | `yyyy-mm-dd` |
 | USB ID | string | A 16-bit USB vendor or product ID, written as exactly four lowercase hexadecimal digits, such as `1d50`. Inputs are matched without regard to case |
@@ -304,7 +304,7 @@ Input:
 
 ```json
 {
-  "boards": { "fetch": true, "ids": ["icestick"] }
+  "boards": { "fetch": true, "ids": ["alhambra-ii"] }
 }
 ```
 
@@ -313,21 +313,24 @@ Output:
 ```json
 {
   "boards": {
-    "icestick": {
-      "description": "iCEstick Eval Kit",
-      "fpga_id": "ice40hx1k-tq144",
+    "alhambra-ii": {
+      "description": "Alhambra II",
+      "fpga_id": "ice40hx4k-tq144-8k",
       "default_variant": "flash",
       "variants": {
         "flash": {
           "programmer": "openfpgaloader",
-          "args": "-b ice40_generic --vid ${VID} --pid ${PID} --busdev-num ${BUS}:${DEV} ${BITSTREAM}",
-          "usb": { "vid": "0403", "pid": "6010" }
+          "args": "--force-terminal-mode --verify -b ice40_generic --vid ${VID} --pid ${PID} --busdev-num ${BUS}:${DEV} ${BITSTREAM}",
+          "usb": { "vid": "0403", "pid": "6010", "product_regex": "^Alhambra II.*" }
         }
       }
     }
-  }
+  },
+  "fpgas": {}
 }
 ```
+
+**Catalog contents.** The catalog is data in the engine's repo, `catalog/boards.json` and `catalog/fpgas.json`, imported from Apio's definitions. Milestone 1 has every iCE40 FPGA and the 22 iCE40 boards that program with `openfpgaloader` or `iceprog`. The other iCE40 boards and the other architectures are added as their programmers and toolchains are supported.
 
 ## get_engine_info tool
 

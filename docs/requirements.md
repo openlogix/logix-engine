@@ -378,6 +378,7 @@ The project relies heavily on AI-generated tests to catch regressions, since hum
 
 ## Open questions
 
+- When to add the rest of Apio's iCE40 boards to the catalog. Milestone 1 has the 22 that program with openFPGALoader or iceprog. The other 20 use dfu-util, icesprog, blackiceprog, iceprogduino, icefunprog, iCEburn, pi-sicle-loader, tinyfpgab or tinyprog, or could switch to openFPGALoader (next question).
 - Whether to make openFPGALoader the only programmer. It can likely program about 93 of Apio's 109 boards, which would simplify packages and testing. The other 16, including the serial port boards and the iCESugar boards, would no longer be supported, and each switched board must be tested on hardware.
 - Whether to support Linux arm64 and single-board computers attached to the target board, such as a Raspberry Pi.
 - Which hardware test interface to use for the engine's own hardware tests, and whether the same interface can serve the on-board verification feature for user designs.
