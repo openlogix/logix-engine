@@ -652,6 +652,11 @@
         "top_module": {
           "description": "Name of the top-level module, such as main.",
           "type": "string"
+        },
+        "verbose": {
+          "default": false,
+          "description": "Let the tools print more detail, shown in the live output and the\nlogs. It doesn't change the result. Defaults to false.",
+          "type": "boolean"
         }
       },
       "required": [
@@ -1147,6 +1152,11 @@
             "string",
             "null"
           ]
+        },
+        "verbose": {
+          "default": false,
+          "description": "Let the programmer print more detail, shown in the live output and\nthe logs. Not applied to a programmer_command. Defaults to false.",
+          "type": "boolean"
         }
       },
       "required": [

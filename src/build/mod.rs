@@ -58,6 +58,8 @@ pub struct BuildRequest {
     /// The real path of the build folder (it may not exist yet).
     pub build_folder: PathBuf,
     pub defines: BTreeMap<String, String>,
+    /// Let the tools print more, without changing the result.
+    pub verbose: bool,
 }
 
 /// What a build returns (Table 7).
@@ -288,8 +290,11 @@ pub async fn build(
 
     // Synthesis, run in the source folder so files are reported as given.
     phases.start("Synthesizing");
-    let mut args: Vec<OsString> = vec![
-        "-q".into(),
+    let mut args: Vec<OsString> = Vec::new();
+    if !req.verbose {
+        args.push("-q".into());
+    }
+    let base: [OsString; 5] = [
         "-l".into(),
         out.join("synth.log").into(),
         "-p".into(),
@@ -301,6 +306,7 @@ pub async fn build(
         .into(),
         "-DSYNTHESIZE".into(),
     ];
+    args.extend(base);
     for (name, value) in &req.defines {
         args.push(format!("-D{name}={value}").into());
     }
@@ -325,7 +331,7 @@ pub async fn build(
     // Place and route.
     phases.start("Placing and routing");
     let fpga = &req.board.fpga;
-    let args: Vec<OsString> = vec![
+    let mut args: Vec<OsString> = vec![
         format!("--{}", fpga.nextpnr_device).into(),
         "--package".into(),
         fpga.nextpnr_package.clone().into(),
@@ -337,10 +343,12 @@ pub async fn build(
         "hardware.pnr".into(),
         "--pcf".into(),
         req.source_folder.join(&req.constraint_file).into(),
-        "-q".into(),
         "--log".into(),
         "pnr.log".into(),
     ];
+    if !req.verbose {
+        args.push("-q".into());
+    }
     let pnr = run_step(
         "placing and routing",
         "nextpnr-ice40",
@@ -368,6 +376,9 @@ pub async fn build(
     let (resources_usage, timing) = parse::parse_report(&report)
         .map_err(|e| ToolError::new(Category::Tool, format!("Can't read nextpnr's report: {e}")))?;
 
+    // Verbose tools can print a warning more than once.
+    let mut seen = std::collections::HashSet::new();
+    warnings.retain(|w| seen.insert((w.file.clone(), w.line, w.text.clone())));
     let result = BuildResult {
         bitstream: BITSTREAM.into(),
         up_to_date: false,

@@ -49,6 +49,10 @@ pub struct ProgramBoardInput {
     /// ${BITSTREAM}.
     #[serde(default)]
     pub programmer_command: Option<String>,
+    /// Let the programmer print more detail, shown in the live output and
+    /// the logs. Not applied to a programmer_command. Defaults to false.
+    #[serde(default)]
+    pub verbose: bool,
 }
 
 /// What was programmed.
@@ -124,7 +128,8 @@ pub async fn run_with(
         input.serial_number.as_deref(),
         &board.description,
     )?;
-    let (program, args) = program::command(variant, custom, &device, &bitstream, &bin)?;
+    let (program, args) =
+        program::command(variant, custom, &device, &bitstream, &bin, input.verbose)?;
     let programmer = match custom {
         None => variant.programmer.clone(),
         Some(_) => "custom".to_string(),

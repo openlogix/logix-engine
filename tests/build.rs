@@ -543,3 +543,44 @@ async fn program_board_runs_the_command_with_the_device_and_bitstream() {
     assert_eq!(err.category, Category::Tool);
     assert!(err.details.contains("segfault here"));
 }
+
+#[tokio::test]
+async fn verbose_prints_more_but_gives_the_same_result() {
+    use logix_engine::progress::{OutputLevel, OutputSink};
+    #[derive(Default)]
+    struct Lines(std::sync::Mutex<Vec<String>>);
+    impl OutputSink for Lines {
+        fn line(&self, _tool: &str, _level: OutputLevel, text: &str) {
+            self.0.lock().unwrap().push(text.to_string());
+        }
+    }
+    let state = engine().await;
+    let (_tmp, src) = project();
+    std::fs::write(
+        src.join("main.v"),
+        "module main(input CLK, output LED0, output LED1);\n  assign LED0 = undeclared;\n  assign LED1 = 0;\nendmodule\n",
+    )
+    .unwrap();
+    let mut results = Vec::new();
+    let mut counts = Vec::new();
+    for (folder, verbose) in [("_build/quiet", false), ("_build/verbose", true)] {
+        let lines = Arc::new(Lines::default());
+        let mut c = Call::new(Arc::new(NoProgress), CancellationToken::new());
+        c.output = lines.clone();
+        let input = request(
+            &src,
+            json!({"build_folder": src.join(folder), "verbose": verbose}),
+        );
+        results.push(build::run(&state, input, &c).await.unwrap());
+        counts.push(lines.0.lock().unwrap().len());
+    }
+    assert!(
+        counts[1] > counts[0] * 5 + 50,
+        "verbose printed more: {counts:?}"
+    );
+    assert_eq!(
+        results[0].warnings, results[1].warnings,
+        "same warnings, no duplicates"
+    );
+    assert_eq!(results[0].resources_usage, results[1].resources_usage);
+}

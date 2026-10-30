@@ -57,19 +57,34 @@ pub fn expand(
 /// The program and arguments to run: the variant's programmer with its
 /// expanded template, or a custom command whose first word is a program in
 /// the toolchain package or an absolute path.
+/// The programmer's own flag for printing more, used with verbose.
+pub fn verbose_flag(programmer: &str) -> Option<&'static str> {
+    match programmer {
+        "openfpgaloader" => Some("--verbose"),
+        "iceprog" => Some("-v"),
+        _ => None,
+    }
+}
+
 pub fn command(
     variant: &ProgrammingVariant,
     custom: Option<&str>,
     device: &Device,
     bitstream: &Path,
     bin_dir: &Path,
+    verbose: bool,
 ) -> Result<(PathBuf, Vec<OsString>), ToolError> {
     match custom {
         None => {
             let exe = programmer_executable(&variant.programmer).ok_or_else(|| {
                 ToolError::request(format!("Unknown programmer {:?}.", variant.programmer))
             })?;
-            Ok((bin_dir.join(exe), expand(&variant.args, device, bitstream)?))
+            let mut args = Vec::new();
+            if verbose && let Some(flag) = verbose_flag(&variant.programmer) {
+                args.push(OsString::from(flag));
+            }
+            args.extend(expand(&variant.args, device, bitstream)?);
+            Ok((bin_dir.join(exe), args))
         }
         Some(cmd) => {
             let mut words = expand(cmd, device, bitstream)?;
@@ -218,15 +233,17 @@ mod tests {
         let d = device("0403", "6010", Some("Alhambra II"), None, 9);
         let bin = Path::new("/pkg/bin");
         let v = &c.boards["alhambra-ii"].variants["flash"];
-        let (prog, args) = command(v, None, &d, Path::new("/b/hardware.bin"), bin).unwrap();
+        let (prog, args) = command(v, None, &d, Path::new("/b/hardware.bin"), bin, false).unwrap();
         assert_eq!(prog, Path::new("/pkg/bin/openFPGALoader"));
         let args: Vec<String> = args.into_iter().map(|a| a.into_string().unwrap()).collect();
         assert_eq!(
             args.join(" "),
             "--force-terminal-mode --verify -b ice40_generic --vid 0403 --pid 6010 --busdev-num 1:9 /b/hardware.bin"
         );
+        let (_, args) = command(v, None, &d, Path::new("/b/hardware.bin"), bin, true).unwrap();
+        assert_eq!(args[0], "--verbose");
         let v = &c.boards["icestick"].variants["flash"];
-        let (prog, args) = command(v, None, &d, Path::new("/b/hardware.bin"), bin).unwrap();
+        let (prog, args) = command(v, None, &d, Path::new("/b/hardware.bin"), bin, false).unwrap();
         assert_eq!(prog, Path::new("/pkg/bin/iceprog"));
         assert_eq!(args.len(), 3); // -d d:1/9 /b/hardware.bin
     }
@@ -238,17 +255,25 @@ mod tests {
         let d = device("0403", "6010", None, None, 2);
         let v = &catalog::builtin().boards["alhambra-ii"].variants["flash"];
         let b = Path::new("/b/hardware.bin");
-        let (p, a) = command(v, Some("iceprog -S ${BITSTREAM}"), &d, b, tmp.path()).unwrap();
+        let (p, a) = command(v, Some("iceprog -S ${BITSTREAM}"), &d, b, tmp.path(), false).unwrap();
         assert_eq!(p, tmp.path().join("iceprog"));
         assert_eq!(
             a,
             vec![OsString::from("-S"), OsString::from("/b/hardware.bin")]
         );
-        let (p, _) = command(v, Some("/opt/x/prog ${BITSTREAM}"), &d, b, tmp.path()).unwrap();
+        let (p, _) = command(
+            v,
+            Some("/opt/x/prog ${BITSTREAM}"),
+            &d,
+            b,
+            tmp.path(),
+            false,
+        )
+        .unwrap();
         assert_eq!(p, Path::new("/opt/x/prog"));
         for bad in ["rm ${BITSTREAM}", "../iceprog ${BITSTREAM}", "iceprog"] {
             assert_eq!(
-                command(v, Some(bad), &d, b, tmp.path())
+                command(v, Some(bad), &d, b, tmp.path(), false)
                     .unwrap_err()
                     .category,
                 Category::Request,

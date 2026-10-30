@@ -61,6 +61,10 @@ pub struct BuildInput {
     /// no text, for `ifdef. SYNTHESIZE is always defined.
     #[serde(default)]
     pub defines: BTreeMap<String, String>,
+    /// Let the tools print more detail, shown in the live output and the
+    /// logs. It doesn't change the result. Defaults to false.
+    #[serde(default)]
+    pub verbose: bool,
 }
 
 /// The build result.
@@ -159,6 +163,7 @@ pub fn check(input: BuildInput) -> Result<BuildRequest, ToolError> {
         constraint_file: input.constraint_file,
         build_folder,
         defines: input.defines,
+        verbose: input.verbose,
     })
 }
 

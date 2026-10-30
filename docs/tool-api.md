@@ -113,6 +113,8 @@ A host that wants to show the tools' output as it happens, such as in a console,
 
 Lines that the engine reads into diagnostics still come in the tool result too. The live lines are for showing, not for parsing.
 
+**Verbose.** Tools that run other tools take an optional boolean `verbose`, like Apio's `--verbose`. It asks those tools to print more detail, which shows in the live output and the logs, and never changes the result. Each tool maps it to what its tools offer: `build` runs yosys and nextpnr without `-q`, and `program_board` adds openFPGALoader's `--verbose` or iceprog's `-v`. A build that is up to date runs nothing, so it prints nothing extra.
+
 ### Progress
 
 A host that wants progress adds an MCP progress token to its request. The engine then sends progress notifications with a progress value, an optional total and an optional message, such as "Placing and routing".
@@ -157,6 +159,7 @@ For iCE40 it runs yosys (`synth_ice40`), nextpnr-ice40 and icepack with the same
 | `top_module` | text | Yes | Name of the top-level module |
 | `source_folder`, `source_files`, `constraint_file`, `build_folder` | See folder fields in [Table 2](#folders) | Yes | The constraint file is required |
 | `defines` | map of text | No | Verilog and SystemVerilog macro definitions, from name to value, such as `{ "USE_PLL": "", "WIDTH": "8" }`. Names follow Verilog identifier rules, and a bad name is a request error. An empty value defines the macro with no text, for use with `` `ifdef ``. The engine always passes each value explicitly, so every tool sees the same text, and passes them in name order, so the same request always gives the same tool commands. `SYNTHESIZE` is always defined, as in Apio |
+| `verbose` | boolean | No | Let yosys and nextpnr print more detail, shown in the live output and the logs. Defaults to false. See [Verbose](#live-tool-output) |
 
 **Table 7.** build tool outputs
 
@@ -237,6 +240,7 @@ Programs a bitstream into the board it was built for. The `program_board` tool t
 | `build_folder` | build folder path | Yes | The build folder of a successful build. It holds the bitstream and the build record |
 | `serial_number` | text | No | Narrows the match to the device with this serial number |
 | `programmer_command` | text | No | A custom command template that replaces the default variant's whole command, like Apio's `programmer_cmd`. Its first word is a program from the toolchain package, such as `openFPGALoader`, or an absolute path. It uses the same variables as argument templates and must use `${BITSTREAM}` |
+| `verbose` | boolean | No | Let the programmer print more detail. Not applied to a `programmer_command`. Defaults to false |
 
 **Table 10.** program_board tool outputs
 
