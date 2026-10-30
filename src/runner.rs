@@ -6,7 +6,7 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::process::{ExitStatus, Stdio};
 
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -15,7 +15,8 @@ use tokio_util::sync::CancellationToken;
 #[derive(Debug)]
 pub struct ToolRun {
     pub status: ExitStatus,
-    /// stdout and stderr lines, in the order they arrived.
+    /// stdout and stderr lines, in the order they arrived. A carriage
+    /// return also ends a line, so progress bars become separate lines.
     pub output: String,
 }
 
@@ -35,6 +36,19 @@ pub async fn run_tool(
     cwd: &Path,
     bin_dir: &Path,
     cancel: &CancellationToken,
+) -> Result<ToolRun, RunError> {
+    run_tool_with(program, args, cwd, bin_dir, cancel, &|_| {}).await
+}
+
+/// Like run_tool, calling `on_line` with each output line as it arrives,
+/// such as to read progress.
+pub async fn run_tool_with(
+    program: &Path,
+    args: &[OsString],
+    cwd: &Path,
+    bin_dir: &Path,
+    cancel: &CancellationToken,
+    on_line: &(dyn Fn(&str) + Send + Sync),
 ) -> Result<ToolRun, RunError> {
     if cancel.is_cancelled() {
         return Err(RunError::Cancelled);
@@ -86,9 +100,27 @@ pub async fn run_tool(
     {
         let tx = tx.clone();
         tokio::spawn(async move {
-            let mut lines = BufReader::new(stream).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                let _ = tx.send(line);
+            let mut stream = stream;
+            let mut buf = [0u8; 4096];
+            let mut line = Vec::new();
+            loop {
+                let n = match stream.read(&mut buf).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => n,
+                };
+                for &b in &buf[..n] {
+                    if b == b'\n' || b == b'\r' {
+                        if !line.is_empty() {
+                            let _ = tx.send(String::from_utf8_lossy(&line).into_owned());
+                            line.clear();
+                        }
+                    } else {
+                        line.push(b);
+                    }
+                }
+            }
+            if !line.is_empty() {
+                let _ = tx.send(String::from_utf8_lossy(&line).into_owned());
             }
         });
     }
@@ -98,7 +130,10 @@ pub async fn run_tool(
     let status = loop {
         tokio::select! {
             line = rx.recv() => match line {
-                Some(l) => output.push(l),
+                Some(l) => {
+                    on_line(&l);
+                    output.push(l);
+                }
                 None => break child.wait().await.map_err(RunError::Spawn)?,
             },
             _ = cancel.cancelled() => {
@@ -148,6 +183,25 @@ mod tests {
         .unwrap();
         assert_eq!(run.status.code(), Some(3));
         assert!(run.output.contains("out") && run.output.contains("err"));
+    }
+
+    #[tokio::test]
+    async fn carriage_returns_split_lines() {
+        let tmp = tempfile::tempdir().unwrap();
+        let args: Vec<OsString> = vec!["-c".into(), r"printf 'a 10%%\rb 50%%\r\nc\n'".into()];
+        let seen = std::sync::Mutex::new(Vec::new());
+        let run = run_tool_with(
+            Path::new("/bin/sh"),
+            &args,
+            tmp.path(),
+            tmp.path(),
+            &CancellationToken::new(),
+            &|l| seen.lock().unwrap().push(l.to_string()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(*seen.lock().unwrap(), vec!["a 10%", "b 50%", "c"]);
+        assert_eq!(run.output, "a 10%\nb 50%\nc");
     }
 
     #[tokio::test]

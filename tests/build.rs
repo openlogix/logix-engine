@@ -372,3 +372,186 @@ async fn clean_build_removes_apio_style_env_folders() {
     .unwrap_err();
     assert_eq!(err.category, Category::Request);
 }
+
+// ----- list_devices and program_board, with fake device lists. Programming
+// real boards is checked by hand on hardware.
+
+use logix_engine::devices::{Device, DeviceKind};
+use logix_engine::errors::ActionCode;
+use logix_engine::tools::{list_devices, program_board};
+
+fn usb(product: &str, serial: Option<&str>, dev: u8) -> Device {
+    Device {
+        kind: DeviceKind::Usb,
+        vid: "0403".into(),
+        pid: "6010".into(),
+        manufacturer: None,
+        product: Some(product.into()),
+        serial_number: serial.map(Into::into),
+        bus: 250,
+        device: dev,
+        matches_board: None,
+    }
+}
+
+fn program_input(build_folder: &Path, extra: Value) -> program_board::ProgramBoardInput {
+    let mut v = json!({ "build_folder": build_folder });
+    for (k, val) in extra.as_object().unwrap() {
+        v[k] = val.clone();
+    }
+    serde_json::from_value(v).unwrap()
+}
+
+#[test]
+fn list_devices_marks_the_matching_boards() {
+    let devices = vec![
+        usb("Alhambra II", Some("A1"), 3),
+        usb("Dual RS232-HS", None, 4),
+    ];
+    let input: list_devices::ListDevicesInput =
+        serde_json::from_value(json!({"board": "alhambra-ii"})).unwrap();
+    let out = list_devices::run_with(input, || Ok(devices.clone())).unwrap();
+    let flags: Vec<_> = out.devices.iter().map(|d| d.matches_board).collect();
+    assert_eq!(flags, vec![Some(true), Some(false)]);
+
+    let out = list_devices::run_with(Default::default(), || Ok(devices.clone())).unwrap();
+    assert!(out.devices.iter().all(|d| d.matches_board.is_none()));
+
+    let input: list_devices::ListDevicesInput =
+        serde_json::from_value(json!({"board": "nope"})).unwrap();
+    assert_eq!(
+        list_devices::run_with(input, || Ok(vec![]))
+            .unwrap_err()
+            .category,
+        Category::Request
+    );
+}
+
+#[tokio::test]
+async fn program_board_needs_a_successful_build() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    let folder = src.join("_build/default");
+    let err = program_board::run_with(&state, program_input(&folder, json!({})), &call(), || {
+        Ok(vec![])
+    })
+    .await
+    .unwrap_err();
+    assert_eq!(err.category, Category::Request);
+    assert!(err.message.contains("Run build first"), "{}", err.message);
+}
+
+#[tokio::test]
+async fn program_board_finds_exactly_one_device() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    let folder = src.join("_build/default");
+    build_it(&state, &src, json!({})).await.unwrap();
+    let alhambra = || usb("Alhambra II v2.0", Some("A1"), 3);
+    let other = || usb("Dual RS232-HS", None, 4);
+
+    let run = |devices: Vec<Device>, extra: Value| {
+        let state = state.clone();
+        let input = program_input(&folder, extra);
+        async move { program_board::run_with(&state, input, &call(), move || Ok(devices)).await }
+    };
+
+    let err = run(vec![other()], json!({})).await.unwrap_err();
+    assert_eq!(err.action.unwrap().code, ActionCode::ConnectBoard);
+
+    let err = run(
+        vec![alhambra(), usb("Alhambra II", Some("B2"), 5)],
+        json!({}),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.action.unwrap().code, ActionCode::SelectDevice);
+    assert_eq!(err.data.unwrap()["candidates"].as_array().unwrap().len(), 2);
+
+    // The real openFPGALoader, pointed at a device that isn't there: a
+    // setup error with connect_board and the programmer's output.
+    let err = run(
+        vec![alhambra(), usb("Alhambra II", Some("B2"), 5)],
+        json!({"serial_number": "B2"}),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.category, Category::Setup, "{err:?}");
+    assert_eq!(err.action.as_ref().unwrap().code, ActionCode::ConnectBoard);
+    assert!(err.details.contains("device not found"), "{err:?}");
+}
+
+#[tokio::test]
+async fn program_board_runs_the_command_with_the_device_and_bitstream() {
+    #[derive(Default)]
+    struct Messages(std::sync::Mutex<Vec<String>>);
+    impl ProgressSink for Messages {
+        fn report(&self, _p: f64, _t: f64, m: Option<String>) {
+            if let Some(m) = m {
+                self.0.lock().unwrap().push(m);
+            }
+        }
+    }
+    let state = engine().await;
+    let (tmp, src) = project();
+    let folder = src.join("_build/default");
+    build_it(&state, &src, json!({})).await.unwrap();
+
+    // A fake programmer that records its arguments.
+    let log = tmp.path().join("args.txt");
+    let script = tmp.path().join("fake-prog.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\necho \"$@\" > {}\necho 'Writing: 50.00%'\n",
+            log.display()
+        ),
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let cmd = format!(
+        "{} --busdev ${{BUS}}:${{DEV}} ${{BITSTREAM}}",
+        script.display()
+    );
+    let rec = Arc::new(Messages::default());
+    let c = Call {
+        progress: rec.clone(),
+        cancel: CancellationToken::new(),
+    };
+    let out = program_board::run_with(
+        &state,
+        program_input(&folder, json!({"programmer_command": cmd})),
+        &c,
+        || Ok(vec![usb("Alhambra II", None, 9)]),
+    )
+    .await
+    .unwrap();
+    assert_eq!(out.programmer, "custom");
+    assert_eq!(out.device.device, 9);
+    let args = std::fs::read_to_string(&log).unwrap();
+    assert_eq!(
+        args.trim(),
+        format!("--busdev 250:9 {}", folder.join("hardware.bin").display())
+    );
+    assert_eq!(
+        *rec.0.lock().unwrap(),
+        vec!["Finding device", "Programming"]
+    );
+
+    // A failing programmer is an error with its output.
+    std::fs::write(&script, "#!/bin/sh\necho 'segfault here' >&2\nexit 3\n").unwrap();
+    let err = program_board::run_with(
+        &state,
+        program_input(&folder, json!({"programmer_command": cmd})),
+        &call(),
+        || Ok(vec![usb("Alhambra II", None, 9)]),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.category, Category::Tool);
+    assert!(err.details.contains("segfault here"));
+}

@@ -207,6 +207,8 @@ Programs a bitstream into the board it was built for. The `program_board` tool t
 
 **Note:** unlike `apio upload`, the `program_board` tool doesn't build. It programs the bitstream that is already in the build folder. A host that wants to build and program the board in one step calls `build` first, and calls `program_board` only if the build succeeded.
 
+**How it runs:** the engine reads the board from the build record, finds the one matching device, fills in the variant's argument template, splitting it into words first so paths with spaces stay whole, and runs the programmer in the build folder. Progress has the phases "Finding device", "Writing flash" and "Verifying", with percentages read from the programmer's output. With `programmer_command` the phases are "Finding device" and "Programming", without percentages. A programmer that fails because the device is missing or can't be opened gives a setup error with `connect_board` or `fix_device_permissions`; other failures are tool failures with the programmer's output in `details`. The build record's board checksum is checked first, so a damaged record is a request error.
+
 **Flash or SRAM:** the board's default programming variant decides whether the bitstream goes to flash, where it stays after power-off, or to SRAM, where it is lost at power-off. The tool has no input yet for choosing another variant.
 
 **Table 9.** program_board tool inputs
@@ -215,14 +217,14 @@ Programs a bitstream into the board it was built for. The `program_board` tool t
 | --- | --- | --- | --- |
 | `build_folder` | build folder path | Yes | The build folder of a successful build. It holds the bitstream and the build record |
 | `serial_number` | text | No | Narrows the match to the device with this serial number |
-| `programmer_command` | text | No | A custom command template that replaces the default variant's command |
+| `programmer_command` | text | No | A custom command template that replaces the default variant's whole command, like Apio's `programmer_cmd`. Its first word is a program from the toolchain package, such as `openFPGALoader`, or an absolute path. It uses the same variables as argument templates and must use `${BITSTREAM}` |
 
 **Table 10.** program_board tool outputs
 
 | Field | Type | Description |
 | --- | --- | --- |
 | `device` | device | The device that was programmed. See device fields in [Table 13](#list_devices-tool) |
-| `programmer` | catalog ID | The programmer that was used, such as `openfpgaloader` |
+| `programmer` | catalog ID | The programmer that was used, such as `openfpgaloader`, or `custom` when `programmer_command` was given |
 
 **Errors:** setup errors with `connect_board` when no device matches, `select_device` when several match, `fix_device_permissions` or `install_drivers`. With `select_device`, `data.candidates` lists the matching devices so the host can let the user pick one and retry. A request error when the build folder has no build record. Other request errors, tool failures, engine errors and cancellation.
 
@@ -244,7 +246,7 @@ Programs a bitstream into the board it was built for. The `program_board` tool t
 
 ## list_devices tool
 
-Lists the connected USB devices, optionally marking the ones that match the USB filter of a board's default programming variant.
+Lists the connected USB devices, optionally marking the ones that match the USB filter of a board's default programming variant. The engine reads USB devices with libusb, built into the engine, the same library the programmers use, so the bus and device numbers mean the same to both. Devices are sorted by vendor ID, product ID, bus and device number. A device matches a filter when its USB IDs are equal and, when the filter has `product_regex`, its product name contains a match for it. Names that can't be read, such as for a device that can't be opened, are left out.
 
 **Table 11.** list_devices tool inputs
 

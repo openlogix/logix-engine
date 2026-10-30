@@ -7,6 +7,8 @@ pub mod clean_build;
 pub mod get_catalog;
 pub mod get_engine_info;
 pub mod install_packages;
+pub mod list_devices;
+pub mod program_board;
 
 use std::sync::Arc;
 
@@ -69,6 +71,8 @@ pub fn all_definitions() -> Vec<Tool> {
         definition::<get_catalog::GetCatalog>(),
         definition::<build::Build>(),
         definition::<clean_build::CleanBuild>(),
+        definition::<list_devices::ListDevices>(),
+        definition::<program_board::ProgramBoard>(),
     ]
 }
 
@@ -119,6 +123,8 @@ pub async fn call(
     use get_catalog::GetCatalog;
     use get_engine_info::GetEngineInfo;
     use install_packages::InstallPackages;
+    use list_devices::ListDevices;
+    use program_board::ProgramBoard;
     let result = match name {
         GetEngineInfo::NAME => to_call_result(
             parse_input::<GetEngineInfo>(arguments).and_then(|i| get_engine_info::run(state, i)),
@@ -133,6 +139,13 @@ pub async fn call(
         CleanBuild::NAME => to_call_result(
             parse_input::<CleanBuild>(arguments).and_then(|i| clean_build::run(state, i)),
         ),
+        ListDevices::NAME => to_call_result(
+            parse_input::<ListDevices>(arguments).and_then(|i| list_devices::run(state, i)),
+        ),
+        ProgramBoard::NAME => to_call_result(match parse_input::<ProgramBoard>(arguments) {
+            Ok(input) => program_board::run(state, input, call).await,
+            Err(e) => Err(e),
+        }),
         InstallPackages::NAME => to_call_result(match parse_input::<InstallPackages>(arguments) {
             Ok(input) => install_packages::run(state, input, call).await,
             Err(e) => Err(e),

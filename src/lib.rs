@@ -8,11 +8,13 @@
 pub mod board;
 pub mod build;
 pub mod catalog;
+pub mod devices;
 pub mod errors;
 pub mod logging;
 pub mod mcp_progress;
 pub mod packages;
 pub mod paths;
+pub mod program;
 pub mod progress;
 pub mod runner;
 pub mod server;
