@@ -1,6 +1,6 @@
 # logix-engine
 
-One open engine to build, test and program FPGAs, for any IDE or AI agent.
+One open engine to build and test FPGA designs and program boards, for any IDE or AI agent.
 
 The engine is a single native executable, written in Rust, that offers FPGA operations as [MCP](https://modelcontextprotocol.io) tools over stdin/stdout. Frontends such as Apio, IceStudio, Logix, IDE extensions, CI scripts and AI coding agents launch it as a child process and call its tools. The engine installs and drives proven open source tools, such as Yosys, nextpnr and openFPGALoader, so each frontend can focus on its own user experience instead of reimplementing the toolchain.
 

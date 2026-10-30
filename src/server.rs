@@ -25,7 +25,7 @@ impl EngineServer {
     }
 }
 
-const INSTRUCTIONS: &str = "Logix Engine builds, tests and programs FPGAs, using open source \
+const INSTRUCTIONS: &str = "Logix Engine builds and tests FPGA designs and programs FPGA boards, using open source \
     tools that it installs and runs itself. Every request is self-contained: it names its own \
     board, source folder, source files and build folder, as absolute paths. Errors come back as \
     data with a category (design, setup, request, tool, engine or cancelled), a message and, \

@@ -3,7 +3,7 @@ name = "logix-engine"
 # Not used for releases: the engine version is a date tag, set by build.rs.
 version = "0.0.0"
 edition = "2024"
-description = "One open engine to build, test and program FPGAs, for any IDE or AI agent."
+description = "One open engine to build and test FPGA designs and program boards, for any IDE or AI agent."
 license = "Apache-2.0"
 repository = "https://github.com/openlogix/logix-engine"
 homepage = "https://www.openlogix.org/engine/"

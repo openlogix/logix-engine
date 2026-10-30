@@ -12,7 +12,7 @@ use logix_engine::packages::{PackageManager, manifest};
 use logix_engine::state::{self, EngineState};
 use logix_engine::{logging, paths, server};
 
-/// Logix Engine: builds, tests and programs FPGAs. A host launches it as a
+/// Logix Engine: builds and tests FPGA designs and programs boards. A host launches it as a
 /// child process and talks MCP with it over stdin and stdout.
 #[derive(Parser, Debug)]
 #[command(name = "logix-engine", version = state::ENGINE_VERSION)]

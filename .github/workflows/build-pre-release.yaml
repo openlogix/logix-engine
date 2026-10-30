@@ -84,7 +84,7 @@ jobs:
           cat > BUILD-INFO.json <<EOF
           {
             "package-name": "logix-engine",
-            "description": "One open engine to build, test and program FPGAs, for any IDE or AI agent.",
+            "description": "One open engine to build and test FPGA designs and program boards, for any IDE or AI agent.",
             "engine-version": "$RELEASE_TAG",
             "repo": "${REPO}",
             "repo-branch": "${REPO_BRANCH}",
@@ -205,7 +205,7 @@ jobs:
         run: |
           cat > RELEASE-BODY.txt <<EOF
 
-          **Logix Engine: one open engine to build, test and program FPGAs, for any IDE or AI agent.**
+          **Logix Engine: one open engine to build and test FPGA designs and program boards, for any IDE or AI agent.**
 
           [Website](https://www.openlogix.org/engine/) ·
           [Documentation](https://github.com/${REPO}/tree/${REPO_COMMIT}/docs)
