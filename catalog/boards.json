@@ -1,5 +1,5 @@
 {
-  "source": "Imported from Apio's definitions 2026-10-26 and oss-cad-suite 2026-10-22 packages by scripts/import-apio-catalog.py.",
+  "source": "Logix Engine catalog. First imported from Apio's definitions 2026-10-26 and oss-cad-suite 2026-10-22 packages; maintained here since.",
   "boards": {
     "alchitry-cu": {
       "description": "Alchitry Cu Development Board",

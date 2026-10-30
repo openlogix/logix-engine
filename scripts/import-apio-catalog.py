@@ -2,6 +2,10 @@
 """Converts Apio's board and FPGA definitions into the engine's catalog,
 catalog/boards.json and catalog/fpgas.json.
 
+The catalog in this repo is now its own source and may have local edits.
+This script rewrites both files, so use it only to bring in more boards from
+Apio: then keep the new entries and restore any local edits it overwrote.
+
 Usage: scripts/import-apio-catalog.py [APIO_PACKAGES_FOLDER]
 
 APIO_PACKAGES_FOLDER defaults to ~/.apio/packages. It must hold Apio's
