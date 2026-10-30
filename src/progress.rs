@@ -24,6 +24,42 @@ struct State {
     last_percent: u32,
 }
 
+/// How a tool output line reads: an error, a warning, or anything else.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputLevel {
+    Error,
+    Warning,
+    Info,
+}
+
+impl OutputLevel {
+    /// Classifies a line the way yosys, nextpnr and the programmers mark
+    /// their messages ("ERROR:", "Error:", "Warning:").
+    pub fn of(line: &str) -> OutputLevel {
+        let l = line.to_lowercase();
+        if l.contains("error:") || l.starts_with("error ") {
+            OutputLevel::Error
+        } else if l.contains("warning:") {
+            OutputLevel::Warning
+        } else {
+            OutputLevel::Info
+        }
+    }
+}
+
+/// Where live tool output goes, line by line.
+pub trait OutputSink: Send + Sync {
+    fn line(&self, tool: &str, level: OutputLevel, text: &str);
+}
+
+/// A sink that drops output, for hosts that didn't ask for it.
+pub struct NoOutput;
+
+impl OutputSink for NoOutput {
+    fn line(&self, _tool: &str, _level: OutputLevel, _text: &str) {}
+}
+
 /// Reports an operation's progress phase by phase. Shared between tasks.
 pub struct Phases {
     sink: Arc<dyn ProgressSink>,
@@ -87,6 +123,27 @@ pub mod tests {
         fn report(&self, progress: f64, total: f64, message: Option<String>) {
             self.0.lock().unwrap().push((progress, total, message));
         }
+    }
+
+    #[test]
+    fn output_levels() {
+        assert_eq!(
+            OutputLevel::of("main.v:3: ERROR: syntax error"),
+            OutputLevel::Error
+        );
+        assert_eq!(
+            OutputLevel::of("Error: Failed to claim cable"),
+            OutputLevel::Error
+        );
+        assert_eq!(
+            OutputLevel::of("main.v:2: Warning: Identifier `x' is implicitly declared."),
+            OutputLevel::Warning
+        );
+        assert_eq!(
+            OutputLevel::of("Info: Max frequency for clock 'clk': 194.36 MHz"),
+            OutputLevel::Info
+        );
+        assert_eq!(OutputLevel::of("0 warnings, 0 errors"), OutputLevel::Info);
     }
 
     #[test]

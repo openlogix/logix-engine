@@ -464,10 +464,7 @@ async fn install_packages_tool_installs_once_even_with_auto_install_off() {
     let s = setup(good_package(), None, None);
     let state = state_for(&s, false);
     let rec = Arc::new(Messages::default());
-    let call = Call {
-        progress: rec.clone(),
-        cancel: CancellationToken::new(),
-    };
+    let call = Call::new(rec.clone(), CancellationToken::new());
 
     let out = install_packages::run(&state, Default::default(), &call)
         .await
@@ -480,10 +477,7 @@ async fn install_packages_tool_installs_once_even_with_auto_install_off() {
 
     // Again: nothing to do, no download, no progress.
     let rec2 = Arc::new(Messages::default());
-    let call = Call {
-        progress: rec2.clone(),
-        cancel: CancellationToken::new(),
-    };
+    let call = Call::new(rec2.clone(), CancellationToken::new());
     let input: install_packages::InstallPackagesInput =
         serde_json::from_value(serde_json::json!({"packages": ["pkg", "pkg"]})).unwrap();
     let out = install_packages::run(&state, input, &call).await.unwrap();
@@ -496,10 +490,7 @@ async fn install_packages_tool_installs_once_even_with_auto_install_off() {
 async fn force_reinstalls_and_restores_damaged_files() {
     let s = setup(good_package(), None, None);
     let state = state_for(&s, true);
-    let call = Call {
-        progress: Arc::new(NoProgress),
-        cancel: CancellationToken::new(),
-    };
+    let call = Call::new(Arc::new(NoProgress), CancellationToken::new());
     install_packages::run(&state, Default::default(), &call)
         .await
         .unwrap();
@@ -518,10 +509,7 @@ async fn force_reinstalls_and_restores_damaged_files() {
 
     // Force downloads and installs it again.
     let rec = Arc::new(Messages::default());
-    let call = Call {
-        progress: rec.clone(),
-        cancel: CancellationToken::new(),
-    };
+    let call = Call::new(rec.clone(), CancellationToken::new());
     let input: install_packages::InstallPackagesInput =
         serde_json::from_value(serde_json::json!({"force": true})).unwrap();
     let out = install_packages::run(&state, input, &call).await.unwrap();
@@ -563,10 +551,7 @@ async fn a_failed_reinstall_keeps_the_installed_copy() {
 async fn install_packages_tool_refuses_unknown_packages() {
     let s = setup(good_package(), None, None);
     let state = state_for(&s, true);
-    let call = Call {
-        progress: Arc::new(NoProgress),
-        cancel: CancellationToken::new(),
-    };
+    let call = Call::new(Arc::new(NoProgress), CancellationToken::new());
     let input: install_packages::InstallPackagesInput =
         serde_json::from_value(serde_json::json!({"packages": ["nope"]})).unwrap();
     let err = install_packages::run(&state, input, &call)

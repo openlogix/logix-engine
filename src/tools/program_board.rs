@@ -11,7 +11,7 @@ use crate::devices::{self, Device};
 use crate::errors::{ActionCode, Category, ToolError};
 use crate::paths;
 use crate::program::{self, ProgressLine};
-use crate::progress::Phases;
+use crate::progress::{OutputLevel, Phases};
 use crate::runner::{RunError, run_tool_with};
 use crate::state::EngineState;
 
@@ -132,7 +132,13 @@ pub async fn run_with(
 
     // Progress: write, then verify. A custom command's output isn't read.
     let verifying = AtomicBool::new(false);
+    let tool_name = program
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let on_line = |line: &str| {
+        call.output.line(&tool_name, OutputLevel::of(line), line);
         if custom.is_some() {
             return;
         }

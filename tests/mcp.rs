@@ -269,3 +269,90 @@ async fn get_catalog_returns_the_requested_entries() {
     assert_eq!(result.structured_content.unwrap()["category"], "request");
     client.cancel().await.unwrap();
 }
+
+/// A client that records logix/output notifications.
+#[derive(Clone, Default)]
+struct OutputClient(Arc<Mutex<Vec<Value>>>);
+
+impl ClientHandler for OutputClient {
+    async fn on_custom_notification(
+        &self,
+        notification: rmcp::model::CustomNotification,
+        _context: NotificationContext<RoleClient>,
+    ) {
+        if notification.method == "logix/output" {
+            self.0
+                .lock()
+                .unwrap()
+                .push(notification.params.unwrap_or_default());
+        }
+    }
+}
+
+#[tokio::test]
+async fn build_streams_tool_output_when_asked() {
+    // The toolchain from the build tests' shared engine folder.
+    let engine = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("test-engine");
+    std::fs::create_dir_all(&engine).unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().canonicalize().unwrap().join("proj");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(
+        src.join("main.v"),
+        "module main(input CLK, output LED0);\n  assign LED0 = undeclared;\nendmodule\n",
+    )
+    .unwrap();
+    std::fs::write(src.join("pinout.pcf"), "set_io LED0 45\nset_io CLK 49\n").unwrap();
+
+    let mut cmd = Command::new(ENGINE);
+    cmd.arg("--engine-folder").arg(&engine);
+    let handler = OutputClient::default();
+    let client = handler
+        .clone()
+        .serve(TokioChildProcess::new(cmd).unwrap())
+        .await
+        .unwrap();
+
+    let args = |folder: &str| {
+        json!({
+            "board": "alhambra-ii", "top_module": "main", "source_folder": src,
+            "source_files": ["main.v"], "constraint_file": "pinout.pcf",
+            "build_folder": src.join(folder),
+        })
+    };
+    let request = |folder: &str, live: bool| {
+        let mut p = CallToolRequestParams::new("build");
+        if let Value::Object(m) = args(folder) {
+            p = p.with_arguments(m);
+        }
+        if live {
+            let mut meta = RequestMetaObject::new();
+            meta.0.0.insert("logix/output".into(), json!(true));
+            p.meta = Some(meta);
+        }
+        p
+    };
+
+    // Without the flag: nothing streamed.
+    let r = client.call_tool(request("_build/a", false)).await.unwrap();
+    assert_ne!(r.is_error, Some(true), "{r:?}");
+    assert!(handler.0.lock().unwrap().is_empty());
+
+    // With it: yosys's warning arrives as a warning line, before the result.
+    let r = client.call_tool(request("_build/b", true)).await.unwrap();
+    assert_ne!(r.is_error, Some(true), "{r:?}");
+    let lines = handler.0.lock().unwrap().clone();
+    let warning = lines
+        .iter()
+        .find(|l| {
+            l["text"]
+                .as_str()
+                .unwrap_or("")
+                .contains("implicitly declared")
+        })
+        .unwrap_or_else(|| panic!("no warning line in {lines:?}"));
+    assert_eq!(warning["tool"], "yosys");
+    assert_eq!(warning["level"], "warning");
+    assert!(warning["request_id"].is_number() || warning["request_id"].is_string());
+    client.cancel().await.unwrap();
+}

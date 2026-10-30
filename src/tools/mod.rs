@@ -20,14 +20,27 @@ use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
 
 use crate::errors::ToolError;
-use crate::progress::ProgressSink;
+use crate::progress::{OutputSink, ProgressSink};
 use crate::state::EngineState;
 
 /// What a tool call gets besides its input: where to send progress, and a
 /// token that is cancelled when the host cancels the call.
 pub struct Call {
     pub progress: Arc<dyn ProgressSink>,
+    /// Live tool output, line by line.
+    pub output: Arc<dyn OutputSink>,
     pub cancel: CancellationToken,
+}
+
+impl Call {
+    /// A call with the given progress sink and no live output.
+    pub fn new(progress: Arc<dyn ProgressSink>, cancel: CancellationToken) -> Self {
+        Call {
+            progress,
+            output: Arc::new(crate::progress::NoOutput),
+            cancel,
+        }
+    }
 }
 
 /// A tool's name, description and types.

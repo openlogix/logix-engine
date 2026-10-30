@@ -10,8 +10,8 @@ use rmcp::model::{
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer, ServerHandler};
 
-use crate::mcp_progress::McpProgress;
-use crate::progress::{NoProgress, ProgressSink};
+use crate::mcp_progress::{McpNotifier, OUTPUT_METHOD};
+use crate::progress::{NoOutput, NoProgress};
 use crate::state::{self, EngineState};
 use crate::tools;
 
@@ -72,19 +72,33 @@ impl ServerHandler for EngineServer {
             .meta
             .get_progress_token()
             .or_else(|| request.meta.as_ref().and_then(|m| m.get_progress_token()));
-        let mcp_progress =
-            token.map(|token| Arc::new(McpProgress::new(context.peer.clone(), token)));
-        let progress: Arc<dyn ProgressSink> = match &mcp_progress {
-            Some(p) => p.clone(),
-            None => Arc::new(NoProgress),
-        };
-        let call = tools::Call {
-            progress,
-            cancel: context.ct.clone(),
+        // Live tool output only when the request asks for it.
+        let wants_output = [Some(&context.meta), request.meta.as_ref()]
+            .into_iter()
+            .flatten()
+            .any(|m| m.0.0.get(OUTPUT_METHOD) == Some(&serde_json::Value::Bool(true)));
+        let notifier = (token.is_some() || wants_output).then(|| {
+            Arc::new(McpNotifier::new(
+                context.peer.clone(),
+                token,
+                wants_output.then(|| context.id.clone()),
+            ))
+        });
+        let call = match &notifier {
+            Some(n) => tools::Call {
+                progress: n.clone(),
+                output: n.clone(),
+                cancel: context.ct.clone(),
+            },
+            None => tools::Call {
+                progress: Arc::new(NoProgress),
+                output: Arc::new(NoOutput),
+                cancel: context.ct.clone(),
+            },
         };
         let result = tools::call(&self.state, &name, request.arguments, &call).await;
-        if let Some(p) = mcp_progress {
-            p.finish().await;
+        if let Some(n) = notifier {
+            n.finish().await;
         }
         match result {
             Some(result) => Ok(result.into()),

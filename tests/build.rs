@@ -54,10 +54,7 @@ async fn engine() -> EngineState {
 }
 
 fn call() -> Call {
-    Call {
-        progress: Arc::new(NoProgress),
-        cancel: CancellationToken::new(),
-    }
+    Call::new(Arc::new(NoProgress), CancellationToken::new())
 }
 
 const BLINK: &str = r#"`include "defs.vh"
@@ -312,10 +309,7 @@ async fn progress_and_cancel() {
     let state = engine().await;
     let (_tmp, src) = project();
     let rec = Arc::new(Messages::default());
-    let c = Call {
-        progress: rec.clone(),
-        cancel: CancellationToken::new(),
-    };
+    let c = Call::new(rec.clone(), CancellationToken::new());
     build::run(&state, request(&src, json!({})), &c)
         .await
         .unwrap();
@@ -325,10 +319,7 @@ async fn progress_and_cancel() {
     );
 
     let (_tmp2, src) = project();
-    let c = Call {
-        progress: Arc::new(NoProgress),
-        cancel: CancellationToken::new(),
-    };
+    let c = Call::new(Arc::new(NoProgress), CancellationToken::new());
     c.cancel.cancel();
     let err = build::run(&state, request(&src, json!({})), &c)
         .await
@@ -518,10 +509,7 @@ async fn program_board_runs_the_command_with_the_device_and_bitstream() {
         script.display()
     );
     let rec = Arc::new(Messages::default());
-    let c = Call {
-        progress: rec.clone(),
-        cancel: CancellationToken::new(),
-    };
+    let c = Call::new(rec.clone(), CancellationToken::new());
     let out = program_board::run_with(
         &state,
         program_input(&folder, json!({"programmer_command": cmd})),
