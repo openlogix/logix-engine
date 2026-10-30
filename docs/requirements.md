@@ -347,7 +347,7 @@ Apio's 109 boards split by architecture roughly as iCE40 about 42, ECP5 about 36
 
 | Phase | Scope | Done when |
 | --- | --- | --- |
-| Milestone 1. Proof of concept | A proof of concept of the engine, built on the real design so it evolves into the full engine rather than being thrown away: MCP interface, automatic package install and versioning, read-only catalog, error model, iCE40 only, and five tools: `get_engine_info`, `get_catalog`, `build`, `list_devices` and `program_board`. macOS only, with no Linux or Windows yet. GitHub workflows that build and test the engine. Developer scripts `run.sh`, `build.sh` and `clean.sh` to run, build and clean it locally. The underlying tools come from Apio's packages | An AI coding agent, such as Claude Code, is the host, connected to the engine over MCP, with no frontend. From prompts alone, it creates an iCE40 design, builds it and programs it on a real board |
+| Milestone 1. Proof of concept | A proof of concept of the engine, built on the real design so it evolves into the full engine rather than being thrown away: MCP interface, automatic package install and versioning, read-only catalog, error model, iCE40 only, and five tools: `get_engine_info`, `get_catalog`, `build`, `list_devices` and `program_board`. macOS only, with no Linux or Windows yet. GitHub workflows that build and test the engine. Developer scripts `run.sh`, `build.sh` and `clean.sh` to run, build and clean it locally. The underlying tools come from Apio's packages | An AI coding agent, such as Claude Code, is the host, connected to the engine over MCP, with no frontend. From prompts alone, it creates an iCE40 design, builds it and programs it on an Alhambra II board |
 | 2. Core coverage | ECP5 and Gowin, lint, report, simulate, test, format and graph, device scan and drivers, launching waveform viewers, a prototype Apio host | The prototype Apio host handles the common flows on all three architectures |
 | 3. Apio parity | Xilinx 7 Series, the remaining programmers as decided in the open questions, the acceptance criteria above | Apio switches to the engine |
 | 4. More hosts | IceStudio and Logix as hosts, with the requirements in Table 6 | Both run their core flows on the engine |
@@ -374,6 +374,7 @@ The project relies heavily on AI-generated tests to catch regressions, since hum
 - **Testing.** GitHub Actions workflows run the engine's test suite on every supported platform for every change, as Apio does today.
 - **Releases.** Workflows build the per-platform engine binaries and publish them as GitHub releases with date tags, like the package repos' daily releases.
 - **Hardware tests.** GitHub-hosted runners cannot reach FPGA boards, so the hardware-in-the-loop tests run separately on a lab computer with boards attached. Whether that computer runs as a self-hosted GitHub runner is still open.
+- **License.** The engine's own code is licensed under Apache-2.0, which is permissive and includes an explicit patent grant. The packaged tools keep their own licenses.
 
 ## Open questions
 
@@ -381,4 +382,3 @@ The project relies heavily on AI-generated tests to catch regressions, since hum
 - Whether to support Linux arm64 and single-board computers attached to the target board, such as a Raspberry Pi.
 - Which hardware test interface to use for the engine's own hardware tests, and whether the same interface can serve the on-board verification feature for user designs.
 - Whether the network adapter is part of the first release.
-- The license of the engine's own code. The recommendation is Apache-2.0, which is permissive and includes an explicit patent grant. Alternatives include GPL, to match Apio or to port Apio code, and 0BSD or MIT-0 for minimal conditions. The packaged tools keep their own licenses in any case.

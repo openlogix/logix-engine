@@ -15,7 +15,7 @@ logix-engine is an open source FPGA engine: one Rust binary per platform that ex
 
 ## Current scope: Milestone 1
 
-macOS arm64 only, iCE40 only, five tools: `get_engine_info`, `get_catalog`, `build`, `list_devices`, `program_board`. Also: automatic package install with versioning, a read-only catalog, the error model, GitHub workflows that build and test the engine, and developer scripts `run.sh`, `build.sh` and `clean.sh`. Toolchain packages come from Apio's packages. Don't build later-phase features unless asked.
+macOS arm64 only, iCE40 only, with the Alhambra II (`alhambra-ii`) as the reference board, five tools: `get_engine_info`, `get_catalog`, `build`, `list_devices`, `program_board`. Also: automatic package install with versioning, a read-only catalog, the error model, GitHub workflows that build and test the engine, and developer scripts `run.sh`, `build.sh` and `clean.sh`. Toolchain packages come from Apio's packages. Don't build later-phase features unless asked.
 
 ## Rules that are easy to break
 

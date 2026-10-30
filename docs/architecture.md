@@ -79,7 +79,7 @@ Per-platform binaries are published on GitHub Releases. PyPI and npm packages ma
 
 ## Appendix: Code examples
 
-These examples are illustrative. They follow the [Tool API](tool-api.md), and the engine binary name and launch options are placeholders.
+These examples are illustrative. They follow the [Tool API](tool-api.md) and the [Command line](command-line.md).
 
 ### Example 1: Apio calling the engine's build operation (Python)
 
@@ -93,7 +93,7 @@ from mcp.client.stdio import stdio_client
 
 # Launch the engine as a child process, passing its engine folder.
 ENGINE = StdioServerParameters(
-    command="fpga-engine",                      # engine binary bundled with Apio
+    command="logix-engine",                      # engine binary bundled with Apio
     args=["--engine-folder", os.path.expanduser("~/.apio/engine")],
 )
 
@@ -164,7 +164,7 @@ async function build(design, workDir) {
 
   // 2. Launch the engine bundled with IceStudio.
   const transport = new StdioClientTransport({
-    command: "fpga-engine",
+    command: "logix-engine",
     args: ["--engine-folder", path.join(ui.homeDir(), ".icestudio", "engine")],
   });
   const client = new Client({ name: "icestudio", version: "1.0.0" });
@@ -226,7 +226,7 @@ const diagnostics = vscode.languages.createDiagnosticCollection("apio");
 async function build(projectDir) {
   // Launch the engine as a child process, passing its engine folder.
   const transport = new StdioClientTransport({
-    command: "fpga-engine",                       // engine binary bundled with Apio
+    command: "logix-engine",                       // engine binary bundled with Apio
     args: ["--engine-folder", path.join(os.homedir(), ".apio", "engine")],
   });
   const client = new Client({ name: "apio-vscode", version: "1.0.0" });
