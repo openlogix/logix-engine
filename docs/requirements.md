@@ -190,7 +190,7 @@ Hosts interact with the engine in the following ways.
 | Aspect | Description |
 | --- | --- |
 | Requests and responses | The host sends requests and receives structured responses over MCP, which uses JSON |
-| Progress and logs | During long operations, the engine reports progress, output and errors as they happen |
+| Progress and logs | During long operations, the engine reports progress, output and errors as they happen. In particular, the output of the tools it runs reaches the host line by line while the tools run, so a host can show a live log, such as in Logix IDE's console, instead of a dump at the end of each operation |
 | Shared files | The host owns the source files and the engine reads them. The engine writes generated artifacts, such as bitstreams, reports and waveforms, to the build folder the host specifies |
 | Deployment | The host's deployment includes the engine, so users install only the host |
 
@@ -347,19 +347,35 @@ Apio's 109 boards split by architecture roughly as iCE40 about 42, ECP5 about 36
 
 | Phase | Scope | Done when |
 | --- | --- | --- |
-| Milestone 1. Proof of concept | A proof of concept of the engine, built on the real design so it evolves into the full engine rather than being thrown away: MCP interface, automatic package install and versioning, read-only catalog, error model, iCE40 only, and seven tools: `get_engine_info`, `install_packages`, `get_catalog`, `build`, `clean_build`, `list_devices` and `program_board`. macOS only, with no Linux or Windows yet. GitHub workflows that build and test the engine. Developer scripts `run.sh`, `build.sh`, `clean.sh` and `test.sh` to run, build, clean and test it locally. The underlying tools come from Apio's packages | An AI coding agent, such as Claude Code, is the host, connected to the engine over MCP, with no frontend. From prompts alone, it creates an iCE40 design, builds it and programs it on an Alhambra II board |
-| 2. Core coverage | ECP5 and Gowin, lint, report, simulate, test, format and graph, device scan and drivers, launching waveform viewers, a prototype Apio host | The prototype Apio host handles the common flows on all three architectures |
-| 3. Apio parity | Xilinx 7 Series, the remaining programmers as decided in the open questions, the acceptance criteria above | Apio switches to the engine |
-| 4. More hosts | IceStudio and Logix as hosts, with the requirements in Table 6 | Both run their core flows on the engine |
+| Milestone 1. Proof of concept (done 2026-10-29) | A proof of concept of the engine, built on the real design so it evolves into the full engine rather than being thrown away: MCP interface, automatic package install and versioning, read-only catalog, error model, iCE40 only, and seven tools: `get_engine_info`, `install_packages`, `get_catalog`, `build`, `clean_build`, `list_devices` and `program_board`. macOS only, with no Linux or Windows yet. GitHub workflows that build and test the engine. Developer scripts to run, build, clean and test it locally. The underlying tools come from Apio's packages | An AI coding agent, such as Claude Code, is the host, connected to the engine over MCP, with no frontend. From prompts alone, it changes or creates an iCE40 design, builds it and programs it on an Alhambra II board. Met on 2026-10-29 |
+| Milestone 2. Logix IDE on the engine | Everything Logix IDE uses Apio for today, as listed in Table 15: lint, test and simulate with a waveform viewer, format, graph, examples, live tool output, and every architecture (iCE40, ECP5, Gowin and Xilinx 7 Series) with at least one board each and the programmers those boards need. macOS only, like Logix IDE's releases | Logix IDE's macOS release runs on the engine alone, with no Apio, and keeps every feature in Table 15. Its board selector offers at least one board of each architecture, and each architecture builds and programs a board, tested on hardware where a board is available |
+| 3. Apio parity | Apio as a host, the remaining boards and programmers as decided in the open questions, Linux and Windows, and the acceptance criteria above | Apio switches to the engine |
+| 4. More hosts | IceStudio as a host, with the requirements in Table 6 | IceStudio runs its core flows on the engine |
 | Later | Network adapter, on-board verification, possibly VHDL | Decided when they come up |
 
-Milestone 1 tests the interface with an AI coding agent as the host, before any frontend proof of concept is written. Proofs of concept of the reference hosts follow, starting with the prototype Apio host in phase 2. Full IceStudio and Logix support comes in phase 4.
+Milestone 1 tested the interface with an AI coding agent as the host, before any frontend used the engine. Milestone 2 makes Logix IDE the first frontend on the engine, since it is Open Logix's own and needs no outside coordination. Apio follows in phase 3, and IceStudio in phase 4.
+
+**Table 15.** Logix IDE features that Milestone 2 must keep
+
+| Logix IDE feature | What it uses from Apio today | Engine support needed |
+| --- | --- | --- |
+| Board selector | `apio api get-boards`: every Apio board | `get_catalog` with boards of every architecture |
+| Examples menu | `apio api get-examples`, `apio examples fetch` | Examples in the catalog and a way to fetch one into a folder |
+| Verify | `apio lint` (Verilator), then `apio build` and `apio report` | A `lint` tool; `build` with its resource and timing results |
+| Upload | `apio upload` | `program_board`, with the programmers of the supported boards |
+| Run Tests | `apio test` (Icarus Verilog), all testbenches or one | A `test` tool following Apio's testbench rules |
+| Simulate | `apio sim --detach`, with GTKWave | A `simulate` tool that writes the waveform and opens a viewer without waiting for it |
+| Auto Format | `apio format` (Verible) | A `format` tool and the package with Verible |
+| Show Diagram | `apio graph --no-viewer` (yosys and Graphviz) | A `graph` tool that writes the diagram as SVG |
+| Console | Apio's output, shown as it runs | Live tool output, line by line, while each operation runs |
+| First start | `apio api get-system`, which installs the packages | `install_packages`, with progress |
+| Stop | Cancelling the running Apio command | Cancellation of every tool |
 
 ## Development methodology
 
 The engine will be implemented and maintained by human-guided AI. The human directs the work and judges the results, with a general understanding of the code and architecture but without reviewing every line. The code is therefore not required to be human-readable or intuitive. In general, the AI-generated code is treated like machine code: people are not expected to inspect or understand it. In contrast, the functionality, external interfaces and requirements must be straightforward, intuitive and easy for people to understand.
 
-**Table 15.** Development roles
+**Table 16.** Development roles
 
 | Role | Responsibilities |
 | --- | --- |
