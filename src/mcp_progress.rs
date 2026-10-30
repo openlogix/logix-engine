@@ -109,7 +109,19 @@ impl OutputSink for McpNotifier {
         self.send(Note::Output(json!({
             "request_id": id,
             "tool": tool,
+            "kind": "output",
             "level": level,
+            "text": text,
+        })));
+    }
+
+    fn command(&self, tool: &str, text: &str) {
+        let Some(id) = &self.output_for else { return };
+        self.send(Note::Output(json!({
+            "request_id": id,
+            "tool": tool,
+            "kind": "command",
+            "level": OutputLevel::Info,
             "text": text,
         })));
     }

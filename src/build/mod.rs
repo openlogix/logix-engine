@@ -24,7 +24,7 @@ use crate::board::ResolvedBoard;
 use crate::errors::{Category, Diagnostic, ToolError};
 use crate::progress::OutputLevel;
 use crate::progress::Phases;
-use crate::runner::{RunError, run_tool_with};
+use crate::runner::{RunError, command_line, run_tool_with};
 use crate::state::EngineState;
 use crate::text::to_multiline_text;
 use crate::tools::Call;
@@ -201,6 +201,7 @@ async fn run_step(
     call: &Call,
 ) -> Result<String, ToolError> {
     let program = bin_dir.join(tool);
+    call.output.command(tool, &command_line(&program, &args));
     let on_line = |line: &str| call.output.line(tool, OutputLevel::of(line), line);
     match run_tool_with(&program, &args, cwd, bin_dir, &call.cancel, &on_line).await {
         Ok(run) if run.status.success() => Ok(run.output),

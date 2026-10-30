@@ -100,7 +100,7 @@ The engine reports facts as plain data and leaves presentation to the host. It s
 
 ### Live tool output
 
-A host that wants to show the tools' output as it happens, such as in a console, adds `"logix/output": true` to the `_meta` of its tool call. The engine then sends each line the tools print as a `logix/output` notification while the tool runs, and all of them before the tool result. Without the flag it sends none, so other MCP clients and AI agents never get them. MCP's own logging notifications aren't used, since MCP 2026-07-28 deprecates them.
+A host that wants to show the tools' output as it happens, such as in a console, adds `"logix/output": true` to the `_meta` of its tool call. The engine then sends each line the tools print as a `logix/output` notification while the tool runs, and all of them before the tool result. The stream is flat and in order: an operation that runs several tools, such as `build`, sends each tool's command line followed by that tool's lines, then the next tool's. Without the flag it sends none, so other MCP clients and AI agents never get them. MCP's own logging notifications aren't used, since MCP 2026-07-28 deprecates them.
 
 **Table 22.** logix/output notification fields
 
@@ -108,6 +108,7 @@ A host that wants to show the tools' output as it happens, such as in a console,
 | --- | --- | --- |
 | `request_id` | number or string | The JSON-RPC ID of the tool call the line belongs to |
 | `tool` | text | The tool that printed it, such as `yosys`, `nextpnr-ice40` or `openFPGALoader` |
+| `kind` | enum | `command` for the command line of a tool about to run, sent before its output, or `output` for a line the tool printed |
 | `level` | enum | `error`, `warning` or `info`, from how the tool marks the line, so hosts can color it |
 | `text` | text | The line as the tool printed it, without terminal codes. A progress bar redrawn with carriage returns gives one line per redraw |
 

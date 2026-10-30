@@ -352,7 +352,27 @@ async fn build_streams_tool_output_when_asked() {
         })
         .unwrap_or_else(|| panic!("no warning line in {lines:?}"));
     assert_eq!(warning["tool"], "yosys");
+    assert_eq!(warning["kind"], "output");
     assert_eq!(warning["level"], "warning");
+    // Each tool's block starts with its command line.
+    let commands: Vec<&Value> = lines.iter().filter(|l| l["kind"] == "command").collect();
+    let tools: Vec<&str> = commands
+        .iter()
+        .map(|c| c["tool"].as_str().unwrap())
+        .collect();
+    assert_eq!(tools, ["yosys", "nextpnr-ice40", "icepack"]);
+    assert!(
+        commands[0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("yosys -q -l "),
+        "{:?}",
+        commands[0]
+    );
+    assert_eq!(
+        lines[0]["kind"], "command",
+        "the command comes before the tool's lines"
+    );
     assert!(warning["request_id"].is_number() || warning["request_id"].is_string());
     client.cancel().await.unwrap();
 }

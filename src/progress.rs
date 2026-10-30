@@ -50,7 +50,10 @@ impl OutputLevel {
 
 /// Where live tool output goes, line by line.
 pub trait OutputSink: Send + Sync {
+    /// A line the tool printed.
     fn line(&self, tool: &str, level: OutputLevel, text: &str);
+    /// The command line of a tool about to run, before its output.
+    fn command(&self, _tool: &str, _text: &str) {}
 }
 
 /// A sink that drops output, for hosts that didn't ask for it.

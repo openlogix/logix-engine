@@ -12,7 +12,7 @@ use crate::errors::{ActionCode, Category, ToolError};
 use crate::paths;
 use crate::program::{self, ProgressLine};
 use crate::progress::{OutputLevel, Phases};
-use crate::runner::{RunError, run_tool_with};
+use crate::runner::{RunError, command_line, run_tool_with};
 use crate::state::EngineState;
 
 pub struct ProgramBoard;
@@ -165,6 +165,8 @@ pub async fn run_with(
     } else {
         "Writing flash"
     });
+    call.output
+        .command(&tool_name, &command_line(&program, &args));
     let run = run_tool_with(&program, &args, &folder, &bin, &call.cancel, &on_line).await;
     match run {
         Ok(r) if r.status.success() => Ok(ProgramBoardOutput { device, programmer }),

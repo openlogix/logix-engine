@@ -149,6 +149,27 @@ pub async fn run_tool_with(
     Ok(ToolRun { status, output })
 }
 
+/// A command line for people to read: the program's file name and its
+/// arguments, quoting arguments that have spaces or quotes.
+pub fn command_line(program: &Path, args: &[OsString]) -> String {
+    let mut words = vec![
+        program
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    for a in args {
+        let a = a.to_string_lossy();
+        if a.is_empty() || a.contains([' ', '"', '\'', '\t']) {
+            words.push(format!("'{}'", a.replace('\'', "'\\''")));
+        } else {
+            words.push(a.into_owned());
+        }
+    }
+    words.join(" ")
+}
+
 /// Stops the tool and the processes it started, which share its process
 /// group.
 fn kill_tree(pid: Option<u32>) {
@@ -183,6 +204,15 @@ mod tests {
         .unwrap();
         assert_eq!(run.status.code(), Some(3));
         assert!(run.output.contains("out") && run.output.contains("err"));
+    }
+
+    #[test]
+    fn command_lines_quote_spaces() {
+        let args: Vec<OsString> = vec!["-p".into(), "synth_ice40 -top main".into(), "it's".into()];
+        assert_eq!(
+            command_line(Path::new("/pkg/bin/yosys"), &args),
+            "yosys -p 'synth_ice40 -top main' 'it'\\''s'"
+        );
     }
 
     #[tokio::test]
