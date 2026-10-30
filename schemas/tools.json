@@ -124,12 +124,17 @@
   },
   {
     "name": "install_packages",
-    "description": "Installs or repairs the engine's toolchain packages, downloading them from the internet. Packages that are already installed and intact are left alone. Other tools install the packages they need on their own, so call this only to install ahead of time, such as before going offline, or when a tool returns a setup error with the install_packages action (for example when the engine was launched with automatic install turned off). A download can take a few minutes; the tool reports progress and can be cancelled.",
+    "description": "Installs or repairs the engine's toolchain packages, downloading them from the internet. Packages that are already installed and intact are left alone, unless force is set to download and install them again. Other tools install the packages they need on their own, so call this only to install ahead of time, such as before going offline, or when a tool returns a setup error with the install_packages action (for example when the engine was launched with automatic install turned off). A download can take a few minutes; the tool reports progress and can be cancelled.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "description": "Which packages to install or repair.",
       "properties": {
+        "force": {
+          "default": false,
+          "description": "Download and install the packages again even if they are installed,\nreplacing the installed copies. Use it when a package's tools fail in\nways that suggest damaged files. Defaults to false. Don't use it while\nother operations are running.",
+          "type": "boolean"
+        },
         "packages": {
           "default": null,
           "description": "Names of the packages to install or repair, as get_engine_info lists\nthem, such as oss-cad-suite. Omitted means every package in the\nengine's manifest.",
@@ -197,7 +202,7 @@
       "description": "What was installed, and every package's status afterwards.",
       "properties": {
         "installed": {
-          "description": "Names of the packages this call installed or repaired. Empty when\nthey were all installed already.",
+          "description": "Names of the packages this call installed, repaired or reinstalled.\nEmpty when they were all installed already and force was off.",
           "items": {
             "type": "string"
           },

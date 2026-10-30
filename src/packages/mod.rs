@@ -164,6 +164,29 @@ impl PackageManager {
         phases: &Phases,
         cancel: &CancellationToken,
     ) -> Result<(), ToolError> {
+        self.install_or_reinstall(spec, phases, cancel, false).await
+    }
+
+    /// Downloads and installs a package again, even if it looks installed,
+    /// replacing the installed copy. This fixes files damaged or deleted
+    /// after the install, which the status check doesn't see. The old copy
+    /// stays until the new one is complete.
+    pub async fn reinstall(
+        &self,
+        spec: &PackageSpec,
+        phases: &Phases,
+        cancel: &CancellationToken,
+    ) -> Result<(), ToolError> {
+        self.install_or_reinstall(spec, phases, cancel, true).await
+    }
+
+    async fn install_or_reinstall(
+        &self,
+        spec: &PackageSpec,
+        phases: &Phases,
+        cancel: &CancellationToken,
+        force: bool,
+    ) -> Result<(), ToolError> {
         let name = spec.name.as_str();
         let file = self.file_for(spec).ok_or_else(|| {
             ToolError::engine(format!(
@@ -179,7 +202,7 @@ impl PackageManager {
         fs::create_dir_all(&pkg_dir).map_err(|e| install_error(name, e))?;
 
         let _lock = self.lock(name, cancel).await?;
-        if self.status(spec) == PackageStatus::Installed {
+        if !force && self.status(spec) == PackageStatus::Installed {
             log::info!(
                 "Package {name} {} was installed by another process",
                 spec.version
@@ -187,7 +210,8 @@ impl PackageManager {
             return Ok(());
         }
         log::info!(
-            "Installing package {name} {} from {}",
+            "{} package {name} {} from {}",
+            if force { "Reinstalling" } else { "Installing" },
             spec.version,
             file.url(&self.download_base)
         );

@@ -15,7 +15,7 @@ impl EngineTool for InstallPackages {
     const NAME: &'static str = "install_packages";
     const DESCRIPTION: &'static str = "Installs or repairs the engine's toolchain packages, \
         downloading them from the internet. Packages that are already installed and intact are \
-        left alone. Other tools install the packages they need on their own, so call this only \
+        left alone, unless force is set to download and install them again. Other tools install the packages they need on their own, so call this only \
         to install ahead of time, such as before going offline, or when a tool returns a setup \
         error with the install_packages action (for example when the engine was launched with \
         automatic install turned off). A download can take a few minutes; the tool reports \
@@ -35,14 +35,20 @@ pub struct InstallPackagesInput {
     /// engine's manifest.
     #[serde(default)]
     pub packages: Option<Vec<String>>,
+    /// Download and install the packages again even if they are installed,
+    /// replacing the installed copies. Use it when a package's tools fail in
+    /// ways that suggest damaged files. Defaults to false. Don't use it while
+    /// other operations are running.
+    #[serde(default)]
+    pub force: bool,
 }
 
 /// What was installed, and every package's status afterwards.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct InstallPackagesOutput {
-    /// Names of the packages this call installed or repaired. Empty when
-    /// they were all installed already.
+    /// Names of the packages this call installed, repaired or reinstalled.
+    /// Empty when they were all installed already and force was off.
     pub installed: Vec<String>,
     /// Every package in the engine's manifest, with its status.
     pub packages: Vec<PackageInfo>,
@@ -78,13 +84,30 @@ pub async fn run(
         .map(String::as_str)
         .filter(|n| seen.insert(*n))
         .collect();
-    let needed = state.packages.needing_install(&names)?;
+    let needed = if input.force {
+        names
+            .iter()
+            .filter_map(|n| state.packages.manifest().get(n).cloned())
+            .collect()
+    } else {
+        state.packages.needing_install(&names)?
+    };
     let phases = Phases::new(call.progress.clone(), needed.len());
     // The host asked, so this installs even when automatic install is off.
-    state
-        .packages
-        .ensure(&needed, true, &phases, &call.cancel)
-        .await?;
+    if input.force {
+        for spec in &needed {
+            phases.start(format!("Reinstalling {}", spec.name));
+            state
+                .packages
+                .reinstall(spec, &phases, &call.cancel)
+                .await?;
+        }
+    } else {
+        state
+            .packages
+            .ensure(&needed, true, &phases, &call.cancel)
+            .await?;
+    }
     Ok(InstallPackagesOutput {
         installed: needed.into_iter().map(|s| s.name).collect(),
         packages: package_list(state),

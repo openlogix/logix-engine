@@ -374,19 +374,20 @@ Output:
 
 ## install_packages tool
 
-Installs or repairs the engine's packages. Packages that are already installed and intact are left alone. Other tools install the packages they need on their own, so a host calls this only to install ahead of time, such as before going offline, or to act on the `install_packages` action, such as when automatic install is off. It installs whether or not automatic install is on, since the host asked. It reports progress, one phase per package, and can be cancelled.
+Installs or repairs the engine's packages. Packages that are already installed and intact are left alone, unless `force` is set. Other tools install the packages they need on their own, so a host calls this only to install ahead of time, such as before going offline, or to act on the `install_packages` action, such as when automatic install is off. It installs whether or not automatic install is on, since the host asked. It reports progress, one phase per package, and can be cancelled.
 
 **Table 18.** install_packages tool inputs
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `packages` | list of text | No | Names of the packages to install or repair, as `get_engine_info` lists them. Omitted means every package in the manifest |
+| `force` | boolean | No | Download and install the packages again even if they are installed, replacing the installed copies, like Apio's `apio packages install --force`. It fixes files that were damaged or deleted after the install, which the status check doesn't see. The installed copy stays until the new one is complete. Defaults to false |
 
 **Table 19.** install_packages tool outputs
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `installed` | list of text | Names of the packages this call installed or repaired. Empty when they were all installed already |
+| `installed` | list of text | Names of the packages this call installed, repaired or reinstalled. Empty when they were all installed already and `force` was off |
 | `packages` | list of packages | Every package in the manifest with its status afterwards, as in `get_engine_info` |
 
 **Errors:** request errors for unknown package names. Setup errors with `install_packages` when a download or install fails. Engine errors and cancellation.

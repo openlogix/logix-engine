@@ -493,6 +493,73 @@ async fn install_packages_tool_installs_once_even_with_auto_install_off() {
 }
 
 #[tokio::test]
+async fn force_reinstalls_and_restores_damaged_files() {
+    let s = setup(good_package(), None, None);
+    let state = state_for(&s, true);
+    let call = Call {
+        progress: Arc::new(NoProgress),
+        cancel: CancellationToken::new(),
+    };
+    install_packages::run(&state, Default::default(), &call)
+        .await
+        .unwrap();
+
+    // A tool deleted after the install: the record still says installed,
+    // so a normal install does nothing.
+    let spec = s.pm.manifest().get("pkg").unwrap().clone();
+    let tool = s.pm.package_dir(&spec).join("bin/tool");
+    std::fs::remove_file(&tool).unwrap();
+    assert_eq!(s.pm.status(&spec), PackageStatus::Installed);
+    let out = install_packages::run(&state, Default::default(), &call)
+        .await
+        .unwrap();
+    assert!(out.installed.is_empty());
+    assert!(!tool.exists());
+
+    // Force downloads and installs it again.
+    let rec = Arc::new(Messages::default());
+    let call = Call {
+        progress: rec.clone(),
+        cancel: CancellationToken::new(),
+    };
+    let input: install_packages::InstallPackagesInput =
+        serde_json::from_value(serde_json::json!({"force": true})).unwrap();
+    let out = install_packages::run(&state, input, &call).await.unwrap();
+    assert_eq!(out.installed, vec!["pkg"]);
+    assert!(tool.exists());
+    assert_eq!(s.pm.status(&spec), PackageStatus::Installed);
+    assert_eq!(s.server.requests.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        rec.0.lock().unwrap()[0].2.as_deref(),
+        Some("Reinstalling pkg")
+    );
+    assert_eq!(entries(&s.engine.join("packages/pkg")), vec!["2026-01-02"]);
+}
+
+#[tokio::test]
+async fn a_failed_reinstall_keeps_the_installed_copy() {
+    let s = setup(good_package(), None, None);
+    let spec = s.pm.manifest().get("pkg").unwrap().clone();
+    s.pm.install(&spec, &phases(), &CancellationToken::new())
+        .await
+        .unwrap();
+    // The server now has no file: the reinstall fails.
+    let pm = PackageManager::new(
+        &s.engine,
+        Arc::new(s.pm.manifest().clone()),
+        PLATFORM,
+        "http://127.0.0.1:9",
+    );
+    let err = pm
+        .reinstall(&spec, &phases(), &CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert_eq!(err.category, Category::Setup);
+    assert_eq!(pm.status(&spec), PackageStatus::Installed);
+    assert!(pm.package_dir(&spec).join("bin/tool").exists());
+}
+
+#[tokio::test]
 async fn install_packages_tool_refuses_unknown_packages() {
     let s = setup(good_package(), None, None);
     let state = state_for(&s, true);
