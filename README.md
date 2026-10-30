@@ -30,14 +30,15 @@ Check the setup with `cargo --version`.
 | --- | --- |
 | `scripts/test.sh` | All checks and tests: format, lint, unit, schema, command-line and end-to-end MCP tests. Run it before committing. CI runs it too |
 | `scripts/build.sh` | Builds the release binary, `target/release/logix-engine` |
-| `scripts/run.sh` | Builds if needed and runs the engine as an MCP server on stdin/stdout, with the engine folder `~/.logix-dev/engine` |
+| `scripts/run.sh` | Builds if needed and starts Claude Code with the engine connected, so you can prompt it. Claude works in `~/.logix-dev/playground`, and the engine uses `~/.logix-dev/engine` |
+| `scripts/serve.sh` | Builds if needed and runs the engine as an MCP server on stdin/stdout, for other MCP clients |
 | `scripts/clean.sh` | Deletes the build output |
 | `scripts/update-schemas.sh` | Regenerates [schemas/tools.json](schemas/tools.json), the published copy of the tool schemas, after a deliberate change |
 
-To try the engine with Claude Code as the host:
+To try the engine with Claude Code as the host, run `scripts/run.sh` and type prompts, such as "What version is the Logix engine?". It uses the `claude` command, or the one bundled with the Claude Code VS Code extension. To try it with another MCP client, such as the [MCP Inspector](https://github.com/modelcontextprotocol/inspector), point the client at `scripts/serve.sh`:
 
 ```
-claude mcp add logix-engine -- /path/to/logix-engine/scripts/run.sh
+npx @modelcontextprotocol/inspector /path/to/logix-engine/scripts/serve.sh
 ```
 
 ## License
