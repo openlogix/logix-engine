@@ -6,6 +6,8 @@
 //! `hardware.asc` and `hardware.pnr` (nextpnr's placed design and report),
 //! `hardware.bin` (the bitstream), the logs `synth.log` and `pnr.log`, and
 //! the build record `build-record.json` (written last, on success only).
+//! These names are a fixed convention of the engine, documented in the tool
+//! API, so hosts can rely on them.
 
 pub mod clean;
 pub mod parse;
