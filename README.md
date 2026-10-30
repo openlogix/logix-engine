@@ -6,7 +6,7 @@ The engine is a single native executable, written in Rust, that offers FPGA oper
 
 ## Status
 
-In development. The engine runs as an MCP server with its first two tools: `get_engine_info`, and `install_packages`, which downloads and installs the FPGA toolchain. The build and board tools come next. Daily development builds are on the [Releases](https://github.com/openlogix/logix-engine/releases) page. The first target is **Milestone 1**, a proof of concept on macOS for iCE40 boards with six tools: `get_engine_info`, `install_packages`, `get_catalog`, `build`, `list_devices` and `program_board`. It is done when an AI coding agent, such as Claude Code, connected over MCP with no other frontend, creates an iCE40 design from prompts, builds it and programs it on an Alhambra II board.
+In development. The engine runs as an MCP server with its first two tools: `get_engine_info`, and `install_packages`, which downloads and installs the FPGA toolchain. The build and board tools come next. Daily development builds are on the [Releases](https://github.com/openlogix/logix-engine/releases) page. The first target is **Milestone 1**, a proof of concept on macOS for iCE40 boards with seven tools: `get_engine_info`, `install_packages`, `get_catalog`, `build`, `clean`, `list_devices` and `program_board`. It is done when an AI coding agent, such as Claude Code, connected over MCP with no other frontend, creates an iCE40 design from prompts, builds it and programs it on an Alhambra II board.
 
 ## Documentation
 
