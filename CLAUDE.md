@@ -15,7 +15,7 @@ logix-engine is an open source FPGA engine: one Rust binary per platform that ex
 
 ## Current scope: Milestone 2
 
-Milestone 1 (iCE40, seven tools, tested on an Alhambra II) is done. Milestone 2 is Logix IDE running on the engine instead of Apio without losing any feature: Table 15 in [docs/requirements.md](docs/requirements.md#acceptance-and-phasing) lists them (lint, test, simulate, format, graph, examples, live tool output, and every architecture with at least one board). macOS arm64 only. Toolchain packages come from Apio's packages. Don't build later-phase features unless asked.
+Milestone 1 (iCE40, seven tools, tested on an Alhambra II) is done. Milestone 2 is Logix IDE running on the engine instead of Apio without losing any feature: Table 15 in [docs/requirements.md](docs/requirements.md#acceptance-and-phasing) lists them (lint, test, simulate, format, graph, examples, live tool output, and every board the IDE offers today across all four architectures; a board is dropped only for a very good, recorded reason). macOS arm64 only. Toolchain packages come from Apio's packages. Don't build later-phase features unless asked.
 
 ## Code and commands
 
