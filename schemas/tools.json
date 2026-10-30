@@ -1,0 +1,125 @@
+[
+  {
+    "name": "get_engine_info",
+    "description": "Returns the engine's version, platform, launch settings and package status. Call it first, to check that the engine is new enough and to see which toolchain packages are installed. It is fast and local: it never uses the network. Missing packages are installed automatically by the tools that need them, unless auto_install is off.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "The get_engine_info tool takes no inputs.",
+      "title": "GetEngineInfoInput",
+      "type": "object"
+    },
+    "outputSchema": {
+      "$defs": {
+        "PackageInfo": {
+          "additionalProperties": false,
+          "description": "A toolchain package and whether it's installed.",
+          "properties": {
+            "name": {
+              "description": "The package name, such as oss-cad-suite.",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/$defs/PackageStatus"
+            },
+            "version": {
+              "description": "The package release, as a date tag (yyyy-mm-dd).",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(-[1-9][0-9]*)?$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "version",
+            "status"
+          ],
+          "type": "object"
+        },
+        "PackageStatus": {
+          "description": "Whether a package is ready to use.",
+          "oneOf": [
+            {
+              "const": "installed",
+              "description": "Installed and intact.",
+              "type": "string"
+            },
+            {
+              "const": "missing",
+              "description": "Not installed.",
+              "type": "string"
+            },
+            {
+              "const": "broken",
+              "description": "Installed but incomplete or damaged. It is repaired when a tool needs\nit, unless auto-install is off.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "The engine's version, platform, launch settings and package status.",
+      "properties": {
+        "auto_install": {
+          "description": "Whether the engine installs and repairs packages automatically when a\ntool needs them. On by default. The host turns it off with the\n--no-auto-install command-line argument.",
+          "type": "boolean"
+        },
+        "command_line": {
+          "description": "The command-line arguments the engine was launched with, as given.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "engine_folder": {
+          "description": "The engine folder, as the host set it with the --engine-folder\ncommand-line argument. The engine keeps its packages and logs there.",
+          "type": "string"
+        },
+        "engine_version": {
+          "description": "The engine release, as a date tag (yyyy-mm-dd, or yyyy-mm-dd-N for a\nlater release on the same day). Compare versions by date.",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(-[1-9][0-9]*)?$",
+          "type": "string"
+        },
+        "log_file": {
+          "description": "The log file this engine process writes, in the logs subfolder of the\nengine folder. Useful when reporting a problem.",
+          "type": "string"
+        },
+        "packages": {
+          "description": "Every package in the engine's manifest, with its status.",
+          "items": {
+            "$ref": "#/$defs/PackageInfo"
+          },
+          "type": "array"
+        },
+        "platform": {
+          "description": "The platform the engine runs on, such as darwin-arm64.",
+          "type": "string"
+        },
+        "protocol_versions": {
+          "description": "The MCP protocol versions the engine accepts, newest first.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "engine_version",
+        "protocol_versions",
+        "platform",
+        "engine_folder",
+        "auto_install",
+        "command_line",
+        "log_file",
+        "packages"
+      ],
+      "title": "GetEngineInfoOutput",
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  }
+]

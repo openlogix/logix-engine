@@ -10,7 +10,7 @@ This is the engine's tool API for Milestone 1. It is not frozen yet: the rule th
 - **Rules beyond the schema.** Some rules can't be written in JSON Schema, such as the path keyword rules, symbolic link checks, whether a file exists, or whether a board ID is in the catalog. The engine checks these right after the schema, and they are also request errors.
 - **Tight schemas.** Where JSON Schema can express a rule, the schema states it, such as a pattern for catalog IDs, USB IDs and define names, and the allowed values of each enum field. This catches more mistakes early and shows the rules to AI agents.
 - **Output.** Each tool's structured content always matches its output schema.
-- **Published copy.** CI exports the schemas to a file in the repository, so schema changes show up in code review and the rule that the tool API never breaks can be checked automatically.
+- **Published copy.** The schemas are exported to [schemas/tools.json](../schemas/tools.json), exactly as `tools/list` returns them. A test fails when the file and the code differ, and `scripts/update-schemas.sh` regenerates it, so schema changes show up in code review and the rule that the tool API never breaks can be checked automatically.
 
 ## Common types
 

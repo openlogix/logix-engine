@@ -6,7 +6,7 @@ The engine is a single native executable, written in Rust, that offers FPGA oper
 
 ## Status
 
-Design phase. Nothing is implemented yet. The first target is **Milestone 1**, a proof of concept on macOS for iCE40 boards with five tools: `get_engine_info`, `get_catalog`, `build`, `list_devices` and `program_board`. It is done when an AI coding agent, such as Claude Code, connected over MCP with no other frontend, creates an iCE40 design from prompts, builds it and programs it on an Alhambra II board.
+In development. The engine runs as an MCP server with its first tool, `get_engine_info`. Daily development builds are on the [Releases](https://github.com/openlogix/logix-engine/releases) page. The first target is **Milestone 1**, a proof of concept on macOS for iCE40 boards with five tools: `get_engine_info`, `get_catalog`, `build`, `list_devices` and `program_board`. It is done when an AI coding agent, such as Claude Code, connected over MCP with no other frontend, creates an iCE40 design from prompts, builds it and programs it on an Alhambra II board.
 
 ## Documentation
 
@@ -25,6 +25,20 @@ The engine is written in Rust. Install it with [rustup](https://rustup.rs), whic
 - **Other platforms:** follow the instructions at [rustup.rs](https://rustup.rs).
 
 Check the setup with `cargo --version`.
+
+| Script | What it does |
+| --- | --- |
+| `scripts/test.sh` | All checks and tests: format, lint, unit, schema, command-line and end-to-end MCP tests. Run it before committing. CI runs it too |
+| `scripts/build.sh` | Builds the release binary, `target/release/logix-engine` |
+| `scripts/run.sh` | Builds if needed and runs the engine as an MCP server on stdin/stdout, with the engine folder `~/.logix-dev/engine` |
+| `scripts/clean.sh` | Deletes the build output |
+| `scripts/update-schemas.sh` | Regenerates [schemas/tools.json](schemas/tools.json), the published copy of the tool schemas, after a deliberate change |
+
+To try the engine with Claude Code as the host:
+
+```
+claude mcp add logix-engine -- /path/to/logix-engine/scripts/run.sh
+```
 
 ## License
 

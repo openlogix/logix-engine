@@ -1,0 +1,48 @@
+# Runs all code checks and tests (scripts/test.sh).
+
+name: Test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Daily at the start of the UTC day, to catch breakage from new
+    # runner images or tool versions even when the code doesn't change.
+    - cron: "0 0 * * *"
+
+permissions:
+  contents: read
+
+# A newer run for the same branch or PR replaces an older one.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    # macOS on Apple Silicon: the only platform in Milestone 1, on the macOS
+    # versions GitHub offers (all arm64). macos-latest is listed so a new
+    # macOS release gets tested as soon as GitHub switches to it. Add Linux
+    # and Windows here when those platforms are implemented.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      # Installs the Rust version pinned in rust-toolchain.toml, with
+      # rustfmt and clippy.
+      - name: Set up Rust
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
+
+      - name: Run checks and tests
+        run: scripts/test.sh

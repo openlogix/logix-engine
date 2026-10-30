@@ -1,0 +1,127 @@
+# Builds the Logix Engine macOS (Apple Silicon) package: a .tgz with the
+# logix-engine binary. Called by build-pre-release.yaml, which passes
+# BUILD-INFO.json as the 'build-info' artifact.
+
+name: build-darwin-arm64
+
+on:
+  workflow_call:
+
+env:
+  # These are set later from BUILD-INFO.json.
+  REPO: ""
+  REPO_COMMIT: ""
+  RELEASE_TAG: ""
+  PACKAGE_TAG: ""
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Check required platform
+        uses: openlogix/.github/actions/check-platform@v1
+        with:
+          os: darwin
+          arch: arm64
+
+      - name: Download BUILD-INFO.json artifact from main job
+        uses: actions/download-artifact@v8
+        with:
+          name: build-info
+          path: _artifacts
+
+      - name: Move build info
+        run: |
+          find _artifacts
+          mv _artifacts/BUILD-INFO.json .
+
+      - name: Add platform info to build info json file
+        uses: openlogix/.github/actions/write-to-json-file@v1
+        with:
+          json-file: BUILD-INFO.json
+          key: target-platform
+          value: darwin-arm64
+
+      - name: Format build info json file
+        uses: openlogix/.github/actions/format-json-file@v1
+        with:
+          json-file: BUILD-INFO.json
+
+      - name: Set env vars from JSON
+        uses: openlogix/.github/actions/set-env-from-json@v1
+        with:
+          json-file: BUILD-INFO.json
+          mappings: >-
+            REPO         repo
+            REPO_COMMIT  repo-commit
+            RELEASE_TAG  release-tag
+            PACKAGE_TAG  package-tag
+
+      # Into a subdirectory, not to step on BUILD-INFO.json.
+      - name: Checkout the commit to build
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.REPO }}
+          ref: ${{ env.REPO_COMMIT }}
+          path: _repo
+
+      # Installs the Rust version pinned in rust-toolchain.toml.
+      - name: Set up Rust
+        working-directory: _repo
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
+
+      # Don't publish a build that fails its own checks.
+      - name: Run checks and tests
+        working-directory: _repo
+        run: scripts/test.sh
+
+      # The engine version is the release tag.
+      - name: Build the engine
+        working-directory: _repo
+        env:
+          LOGIX_ENGINE_VERSION: ${{ env.RELEASE_TAG }}
+        run: scripts/build.sh
+
+      # The package has one top-level folder, logix-engine/, with the
+      # binary and the license.
+      - name: Make the package
+        run: |
+          mkdir -p _pkg/logix-engine
+          cp _repo/target/release/logix-engine _pkg/logix-engine/
+          cp _repo/LICENSE _pkg/logix-engine/
+          tar -czf "logix-engine-darwin-arm64-${PACKAGE_TAG}.tgz" -C _pkg logix-engine
+          tar -tzvf "logix-engine-darwin-arm64-${PACKAGE_TAG}.tgz"
+
+      # Checks what users get: the binary from the package runs, reports the
+      # release tag as its version, and has a valid (ad-hoc) signature
+      # (Apple Silicon doesn't run unsigned binaries).
+      - name: Verify the package
+        run: |
+          mkdir _check
+          tar -xzf "logix-engine-darwin-arm64-${PACKAGE_TAG}.tgz" -C _check
+          bin=_check/logix-engine/logix-engine
+          test -f _check/logix-engine/LICENSE
+          version="$("$bin" --version)"
+          echo "$version"
+          if [[ "$version" != "logix-engine ${RELEASE_TAG}" ]]; then
+            echo "Error: expected version ${RELEASE_TAG}, got: $version"
+            exit 1
+          fi
+          codesign --verify --strict --verbose=2 "$bin"
+          codesign --display --verbose=2 "$bin" 2>&1 | tee codesign.txt
+          grep -q "Signature=adhoc" codesign.txt
+
+      - name: Export the package as an artifact
+        uses: actions/upload-artifact@v7
+        with:
+          if-no-files-found: error
+          name: logix-engine-darwin-arm64
+          path: logix-engine-darwin-arm64-${{ env.PACKAGE_TAG }}.tgz

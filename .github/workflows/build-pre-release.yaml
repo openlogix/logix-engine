@@ -1,0 +1,279 @@
+# Builds the Logix Engine packages and publishes them as a GitHub
+# pre-release tagged with the date (yyyy-mm-dd), which is also the engine
+# version. A pre-release with the same tag is replaced, so the day's
+# pre-release is from its latest commit; a stable release with that tag is
+# never touched (the run fails instead). Only the newest pre-releases are
+# kept (about 5).
+#
+# Runs on every push to main, daily, and manually. A newer run cancels a
+# running one: only the latest commit's build matters.
+#
+# The steps use the shared Open Logix actions in openlogix/.github
+# (actions/, tested there). Only macOS (Apple Silicon) for now; Linux and
+# Windows will be added as separate build-<platform>.yaml workflows.
+
+name: build-pre-release
+
+on:
+  # Every commit to main.
+  push:
+    branches: [main]
+
+  # Daily at UTC midnight, to minimize the risk of overstepping manual
+  # builds of the same date.
+  schedule:
+    - cron: "0 0 * * *"
+
+  # Allow manual activations.
+  workflow_dispatch:
+
+permissions:
+  # Allow release creation.
+  contents: write
+
+# One build at a time; a newer one cancels the running one. If that happens
+# while publishing, the newer run publishes the same date's pre-release
+# again when it's done.
+concurrency:
+  group: build-pre-release
+  cancel-in-progress: true
+
+env:
+  # These are set later.
+  RELEASE_TAG: ""
+  PACKAGE_TAG: ""
+  REPO: ""
+  REPO_BRANCH: ""
+  REPO_COMMIT: ""
+
+jobs:
+  # ----- Collect the build parameters.
+
+  prepare:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v7
+
+      - name: Get release and package tags
+        uses: openlogix/.github/actions/get-release-and-package-tags@v1
+        with:
+          release-tag-var: RELEASE_TAG
+          package-tag-var: PACKAGE_TAG
+
+      - name: Early check for no conflicting release
+        uses: openlogix/.github/actions/ensure-no-conflicting-release@v1
+        with:
+          release-tag: ${{ env.RELEASE_TAG }}
+          just-check: true
+
+      # The repo name is normalized to lowercase, e.g. openlogix/logix-engine.
+      - name: Get repo info
+        uses: openlogix/.github/actions/get-repo-info@v1
+        with:
+          repo-dir: .
+          repo-var: REPO
+          branch-var: REPO_BRANCH
+          commit-var: REPO_COMMIT
+
+      # The build configuration passed to the other jobs. The engine
+      # version is the release tag.
+      - name: Create build info
+        run: |
+          cat > BUILD-INFO.json <<EOF
+          {
+            "package-name": "logix-engine",
+            "description": "One open engine to build, test and program FPGAs, for any IDE or AI agent.",
+            "engine-version": "$RELEASE_TAG",
+            "repo": "${REPO}",
+            "repo-branch": "${REPO_BRANCH}",
+            "repo-commit": "${REPO_COMMIT}",
+            "release-tag": "$RELEASE_TAG",
+            "package-tag": "$PACKAGE_TAG",
+            "build-time": "$(date +'%Y-%m-%d %H:%M:%S %Z')",
+            "builder-workflow": "${{ github.workflow }}",
+            "workflow-run-id": "${{ github.run_id }}",
+            "workflow-run-number": "${{ github.run_number }}"
+          }
+          EOF
+          cat -n BUILD-INFO.json
+
+      - name: Format build info json file in-place
+        uses: openlogix/.github/actions/format-json-file@v1
+        with:
+          json-file: BUILD-INFO.json
+
+      - name: Upload the build info artifact
+        uses: actions/upload-artifact@v7
+        with:
+          if-no-files-found: error
+          name: build-info
+          path: BUILD-INFO.json
+
+  # ----- Per-platform builds, each on its own runner.
+
+  build-darwin-arm64:
+    needs: prepare
+    uses: ./.github/workflows/build-darwin-arm64.yaml
+    secrets: inherit
+
+  # ----- Create the pre-release with the generated files.
+
+  pre-release:
+    needs: [prepare, build-darwin-arm64]
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download the artifacts
+        uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+          path: _artifacts
+
+      - name: Scan the packages for viruses
+        uses: openlogix/.github/actions/scan-files-for-viruses@v1
+        with:
+          file-patterns: |
+            _artifacts/logix-engine-*.tgz
+
+      - name: Move build info
+        run: |
+          find _artifacts
+          mv _artifacts/BUILD-INFO.json .
+          cat -n BUILD-INFO.json
+
+      - name: Set env vars from JSON
+        uses: openlogix/.github/actions/set-env-from-json@v1
+        with:
+          json-file: BUILD-INFO.json
+          mappings: >-
+            REPO           repo
+            REPO_COMMIT    repo-commit
+            RELEASE_TAG    release-tag
+            PACKAGE_TAG    package-tag
+
+      - name: Convert json build info to text
+        uses: openlogix/.github/actions/json-to-text@v1
+        with:
+          input-json: BUILD-INFO.json
+          output-text: build-info.txt
+
+      - name: Create packages markdown table
+        run: |
+          # The common prefix of the package urls.
+          URL_PREFIX="https://github.com/${REPO}/releases/download/$RELEASE_TAG"
+          echo "URL_PREFIX=${URL_PREFIX}"
+
+          cat << EOF > "packages-table.md"
+
+          ### Logix Engine packages
+
+          | System | Architecture | Package |
+          | :--- | :--- | :--- |
+          | macOS | Apple Silicon | [logix-engine-darwin-arm64-${PACKAGE_TAG}.tgz](${URL_PREFIX}/logix-engine-darwin-arm64-${PACKAGE_TAG}.tgz) |
+          EOF
+
+          cat -n "packages-table.md"
+
+      # Summary for the workflow run page.
+      - name: Prepare workflow run summary
+        run: |
+          cat > RUN-SUMMARY.txt <<EOF
+
+          Build info:
+          \`\`\`
+          $(cat build-info.txt)
+          \`\`\`
+
+          - [Logix Engine cutoff commit](https://github.com/${REPO}/commit/${REPO_COMMIT})
+
+          - [Generated Logix Engine pre-release](https://github.com/${REPO}/releases/tag/${RELEASE_TAG})
+          EOF
+
+          cat -n RUN-SUMMARY.txt
+
+      - name: Post workflow run summary
+        run: |
+          cat RUN-SUMMARY.txt >> $GITHUB_STEP_SUMMARY
+
+      # Notes for the release page.
+      - name: Prepare release text
+        run: |
+          cat > RELEASE-BODY.txt <<EOF
+
+          **Logix Engine: one open engine to build, test and program FPGAs, for any IDE or AI agent.**
+
+          [Website](https://www.openlogix.org/engine/) ·
+          [Documentation](https://github.com/${REPO}/tree/${REPO_COMMIT}/docs)
+
+          These are development builds. Logix Engine is in development and
+          not ready for general use yet.
+
+          ### Using it on macOS (Apple Silicon)
+
+          The engine is a single program, \`logix-engine\`, that an app or an
+          AI agent launches and talks to over MCP. Users normally get it
+          inside an app rather than installing it themselves.
+
+          1. Download \`logix-engine-darwin-arm64-${PACKAGE_TAG}.tgz\` (below)
+             to your **Downloads** folder.
+          2. In **Terminal**, clear the download flag and unpack it. The
+             engine isn't signed with an Apple Developer ID yet, and this
+             tells macOS to allow it:
+             \`\`\`
+             cd ~/Downloads
+             xattr -c logix-engine-darwin-arm64-${PACKAGE_TAG}.tgz
+             tar -xzf logix-engine-darwin-arm64-${PACKAGE_TAG}.tgz
+             \`\`\`
+          3. Check it runs: \`~/Downloads/logix-engine/logix-engine --version\`.
+          4. To try it with an MCP client such as Claude Code:
+             \`\`\`
+             claude mcp add logix-engine -- ~/Downloads/logix-engine/logix-engine --engine-folder ~/.logix-dev/engine
+             \`\`\`
+
+          The engine keeps the FPGA tools it downloads and its logs in the
+          engine folder. To uninstall, delete the \`logix-engine\` folder
+          and the engine folder.
+
+          $(cat packages-table.md)
+
+          ### Build info
+
+          \`\`\`
+          $(cat build-info.txt)
+          \`\`\`
+
+          ### About these releases
+
+          - Releases are created daily with a \`pre-release\` status, and only
+            the newest ones (about 5) are kept, unless set to be \`stable\`.
+          - The release tag is also the engine version.
+          - To make a pre-release stable, edit it manually and change its
+            status from \`Pre-release\` to \`None\`.
+          EOF
+
+          cat -n RELEASE-BODY.txt
+
+      - name: Cleanup old pre-releases
+        uses: openlogix/.github/actions/cleanup-old-prereleases@v1
+
+      # Deletes an existing pre-release with today's tag, so it's replaced.
+      - name: Ensure no conflicting release (again)
+        uses: openlogix/.github/actions/ensure-no-conflicting-release@v1
+        with:
+          release-tag: ${{ env.RELEASE_TAG }}
+
+      - name: Create GitHub pre-release
+        uses: openlogix/.github/actions/create-pre-release@v1
+        with:
+          release_tag: ${{ env.RELEASE_TAG }}
+          body_path: RELEASE-BODY.txt
+          # The expected files are listed explicitly rather than with
+          # patterns, so a missing one fails the run.
+          files: |
+            _artifacts/logix-engine-darwin-arm64-${{ env.PACKAGE_TAG }}.tgz
+            BUILD-INFO.json

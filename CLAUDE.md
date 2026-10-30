@@ -15,7 +15,28 @@ logix-engine is an open source FPGA engine: one Rust binary per platform that ex
 
 ## Current scope: Milestone 1
 
-macOS arm64 only, iCE40 only, with the Alhambra II (`alhambra-ii`) as the reference board, five tools: `get_engine_info`, `get_catalog`, `build`, `list_devices`, `program_board`. Also: automatic package install with versioning, a read-only catalog, the error model, GitHub workflows that build and test the engine, and developer scripts `run.sh`, `build.sh` and `clean.sh`. Toolchain packages come from Apio's packages. Don't build later-phase features unless asked.
+macOS arm64 only, iCE40 only, with the Alhambra II (`alhambra-ii`) as the reference board, five tools: `get_engine_info`, `get_catalog`, `build`, `list_devices`, `program_board`. Also: automatic package install with versioning, a read-only catalog, the error model, GitHub workflows that build and test the engine, and developer scripts in `scripts/`. Toolchain packages come from Apio's packages. Don't build later-phase features unless asked.
+
+## Code and commands
+
+- `src/main.rs`: the command line. Everything else is a library (`src/lib.rs`), so tests can use it.
+- `src/server.rs`: the MCP server (rmcp). `src/tools/`: one file per tool, each with its input and output types and an `EngineTool` impl. Add a tool to `all_definitions()` and `call()` in `src/tools/mod.rs`.
+- `src/errors.rs`: the error model. `src/paths.rs`: path checks. `src/logging.rs`: log files. `src/text.rs`: the text forms. `src/state.rs`: launch settings, engine version, protocol versions, platform.
+- `build.rs` sets the engine version: the `LOGIX_ENGINE_VERSION` env var for releases (the release tag), otherwise today's UTC date.
+- Tests: unit tests next to the code; `tests/cli.rs` (command line), `tests/mcp.rs` (end to end: launches the binary and talks MCP), `tests/schemas.rs` (published schemas).
+- **Before committing, run `scripts/test.sh`.** After a deliberate schema change, run `scripts/update-schemas.sh` and review the diff in `schemas/tools.json`.
+- Rust is pinned in `rust-toolchain.toml`. With Homebrew's rustup, `cargo` is in `/opt/homebrew/opt/rustup/bin`.
+
+## CI and releases
+
+Same conventions as logix-ide, using the shared actions from `openlogix/.github` (`openlogix/.github/actions/<name>@v1`; that repo documents and tests them).
+
+- **`test.yaml`**: on every push and pull request, manually, and daily at 00:00 UTC; a newer run for the same ref cancels the older one; matrix macos-15, macos-26, macos-latest, `fail-fast: false`, 30 min. Installs the pinned Rust, then runs `scripts/test.sh`.
+- **`build-pre-release.yaml`** (on every push to `main`, daily at 00:00 UTC, and manually; a newer run cancels a running one), three jobs:
+  - `prepare` (Ubuntu): release tag `yyyy-mm-dd` and package tag `yyyymmdd`, an early check that no stable release has that tag, repo info, and `BUILD-INFO.json` (with `engine-version` = the release tag) as the `build-info` artifact.
+  - `build-darwin-arm64` (reusable `build-darwin-arm64.yaml`, macos-latest): checks out exactly `repo-commit` into `_repo/`, runs `scripts/test.sh`, builds with `LOGIX_ENGINE_VERSION` = the release tag, packs `logix-engine-darwin-arm64-<package tag>.tgz` (one `logix-engine/` folder with the binary and `LICENSE`), and checks that the packed binary reports the release tag and has an ad-hoc signature.
+  - `pre-release` (Ubuntu): virus scan, release notes (what the engine is, that these are development builds, macOS steps with `xattr -c`, trying it with `claude mcp add`, the packages table, build info, about these releases), keeps the 5 newest pre-releases, replaces a same-tag pre-release, publishes the `.tgz` and `BUILD-INFO.json`.
+- Add Linux and Windows as `build-<platform>.yaml` and test matrix entries when those platforms are implemented.
 
 ## Rules that are easy to break
 
