@@ -25,14 +25,16 @@ pub enum Category {
     Cancelled,
 }
 
-/// A problem at a file and line, mainly for design errors.
+/// A problem reported by a tool, at a file and line when known.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Diagnostic {
-    /// File, relative to the source folder.
-    pub file: String,
-    /// Line number, starting at 1.
+    /// File, relative to the source folder, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    /// Line number, starting at 1, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(range(min = 1))]
-    pub line: u32,
+    pub line: Option<u32>,
     /// Column number, starting at 1, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(range(min = 1))]

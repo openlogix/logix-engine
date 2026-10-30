@@ -5,6 +5,8 @@
 // so boxing it would only add noise.
 #![allow(clippy::result_large_err)]
 
+pub mod board;
+pub mod build;
 pub mod catalog;
 pub mod errors;
 pub mod logging;
@@ -12,6 +14,7 @@ pub mod mcp_progress;
 pub mod packages;
 pub mod paths;
 pub mod progress;
+pub mod runner;
 pub mod server;
 pub mod state;
 pub mod text;

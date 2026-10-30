@@ -451,5 +451,395 @@
       "destructiveHint": false,
       "openWorldHint": false
     }
+  },
+  {
+    "name": "build",
+    "description": "Builds an FPGA design into a bitstream: synthesizes the Verilog or SystemVerilog sources, places and routes them on the board's FPGA using the constraint file (.pcf, which maps top-level ports to pins), and packs the bitstream into the build folder. Give the source files explicitly; the engine doesn't search for them, though `include files are found next to the including file or in the source folder. A build with no changes since the last one returns at once with up_to_date set. The first build may install the toolchain package first, which takes a few minutes. Design problems come back as a design error with diagnostics at file and line. After a successful build, program_board programs the bitstream into the board.",
+    "inputSchema": {
+      "$defs": {
+        "Architecture": {
+          "description": "FPGA families. Milestone 1 supports iCE40 only.",
+          "oneOf": [
+            {
+              "const": "ice40",
+              "description": "Lattice iCE40.",
+              "type": "string"
+            }
+          ]
+        },
+        "BoardInputDefinition": {
+          "additionalProperties": false,
+          "description": "A board definition in a request. Like a catalog entry, except that the\nFPGA can be given either as fpga_id or as a full fpga definition.",
+          "properties": {
+            "default_variant": {
+              "description": "The name of the programming variant used by default.",
+              "type": "string"
+            },
+            "description": {
+              "description": "The board's name for people.",
+              "type": "string"
+            },
+            "fpga": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FpgaDefinition"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The board's FPGA as a full definition. Give either fpga_id or fpga."
+            },
+            "fpga_id": {
+              "description": "The board's FPGA as a catalog ID, such as ice40hx4k-tq144-8k. Give\neither fpga_id or fpga.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "variants": {
+              "additionalProperties": {
+                "$ref": "#/$defs/ProgrammingVariant"
+              },
+              "description": "The ways to program the board, by variant name.",
+              "type": "object"
+            }
+          },
+          "required": [
+            "description",
+            "default_variant",
+            "variants"
+          ],
+          "type": "object"
+        },
+        "BoardSpec": {
+          "anyOf": [
+            {
+              "description": "A board's catalog ID, such as alhambra-ii. get_catalog lists them.",
+              "pattern": "^[a-z0-9-]+$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/BoardInputDefinition",
+              "description": "A full board definition, for boards that aren't in the catalog."
+            }
+          ],
+          "description": "A board: a catalog ID, or a full definition."
+        },
+        "FpgaDefinition": {
+          "additionalProperties": false,
+          "description": "An FPGA: its architecture, part and toolchain parameters.",
+          "properties": {
+            "architecture": {
+              "$ref": "#/$defs/Architecture",
+              "description": "The FPGA family: ice40."
+            },
+            "nextpnr_device": {
+              "description": "The device type nextpnr uses, such as hx8k.",
+              "type": "string"
+            },
+            "nextpnr_package": {
+              "description": "The package nextpnr uses, such as tq144:4k.",
+              "type": "string"
+            },
+            "part_number": {
+              "description": "The vendor's part number, such as ICE40HX4K-TQ144.",
+              "type": "string"
+            },
+            "size": {
+              "description": "The device size, such as 8k.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "architecture",
+            "part_number",
+            "size",
+            "nextpnr_device",
+            "nextpnr_package"
+          ],
+          "type": "object"
+        },
+        "ProgrammingVariant": {
+          "additionalProperties": false,
+          "description": "One way to program a board, such as to flash with a particular cable.",
+          "properties": {
+            "args": {
+              "description": "The programmer's arguments, as a template. The engine replaces\n${VID}, ${PID}, ${BUS} and ${DEV} with the device's USB vendor ID,\nproduct ID, bus and device number, ${SERIAL} with its serial number,\nand ${BITSTREAM} with the bitstream path.",
+              "type": "string"
+            },
+            "programmer": {
+              "description": "The programmer to run: openfpgaloader or iceprog.",
+              "type": "string"
+            },
+            "usb": {
+              "$ref": "#/$defs/UsbFilter",
+              "description": "The USB filter that finds the board's device."
+            }
+          },
+          "required": [
+            "programmer",
+            "args",
+            "usb"
+          ],
+          "type": "object"
+        },
+        "UsbFilter": {
+          "additionalProperties": false,
+          "description": "Which USB devices are this board.",
+          "properties": {
+            "pid": {
+              "description": "USB product ID, four lowercase hex digits, such as 6010.",
+              "pattern": "^[0-9a-f]{4}$",
+              "type": "string"
+            },
+            "product_regex": {
+              "description": "A regular expression the device's product name must match, when\nseveral boards share the same USB IDs. Omitted means any product name.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "vid": {
+              "description": "USB vendor ID, four lowercase hex digits, such as 0403.",
+              "pattern": "^[0-9a-f]{4}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "vid",
+            "pid"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "What to build, and where.",
+      "properties": {
+        "board": {
+          "$ref": "#/$defs/BoardSpec",
+          "description": "The target board: a catalog ID such as alhambra-ii (get_catalog lists\nthem), or a full board definition."
+        },
+        "build_folder": {
+          "description": "Where the build writes its files, as an absolute path. One of its last\ntwo folder names must contain \"build\", such as\n/home/u/proj/_build/default. It may be inside the source folder but\ncan't be the source folder itself. It is created if needed.",
+          "type": "string"
+        },
+        "constraint_file": {
+          "description": "The constraint file (.pcf), relative to the source folder.",
+          "type": "string"
+        },
+        "defines": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Verilog macro definitions, from name to value, such as\n{\"USE_PLL\": \"\", \"WIDTH\": \"8\"}. An empty value defines the macro with\nno text, for `ifdef. SYNTHESIZE is always defined.",
+          "type": "object"
+        },
+        "source_files": {
+          "description": "The HDL files to build (.v or .sv), relative to the source folder,\nwith / as the separator, such as [\"main.v\", \"rtl/uart.v\"]. Don't list\ntestbenches or included files.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "source_folder": {
+          "description": "The folder with the design files, as an absolute path.",
+          "type": "string"
+        },
+        "top_module": {
+          "description": "Name of the top-level module, such as main.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "board",
+        "top_module",
+        "source_folder",
+        "source_files",
+        "constraint_file",
+        "build_folder"
+      ],
+      "title": "BuildInput",
+      "type": "object"
+    },
+    "outputSchema": {
+      "$defs": {
+        "Diagnostic": {
+          "description": "A problem reported by a tool, at a file and line when known.",
+          "properties": {
+            "column": {
+              "description": "Column number, starting at 1, when known.",
+              "format": "uint32",
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "file": {
+              "description": "File, relative to the source folder, when known.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "line": {
+              "description": "Line number, starting at 1, when known.",
+              "format": "uint32",
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "severity": {
+              "$ref": "#/$defs/Severity"
+            },
+            "text": {
+              "description": "The problem, in words.",
+              "type": "string"
+            },
+            "tool": {
+              "description": "Name of the tool that reported it, when known.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "severity",
+            "text"
+          ],
+          "type": "object"
+        },
+        "ResourceUsage": {
+          "additionalProperties": false,
+          "description": "How much of one FPGA resource the design uses.",
+          "properties": {
+            "available": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "used": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "used",
+            "available"
+          ],
+          "type": "object"
+        },
+        "Severity": {
+          "description": "How serious a diagnostic is.",
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ],
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "The build result.",
+      "properties": {
+        "bitstream": {
+          "description": "Path of the bitstream, relative to the build folder.",
+          "type": "string"
+        },
+        "resources_usage": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ResourceUsage"
+          },
+          "description": "Resource use, by the toolchain's resource name, such as ICESTORM_LC\n(logic cells: a LUT and a flip-flop), ICESTORM_RAM (block RAMs) and\nSB_IO (I/O pins).",
+          "type": "object"
+        },
+        "timing": {
+          "additionalProperties": {
+            "format": "double",
+            "type": "number"
+          },
+          "description": "The maximum frequency each clock can run at, in MHz, by clock net\nname. A clock that misses its target isn't an error: compare these\nwith the design's needs.",
+          "type": "object"
+        },
+        "up_to_date": {
+          "description": "True if nothing had changed since the last build, so nothing was\nrebuilt.",
+          "type": "boolean"
+        },
+        "warnings": {
+          "description": "Warnings from the tools.",
+          "items": {
+            "$ref": "#/$defs/Diagnostic"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "bitstream",
+        "up_to_date",
+        "resources_usage",
+        "timing",
+        "warnings"
+      ],
+      "title": "BuildOutput",
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "clean_build",
+    "description": "Deletes build folders, like apio clean. Given a build folder, such as /home/u/proj/_build/default, it deletes it. Given a folder of build folders, such as /home/u/proj/_build, it deletes each build folder directly inside it, then the folder itself if nothing else is left. It only deletes folders the build tool made, so other files are never removed. A folder that doesn't exist is fine.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "What to clean.",
+      "properties": {
+        "folder": {
+          "description": "A build folder, or a folder whose direct subfolders are build\nfolders, as an absolute path. One of its last two folder names must\ncontain \"build\".",
+          "type": "string"
+        }
+      },
+      "required": [
+        "folder"
+      ],
+      "title": "CleanBuildInput",
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "What was deleted.",
+      "properties": {
+        "deleted": {
+          "description": "The deleted folders, as absolute paths, including the given folder\nwhen it was deleted. Empty when there was nothing to delete.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "deleted"
+      ],
+      "title": "CleanBuildOutput",
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
   }
 ]

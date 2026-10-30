@@ -77,8 +77,8 @@ On success, a tool returns its output object as structured content. On failure, 
 
 | Diagnostic field | Type | Description |
 | --- | --- | --- |
-| `file` | relative path | File, relative to the source folder |
-| `line` | integer | Line number, starting at 1 |
+| `file` | relative path | File, relative to the source folder, when known. Many tool messages have no location |
+| `line` | integer | Line number, starting at 1, when known |
 | `column` | integer | Optional column number, starting at 1 |
 | `severity` | enum | `error`, `warning` or `info` |
 | `text` | text | The problem, in words |
@@ -128,6 +128,8 @@ A package is unpacked into a temporary folder and renamed into place only when i
 
 Synthesizes the design, places and routes it, and generates the bitstream in the build folder. A build with no changes since the last one returns quickly with `up_to_date` set.
 
+For iCE40 it runs yosys (`synth_ice40`), nextpnr-ice40 and icepack with the same commands as Apio, so the bitstreams match Apio's for the same package versions.
+
 **Table 6.** build tool inputs
 
 | Field | Type | Required | Description |
@@ -135,7 +137,7 @@ Synthesizes the design, places and routes it, and generates the bitstream in the
 | `board` | board specification | Yes | The target board |
 | `top_module` | text | Yes | Name of the top-level module |
 | `source_folder`, `source_files`, `constraint_file`, `build_folder` | See folder fields in [Table 2](#folders) | Yes | The constraint file is required |
-| `defines` | map of text | No | Verilog and SystemVerilog macro definitions, from name to value, such as `{ "USE_PLL": "", "WIDTH": "8" }`. Names follow Verilog identifier rules, and a bad name is a request error. An empty value defines the macro with no text, for use with `` `ifdef ``. The engine always passes each value explicitly, so every tool sees the same text, and passes them in name order, so the same request always gives the same tool commands |
+| `defines` | map of text | No | Verilog and SystemVerilog macro definitions, from name to value, such as `{ "USE_PLL": "", "WIDTH": "8" }`. Names follow Verilog identifier rules, and a bad name is a request error. An empty value defines the macro with no text, for use with `` `ifdef ``. The engine always passes each value explicitly, so every tool sees the same text, and passes them in name order, so the same request always gives the same tool commands. `SYNTHESIZE` is always defined, as in Apio |
 
 **Table 7.** build tool outputs
 
@@ -143,8 +145,8 @@ Synthesizes the design, places and routes it, and generates the bitstream in the
 | --- | --- | --- |
 | `bitstream` | relative path | Path of the bitstream, relative to the build folder |
 | `up_to_date` | boolean | True if nothing had to be rebuilt |
-| `resources_usage` | map of resource usage | Resource use, keyed by resource name, such as LUTs and flip-flops. Each value has integer `used` and `available` fields |
-| `timing` | map of numbers | Maximum frequency in MHz for each clock net, keyed by clock net name |
+| `resources_usage` | map of resource usage | Resource use, keyed by the toolchain's resource names. For iCE40: `ICESTORM_LC` (logic cells, each a LUT and a flip-flop), `ICESTORM_RAM` (block RAMs), `SB_IO` (I/O pins), `SB_GB` (global buffers), `ICESTORM_PLL` and others. Each value has integer `used` and `available` fields |
+| `timing` | map of numbers | Maximum frequency in MHz for each clock net, keyed by the clock net name nextpnr reports, rounded to 0.01 MHz |
 | `warnings` | list of diagnostics | Warnings from the tools. See diagnostic fields in [Table 4](#results-and-errors) |
 
 **Errors:** design errors, such as syntax errors or unknown pin names. Setup errors with `install_packages`. Request errors, such as an unknown board or a build folder that breaks the keyword rules. Tool failures, engine errors and cancellation. A clock that misses its intended frequency is not an error: the host compares the frequencies in `timing` with its own targets.
@@ -156,12 +158,12 @@ Synthesizes the design, places and routes it, and generates the bitstream in the
 | Include lookup | A Verilog `` `include `` is looked up first in the folder of the including file, then in `source_folder`. Included files don't need to be in `source_files` |
 | Include location | Included files must be under `source_folder` and pass the same path checks as other source files. A file outside it is a request error |
 | Unlisted modules | The engine doesn't search for modules. A module defined in a file that isn't in `source_files` is a design error that names the missing module |
-| `up_to_date` | Included files count as inputs. Changing one makes the next build run again |
+| `up_to_date` | A build is up to date when the engine version, the toolchain package, the board, the request's fields and the contents of every source, included and constraint file are the same as in the last successful build, and its bitstream is still there. Changing any of them makes the next build run again |
 | Testbenches | The same rules apply to testbench files |
 
 **Build record.** When a build succeeds, the engine writes a build record into the build folder. It holds the full board spec the build used and its checksum. The `program_board` tool reads it to get the board. A build that fails removes the old record, so `program_board` can't program a stale bitstream.
 
-**Build folder files.** The engine creates the build folder if needed, and first writes a marker file, `.logix-build`, which tells the [clean_build tool](#clean_build-tool) the folder is a build folder. Each build replaces the files the previous build made, such as the bitstream, intermediate files and reports. When a build has to run again, it deletes the previous build's outputs first, so a failed build never leaves an old bitstream that looks current. An up-to-date build keeps them. The engine never deletes files in the build folder that it didn't make, such as files put there by the host or the user.
+**Build folder files.** The engine creates the build folder if needed, and first writes a marker file, `.logix-build`, which tells the [clean_build tool](#clean_build-tool) the folder is a build folder. A build makes `hardware.json` (synthesized netlist), `hardware.asc` (placed and routed design), `hardware.pnr` (nextpnr's report), `hardware.bin` (the bitstream), the tool logs `synth.log` and `pnr.log`, and the build record `build-record.json`, written last. Each build replaces the files the previous build made, such as the bitstream, intermediate files and reports. When a build has to run again, it deletes the previous build's outputs first, so a failed build never leaves an old bitstream that looks current. An up-to-date build keeps them. The engine never deletes files in the build folder that it didn't make, such as files put there by the host or the user.
 
 **Example**
 
@@ -169,7 +171,7 @@ Input:
 
 ```json
 {
-  "board": "icestick",
+  "board": "alhambra-ii",
   "top_module": "main",
   "source_folder": "/home/u/proj",
   "source_files": ["main.v", "uart.v"],
@@ -185,12 +187,17 @@ Output:
   "bitstream": "hardware.bin",
   "up_to_date": false,
   "resources_usage": {
-    "LUTs": { "used": 412, "available": 1280 },
-    "Flip-flops": { "used": 198, "available": 1280 },
-    "Block RAMs": { "used": 0, "available": 16 }
+    "ICESTORM_LC": { "used": 412, "available": 7680 },
+    "ICESTORM_PLL": { "used": 0, "available": 2 },
+    "ICESTORM_RAM": { "used": 2, "available": 32 },
+    "SB_GB": { "used": 1, "available": 8 },
+    "SB_IO": { "used": 5, "available": 107 },
+    "SB_WARMBOOT": { "used": 0, "available": 1 }
   },
-  "timing": { "clk": 87.4, "uart_clk": 142.9 },
-  "warnings": []
+  "timing": { "CLK$SB_IO_IN_$glb_clk": 87.4 },
+  "warnings": [
+    { "file": "uart.v", "line": 12, "severity": "warning", "text": "Identifier `\\rx_done' is implicitly declared.", "tool": "yosys" }
+  ]
 }
 ```
 

@@ -13,6 +13,7 @@ publish = false
 clap = { version = "4", features = ["derive"] }
 flate2 = "1"
 hex = "0.4"
+libc = "0.2"
 log = { version = "0.4", features = ["std"] }
 regex = "1"
 reqwest = "0.13"

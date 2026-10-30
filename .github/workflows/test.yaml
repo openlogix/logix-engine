@@ -44,5 +44,13 @@ jobs:
           rustup toolchain install
           rustup show active-toolchain
 
+      # The build tests install the toolchain package (about 526 MB) into
+      # target/tmp/test-engine. Cached until the package manifest changes.
+      - name: Cache the test toolchain
+        uses: actions/cache@v6
+        with:
+          path: target/tmp/test-engine/packages
+          key: test-engine-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/packages/manifest.json') }}
+
       - name: Run checks and tests
         run: scripts/test.sh

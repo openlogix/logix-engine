@@ -6,7 +6,7 @@ The engine is a single native executable, written in Rust, that offers FPGA oper
 
 ## Status
 
-In development. The engine runs as an MCP server with its first tools: `get_engine_info`, `install_packages`, which downloads and installs the FPGA toolchain, and `get_catalog`, with 22 iCE40 boards. The build and board tools come next. Daily development builds are on the [Releases](https://github.com/openlogix/logix-engine/releases) page. The first target is **Milestone 1**, a proof of concept on macOS for iCE40 boards with seven tools: `get_engine_info`, `install_packages`, `get_catalog`, `build`, `clean_build`, `list_devices` and `program_board`. It is done when an AI coding agent, such as Claude Code, connected over MCP with no other frontend, creates an iCE40 design from prompts, builds it and programs it on an Alhambra II board.
+In development. The engine runs as an MCP server with its first tools: `get_engine_info`, `install_packages`, which downloads and installs the FPGA toolchain, `get_catalog`, with 22 iCE40 boards, `build`, and `clean_build`. Board programming comes next. Daily development builds are on the [Releases](https://github.com/openlogix/logix-engine/releases) page. The first target is **Milestone 1**, a proof of concept on macOS for iCE40 boards with seven tools: `get_engine_info`, `install_packages`, `get_catalog`, `build`, `clean_build`, `list_devices` and `program_board`. It is done when an AI coding agent, such as Claude Code, connected over MCP with no other frontend, creates an iCE40 design from prompts, builds it and programs it on an Alhambra II board.
 
 ## Documentation
 
@@ -28,7 +28,7 @@ Check the setup with `cargo --version`.
 
 | Script | What it does |
 | --- | --- |
-| `scripts/test.sh` | All checks and tests: format, lint, unit, schema, command-line and end-to-end MCP tests. Run it before committing. CI runs it too |
+| `scripts/test.sh` | All checks and tests: format, lint, unit, schema, command-line, build and end-to-end MCP tests. Run it before committing. CI runs it too. The first run downloads the FPGA toolchain (526 MB) for the build tests |
 | `scripts/build.sh` | Builds the release binary, `target/release/logix-engine` |
 | `scripts/run.sh` | Builds if needed and starts Claude Code with the engine connected, so you can prompt it. Claude works in `~/.logix-dev/playground`, and the engine uses `~/.logix-dev/engine` |
 | `scripts/serve.sh` | Builds if needed and runs the engine as an MCP server on stdin/stdout, for other MCP clients |

@@ -176,3 +176,131 @@ mod tests {
         );
     }
 }
+
+/// Checks the "relative path" form: `/` separators, not starting with `/`,
+/// no empty, `.` or `..` segments, and no backslashes.
+pub fn check_relative_path(s: &str) -> Result<(), String> {
+    if s.is_empty() {
+        return Err("the path is empty".into());
+    }
+    if s.starts_with('/') {
+        return Err(format!("{s:?} must be relative, not start with '/'"));
+    }
+    if s.contains('\\') {
+        return Err(format!("{s:?} must use '/' as the separator"));
+    }
+    if s.split('/')
+        .any(|seg| seg.is_empty() || seg == "." || seg == "..")
+    {
+        return Err(format!(
+            "{s:?} has an empty, '.' or '..' segment. Give a normalized relative path"
+        ));
+    }
+    Ok(())
+}
+
+/// Resolves `rel` under `base` (already resolved) and checks that the real
+/// path, after following symbolic links, stays inside `base`. The path must
+/// exist.
+pub fn resolve_inside(base: &Path, rel: &str) -> Result<PathBuf, String> {
+    let joined = base.join(rel);
+    let real = joined
+        .canonicalize()
+        .map_err(|e| format!("{rel:?} can't be found in {:?}: {e}", base.display()))?;
+    if !real.starts_with(base) {
+        return Err(format!(
+            "{rel:?} resolves to {:?}, outside {:?}",
+            real.display(),
+            base.display()
+        ));
+    }
+    Ok(real)
+}
+
+fn has_build_keyword(path: &Path) -> bool {
+    let mut names = path.iter().rev().filter_map(|n| n.to_str());
+    names.next().is_some_and(|n| n.contains("build"))
+        || (path.parent().is_some() && names.next().is_some_and(|n| n.contains("build")))
+}
+
+/// Checks a build folder path: absolute, one of its last two folder names
+/// contains "build" (as given and after resolving symbolic links), and it
+/// isn't the file system root, the home folder or the source folder.
+/// Returns the resolved path. The folder doesn't need to exist.
+pub fn check_build_folder(
+    s: &str,
+    home: Option<&Path>,
+    source_folder: Option<&Path>,
+) -> Result<PathBuf, String> {
+    let given = check_absolute_path(s)?;
+    if !has_build_keyword(&given) {
+        return Err(format!(
+            "one of the last two folder names of the build folder {s:?} must contain \"build\", such as _build or _build/default"
+        ));
+    }
+    let resolved =
+        resolve(&given).map_err(|e| format!("can't resolve the build folder {s:?}: {e}"))?;
+    if let Some(what) = is_forbidden(&resolved, home) {
+        return Err(format!("the build folder {s:?} can't be {what}"));
+    }
+    if source_folder.is_some_and(|src| src == resolved) {
+        return Err(format!(
+            "the build folder {s:?} can't be the source folder itself. Use a folder inside it, such as _build"
+        ));
+    }
+    if !has_build_keyword(&resolved) {
+        return Err(format!(
+            "the build folder {s:?} resolves to {:?}, whose last two folder names don't contain \"build\"",
+            resolved.display()
+        ));
+    }
+    Ok(resolved)
+}
+
+#[cfg(test)]
+mod build_folder_tests {
+    use super::*;
+
+    #[test]
+    fn relative_path_rules() {
+        assert!(check_relative_path("main.v").is_ok());
+        assert!(check_relative_path("rtl/uart.v").is_ok());
+        for bad in [
+            "", "/main.v", "a//b.v", "./main.v", "a/../b.v", "a\\b.v", "a/",
+        ] {
+            assert!(check_relative_path(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn build_folder_keyword_in_the_last_two_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path().canonicalize().unwrap();
+        let b = base.to_str().unwrap();
+        assert!(check_build_folder(&format!("{b}/p/_build"), None, None).is_ok());
+        assert!(check_build_folder(&format!("{b}/p/_build/default"), None, None).is_ok());
+        assert!(check_build_folder(&format!("{b}/build/x/y"), None, None).is_err());
+        assert!(check_build_folder(&format!("{b}/p/out"), None, None).is_err());
+        let src = base.join("build-src");
+        std::fs::create_dir(&src).unwrap();
+        let err = check_build_folder(src.to_str().unwrap(), None, Some(&src)).unwrap_err();
+        assert!(err.contains("source folder"), "{err}");
+    }
+
+    #[test]
+    fn resolve_inside_refuses_links_out() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path().canonicalize().unwrap().join("src");
+        std::fs::create_dir(&base).unwrap();
+        std::fs::write(base.join("a.v"), "").unwrap();
+        std::fs::write(tmp.path().join("outside.v"), "").unwrap();
+        assert!(resolve_inside(&base, "a.v").is_ok());
+        assert!(resolve_inside(&base, "missing.v").is_err());
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(tmp.path().join("outside.v"), base.join("link.v")).unwrap();
+            let err = resolve_inside(&base, "link.v").unwrap_err();
+            assert!(err.contains("outside"), "{err}");
+        }
+    }
+}

@@ -2,6 +2,8 @@
 //! type and an output type. Their JSON schemas are generated from the Rust
 //! types, so the code, the validation and the exported schemas agree.
 
+pub mod build;
+pub mod clean_build;
 pub mod get_catalog;
 pub mod get_engine_info;
 pub mod install_packages;
@@ -65,6 +67,8 @@ pub fn all_definitions() -> Vec<Tool> {
         definition::<get_engine_info::GetEngineInfo>(),
         definition::<install_packages::InstallPackages>(),
         definition::<get_catalog::GetCatalog>(),
+        definition::<build::Build>(),
+        definition::<clean_build::CleanBuild>(),
     ]
 }
 
@@ -110,6 +114,8 @@ pub async fn call(
     arguments: Option<JsonObject>,
     call: &Call,
 ) -> Option<CallToolResult> {
+    use build::Build;
+    use clean_build::CleanBuild;
     use get_catalog::GetCatalog;
     use get_engine_info::GetEngineInfo;
     use install_packages::InstallPackages;
@@ -119,6 +125,13 @@ pub async fn call(
         ),
         GetCatalog::NAME => to_call_result(
             parse_input::<GetCatalog>(arguments).and_then(|i| get_catalog::run(state, i)),
+        ),
+        Build::NAME => to_call_result(match parse_input::<Build>(arguments) {
+            Ok(input) => build::run(state, input, call).await,
+            Err(e) => Err(e),
+        }),
+        CleanBuild::NAME => to_call_result(
+            parse_input::<CleanBuild>(arguments).and_then(|i| clean_build::run(state, i)),
         ),
         InstallPackages::NAME => to_call_result(match parse_input::<InstallPackages>(arguments) {
             Ok(input) => install_packages::run(state, input, call).await,
