@@ -68,7 +68,7 @@ if [[ -z "$claude_bin" || ! -x "$claude_bin" ]]; then
 fi
 
 echo "Building the engine..." >&2
-cargo build --release --locked --quiet
+cargo build --release --locked
 engine="$repo/target/release/logix-engine"
 echo "Engine $("$engine" --version | cut -d' ' -f2), engine folder $engine_folder" >&2
 echo "Claude Code: $claude_bin, in $playground" >&2
