@@ -148,7 +148,7 @@ The engine must support all of Apio's current functionality, so that Apio can be
 | Catalog | All of Apio's boards and FPGAs, with each board's programming variants. A project's custom definitions are sent by the host in requests, as described in [Custom definitions](#custom-definitions) |
 | Devices and drivers | Listing USB devices, and installing or removing the drivers boards need, such as FTDI drivers on Windows |
 | Packages | Installing, updating, listing and repairing toolchain packages for each platform |
-| Examples | Not an engine feature. Each host provides its own examples, since examples depend on the host's design format, such as IceStudio's block diagrams. Apio keeps its example projects on its own side |
+| Examples | Not an engine feature. An example is a project, and the project model belongs to the frontend: the engine has none (see [Project model](#project-model)). Each frontend defines its own project model and source format, such as IceStudio's block diagrams, and provides examples in it. Apio keeps its example projects on its own side |
 | Raw tool access | Running any packaged tool directly, with the right environment, using the same engine request that returns a tool's command and environment |
 | Machine-readable info | Versions, platform, catalog and package details in structured form, as Apio's `api` command provides |
 
