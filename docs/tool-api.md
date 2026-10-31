@@ -114,7 +114,7 @@ A host that wants to show the tools' output as it happens, such as in a console,
 
 Lines that the engine reads into diagnostics still come in the tool result too. The live lines are for showing, not for parsing.
 
-**Verbose.** Tools that run other tools take an optional boolean `verbose`, like Apio's `--verbose`. It asks those tools to print more detail, which shows in the live output and the logs, and never changes the result. Each tool maps it to what its tools offer: `build` runs yosys and nextpnr without `-q`, and `program_board` adds openFPGALoader's `--verbose` or iceprog's `-v`. A build that is up to date runs nothing, so it prints nothing extra.
+**Verbose.** Tools that run other tools take an optional boolean `verbose`, like Apio's `--verbose`. It asks those tools to print more detail, which shows in the live output and the logs, and never changes the result. Each tool maps it to what its tools offer: `build` runs yosys and nextpnr without `-q`, `lint` runs Verilator without `--quiet`, and `program_board` adds openFPGALoader's `--verbose` or iceprog's `-v`. A build that is up to date runs nothing, so it prints nothing extra.
 
 ### Progress
 
@@ -145,6 +145,65 @@ Install progress is one phase per package, such as "Installing oss-cad-suite". I
 | `logs/` | Log files, described in [Command line](command-line.md) |
 
 A package is unpacked into a temporary folder and renamed into place only when it is complete, so an interrupted install never looks installed. Every file in a package must unpack inside its folder, or the install fails.
+
+## lint tool
+
+Checks the design and, optionally, its testbenches with Verilator in lint-only mode, like `apio lint`. It is much faster than a build and finds likely mistakes that synthesis accepts, such as width mismatches. It writes nothing and needs no build folder.
+
+It runs Verilator with Apio's options, so it reports the same problems: `--lint-only --quiet --bbox-unsup --timing -Wno-TIMESCALEMOD -Wno-MULTITOP`, the macros `SYNTHESIZE` and `APIO_SIM=0`, the top module when given, the request's macros, and the FPGA's primitive models, such as `cells_sim.v` with `NO_ICE40_DEFAULT_ASSIGNMENTS` for iCE40, so designs that use primitives such as `SB_IO` lint cleanly. Verilator treats warnings as failures, as in Apio, so `passed` is false when there are warnings too.
+
+**Problems are the result.** Lint's job is to find problems, so problems in the design are returned in `diagnostics` with `passed` set to false, not as a design error. The other errors in the list below still apply.
+
+**Table 23.** lint tool inputs
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `board` | board specification | Yes | The target board. It selects the FPGA's primitive models |
+| `top_module` | text | No | Name of the top-level module. When omitted, Verilator checks every module that no other module uses |
+| `source_folder`, `source_files` | See folder fields in [Table 2](#folders) | Yes | The design files |
+| `testbench_files` | list of relative paths | No | Testbenches to check too, relative to the source folder. Defaults to none. A file may be listed only once in `source_files` and `testbench_files` together |
+| `defines` | map of text | No | Macro definitions, as in the [build tool](#build-tool). `SYNTHESIZE` is always defined, and `APIO_SIM` is defined as `0` |
+| `verbose` | boolean | No | Run Verilator without `--quiet`. Defaults to false |
+
+**Table 24.** lint tool outputs
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `passed` | boolean | True when Verilator found no errors and no warnings |
+| `diagnostics` | list of diagnostics | The problems found, at file, line and column where known. A Verilator warning code, such as `WIDTHTRUNC`, ends the text in parentheses, since a `/* verilator lint_off WIDTHTRUNC */` comment names it. Problems in the primitive models keep their location in the text |
+
+**Errors:** setup errors with `install_packages`. Request errors, such as an unknown board, a missing file or an included file outside the source folder. Tool failures, when Verilator fails without reporting a problem. Engine errors and cancellation.
+
+**Includes.** The source file rules in [Table 8](#build-tool) apply. Verilator and Icarus Verilog don't look for an included file in the including file's folder as yosys does, so the engine passes the folder of every listed and included file as an include folder. An include is then found in the source folder first, then in those folders.
+
+**Example**
+
+Input:
+
+```json
+{
+  "board": "alhambra-ii",
+  "top_module": "main",
+  "source_folder": "/home/u/proj",
+  "source_files": ["main.v", "uart.v"],
+  "testbench_files": ["main_tb.v"]
+}
+```
+
+Output:
+
+```json
+{
+  "passed": false,
+  "diagnostics": [
+    {
+      "file": "main.v", "line": 6, "column": 9, "severity": "warning",
+      "text": "Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's VARREF 'cnt' generates 8 bits. (WIDTHTRUNC)",
+      "tool": "verilator"
+    }
+  ]
+}
+```
 
 ## build tool
 

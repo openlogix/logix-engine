@@ -1,6 +1,7 @@
 //! The build tool (docs/tool-api.md, Tables 6 to 8).
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use regex::Regex;
@@ -93,68 +94,87 @@ fn identifier() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_$]*$").unwrap())
 }
 
-/// Checks the request and turns it into a BuildRequest.
-pub fn check(input: BuildInput) -> Result<BuildRequest, ToolError> {
-    let board = board::resolve(&input.board)?;
-    let req = |m: String| ToolError::request(m);
-    if input.top_module.is_empty()
-        || input
-            .top_module
+/// Checks a top module name.
+pub fn check_top_module(top_module: &str) -> Result<(), ToolError> {
+    if top_module.is_empty()
+        || top_module
             .chars()
             .any(|c| c.is_whitespace() || c.is_control() || c == '"')
     {
-        return Err(req(format!(
-            "top_module {:?} isn't a module name.",
-            input.top_module
+        return Err(ToolError::request(format!(
+            "top_module {top_module:?} isn't a module name."
         )));
     }
-    for (name, value) in &input.defines {
+    Ok(())
+}
+
+/// Checks macro definitions: Verilog identifiers with single-line values.
+pub fn check_defines(defines: &BTreeMap<String, String>) -> Result<(), ToolError> {
+    for (name, value) in defines {
         if !identifier().is_match(name) {
-            return Err(req(format!(
+            return Err(ToolError::request(format!(
                 "The define name {name:?} isn't a Verilog identifier."
             )));
         }
         if value.chars().any(char::is_control) {
-            return Err(req(format!(
+            return Err(ToolError::request(format!(
                 "The value of define {name} must be a single line of text."
             )));
         }
     }
-    let src = paths::check_absolute_path(&input.source_folder)
+    Ok(())
+}
+
+/// Checks the source folder and returns its real path.
+pub fn check_source_folder(source_folder: &str) -> Result<PathBuf, ToolError> {
+    let req = |m: String| ToolError::request(m);
+    let src = paths::check_absolute_path(source_folder)
         .map_err(|e| req(format!("source_folder: {e}.")))?;
     let src = src.canonicalize().map_err(|e| {
         req(format!(
-            "source_folder {:?} can't be found: {e}.",
-            input.source_folder
+            "source_folder {source_folder:?} can't be found: {e}."
         ))
     })?;
     if !src.is_dir() {
         return Err(req(format!(
-            "source_folder {:?} isn't a folder.",
-            input.source_folder
+            "source_folder {source_folder:?} isn't a folder."
         )));
     }
+    Ok(src)
+}
+
+/// Checks that `rel`, from the input field `field`, names a file inside the
+/// source folder `src` (a real path).
+pub fn check_source_file(src: &Path, field: &str, rel: &str) -> Result<(), ToolError> {
+    let req = |m: String| ToolError::request(m);
+    paths::check_relative_path(rel).map_err(|e| req(format!("{field}: {e}.")))?;
+    let real = paths::resolve_inside(src, rel).map_err(|e| req(format!("{field}: {e}.")))?;
+    if !real.is_file() {
+        return Err(req(format!("{field}: {rel:?} isn't a file.")));
+    }
+    Ok(())
+}
+
+/// Checks a build folder against the path rules and returns its real path.
+pub fn check_build_folder(build_folder: &str, src: &Path) -> Result<PathBuf, ToolError> {
+    paths::check_build_folder(build_folder, paths::home_folder().as_deref(), Some(src))
+        .map_err(|e| ToolError::request(format!("build_folder: {e}.")))
+}
+
+/// Checks the request and turns it into a BuildRequest.
+pub fn check(input: BuildInput) -> Result<BuildRequest, ToolError> {
+    let board = board::resolve(&input.board)?;
+    check_top_module(&input.top_module)?;
+    check_defines(&input.defines)?;
+    let src = check_source_folder(&input.source_folder)?;
     if input.source_files.is_empty() {
-        return Err(req("source_files is empty.".into()));
+        return Err(ToolError::request("source_files is empty."));
     }
-    for (field, rel) in input
-        .source_files
-        .iter()
-        .map(|f| ("source_files", f))
-        .chain(std::iter::once(("constraint_file", &input.constraint_file)))
-    {
-        paths::check_relative_path(rel).map_err(|e| req(format!("{field}: {e}.")))?;
-        let real = paths::resolve_inside(&src, rel).map_err(|e| req(format!("{field}: {e}.")))?;
-        if !real.is_file() {
-            return Err(req(format!("{field}: {rel:?} isn't a file.")));
-        }
+    for f in &input.source_files {
+        check_source_file(&src, "source_files", f)?;
     }
-    let build_folder = paths::check_build_folder(
-        &input.build_folder,
-        paths::home_folder().as_deref(),
-        Some(&src),
-    )
-    .map_err(|e| req(format!("build_folder: {e}.")))?;
+    check_source_file(&src, "constraint_file", &input.constraint_file)?;
+    let build_folder = check_build_folder(&input.build_folder, &src)?;
     Ok(BuildRequest {
         board,
         top_module: input.top_module,

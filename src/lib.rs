@@ -18,6 +18,7 @@ pub mod program;
 pub mod progress;
 pub mod runner;
 pub mod server;
+pub mod sim;
 pub mod state;
 pub mod text;
 pub mod tools;

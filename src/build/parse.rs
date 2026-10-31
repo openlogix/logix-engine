@@ -38,7 +38,7 @@ fn nextpnr_line() -> &'static Regex {
 
 /// Maps a file name from tool output to a path relative to the source
 /// folder, or None when it's outside it (such as a yosys library file).
-fn relative_file(file: &str, source_folder: &str) -> Option<String> {
+pub fn relative_file(file: &str, source_folder: &str) -> Option<String> {
     let f = file.strip_prefix("./").unwrap_or(file);
     if f.starts_with('/') {
         let prefix = format!("{}/", source_folder.trim_end_matches('/'));

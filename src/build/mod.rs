@@ -191,6 +191,47 @@ fn delete_outputs(build_folder: &Path) -> Result<(), ToolError> {
     Ok(())
 }
 
+/// Runs a toolchain program with its command line and output sent as live
+/// output. Whatever its exit status, the run is returned; cancelling and a
+/// program that can't start are errors. `operation` names the operation in
+/// the cancel message, such as "build".
+pub async fn run_logged(
+    operation: &str,
+    tool: &str,
+    bin_dir: &Path,
+    args: &[OsString],
+    cwd: &Path,
+    call: &Call,
+) -> Result<crate::runner::ToolRun, ToolError> {
+    let program = bin_dir.join(tool);
+    call.output.command(tool, &command_line(&program, args));
+    let on_line = |line: &str| call.output.line(tool, OutputLevel::of(line), line);
+    match run_tool_with(&program, args, cwd, bin_dir, &call.cancel, &on_line).await {
+        Ok(run) => Ok(run),
+        Err(RunError::Cancelled) => Err(ToolError::cancelled(format!(
+            "The {operation} was cancelled."
+        ))),
+        Err(RunError::Spawn(e)) => {
+            Err(
+                ToolError::new(Category::Tool, format!("Can't start {tool}: {e}")).with_action(
+                    crate::errors::ActionCode::InstallPackages,
+                    format!("Reinstall the {TOOLCHAIN} package, which may be damaged."),
+                ),
+            )
+        }
+    }
+}
+
+/// A tool that exited with an error status, as a tool error with its output.
+pub fn tool_failed(tool: &str, step: &str, run: &crate::runner::ToolRun) -> ToolError {
+    let mut err = ToolError::new(
+        Category::Tool,
+        format!("{tool} failed while {step} ({}).", run.status),
+    );
+    err.details = to_multiline_text(&run.output);
+    err
+}
+
 /// One build step's tool run, turned into an error when it failed.
 async fn run_step(
     step: &str,
@@ -200,28 +241,11 @@ async fn run_step(
     cwd: &Path,
     call: &Call,
 ) -> Result<String, ToolError> {
-    let program = bin_dir.join(tool);
-    call.output.command(tool, &command_line(&program, &args));
-    let on_line = |line: &str| call.output.line(tool, OutputLevel::of(line), line);
-    match run_tool_with(&program, &args, cwd, bin_dir, &call.cancel, &on_line).await {
-        Ok(run) if run.status.success() => Ok(run.output),
-        Ok(run) => {
-            let mut err = ToolError::new(
-                Category::Tool,
-                format!("{tool} failed while {step} ({}).", run.status),
-            );
-            err.details = to_multiline_text(&run.output);
-            Err(err)
-        }
-        Err(RunError::Cancelled) => Err(ToolError::cancelled("The build was cancelled.")),
-        Err(RunError::Spawn(e)) => {
-            Err(
-                ToolError::new(Category::Tool, format!("Can't start {tool}: {e}")).with_action(
-                    crate::errors::ActionCode::InstallPackages,
-                    format!("Reinstall the {TOOLCHAIN} package, which may be damaged."),
-                ),
-            )
-        }
+    let run = run_logged("build", tool, bin_dir, &args, cwd, call).await?;
+    if run.status.success() {
+        Ok(run.output)
+    } else {
+        Err(tool_failed(tool, step, &run))
     }
 }
 

@@ -34,13 +34,19 @@ pub enum OutputLevel {
 }
 
 impl OutputLevel {
-    /// Classifies a line the way yosys, nextpnr and the programmers mark
-    /// their messages ("ERROR:", "Error:", "Warning:").
+    /// Classifies a line the way the tools mark their messages: "ERROR:",
+    /// "Error:" and "Warning:" (yosys, nextpnr, the programmers, iverilog),
+    /// "%Error-CODE:" and "%Warning-CODE:" (Verilator), and "FATAL:" (a
+    /// testbench's $fatal, from vvp).
     pub fn of(line: &str) -> OutputLevel {
         let l = line.to_lowercase();
-        if l.contains("error:") || l.starts_with("error ") {
+        if l.contains("error:")
+            || l.starts_with("error ")
+            || l.starts_with("%error")
+            || l.starts_with("fatal:")
+        {
             OutputLevel::Error
-        } else if l.contains("warning:") {
+        } else if l.contains("warning:") || l.starts_with("%warning") {
             OutputLevel::Warning
         } else {
             OutputLevel::Info
@@ -147,6 +153,20 @@ pub mod tests {
             OutputLevel::Info
         );
         assert_eq!(OutputLevel::of("0 warnings, 0 errors"), OutputLevel::Info);
+        assert_eq!(
+            OutputLevel::of("%Warning-WIDTHTRUNC: main.v:6:9: Operator ASSIGNDLY expects 4 bits"),
+            OutputLevel::Warning
+        );
+        assert_eq!(
+            OutputLevel::of(
+                "%Error-MODMISSING: m.v:1:11: Cannot find file containing module: 'foo'"
+            ),
+            OutputLevel::Error
+        );
+        assert_eq!(
+            OutputLevel::of("FATAL: main_tb.v:10: led is  x"),
+            OutputLevel::Error
+        );
     }
 
     #[test]

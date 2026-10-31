@@ -7,6 +7,7 @@ pub mod clean_build;
 pub mod get_catalog;
 pub mod get_engine_info;
 pub mod install_packages;
+pub mod lint;
 pub mod list_devices;
 pub mod program_board;
 
@@ -105,6 +106,7 @@ pub fn all_definitions() -> Vec<Tool> {
         definition::<get_engine_info::GetEngineInfo>(),
         definition::<install_packages::InstallPackages>(),
         definition::<get_catalog::GetCatalog>(),
+        definition::<lint::Lint>(),
         definition::<build::Build>(),
         definition::<clean_build::CleanBuild>(),
         definition::<list_devices::ListDevices>(),
@@ -159,6 +161,7 @@ pub async fn call(
     use get_catalog::GetCatalog;
     use get_engine_info::GetEngineInfo;
     use install_packages::InstallPackages;
+    use lint::Lint;
     use list_devices::ListDevices;
     use program_board::ProgramBoard;
     let result = match name {
@@ -170,6 +173,10 @@ pub async fn call(
         ),
         Build::NAME => to_call_result(match parse_input::<Build>(arguments) {
             Ok(input) => build::run(state, input, call).await,
+            Err(e) => Err(e),
+        }),
+        Lint::NAME => to_call_result(match parse_input::<Lint>(arguments) {
+            Ok(input) => lint::run(state, input, call).await,
             Err(e) => Err(e),
         }),
         CleanBuild::NAME => to_call_result(

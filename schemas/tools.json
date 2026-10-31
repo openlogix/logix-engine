@@ -453,6 +453,313 @@
     }
   },
   {
+    "name": "lint",
+    "description": "Checks Verilog and SystemVerilog sources for errors and likely mistakes with Verilator, without building, like apio lint. It is much faster than build and finds problems synthesis accepts, such as width mismatches. List the design files and, optionally, the testbenches; the engine doesn't search for them. The board selects the FPGA's primitive models, so designs that use them lint cleanly. Problems found are the result, not an error: passed is false and diagnostics lists each problem at file and line, with Verilator's warning code at the end of the text, which a /* verilator lint_off CODE */ comment can silence. The first call may install the toolchain package first, which takes a few minutes. Writes nothing.",
+    "inputSchema": {
+      "$defs": {
+        "Architecture": {
+          "description": "FPGA families. Milestone 1 supports iCE40 only.",
+          "oneOf": [
+            {
+              "const": "ice40",
+              "description": "Lattice iCE40.",
+              "type": "string"
+            }
+          ]
+        },
+        "BoardInputDefinition": {
+          "additionalProperties": false,
+          "description": "A board definition in a request. Like a catalog entry, except that the\nFPGA can be given either as fpga_id or as a full fpga definition.",
+          "properties": {
+            "default_variant": {
+              "description": "The name of the programming variant used by default.",
+              "type": "string"
+            },
+            "description": {
+              "description": "The board's name for people.",
+              "type": "string"
+            },
+            "fpga": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FpgaDefinition"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The board's FPGA as a full definition. Give either fpga_id or fpga."
+            },
+            "fpga_id": {
+              "description": "The board's FPGA as a catalog ID, such as ice40hx4k-tq144-8k. Give\neither fpga_id or fpga.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "variants": {
+              "additionalProperties": {
+                "$ref": "#/$defs/ProgrammingVariant"
+              },
+              "description": "The ways to program the board, by variant name.",
+              "type": "object"
+            }
+          },
+          "required": [
+            "description",
+            "default_variant",
+            "variants"
+          ],
+          "type": "object"
+        },
+        "BoardSpec": {
+          "anyOf": [
+            {
+              "description": "A board's catalog ID, such as alhambra-ii. get_catalog lists them.",
+              "pattern": "^[a-z0-9-]+$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/BoardInputDefinition",
+              "description": "A full board definition, for boards that aren't in the catalog."
+            }
+          ],
+          "description": "A board: a catalog ID, or a full definition."
+        },
+        "FpgaDefinition": {
+          "additionalProperties": false,
+          "description": "An FPGA: its architecture, part and toolchain parameters.",
+          "properties": {
+            "architecture": {
+              "$ref": "#/$defs/Architecture",
+              "description": "The FPGA family: ice40."
+            },
+            "nextpnr_device": {
+              "description": "The device type nextpnr uses, such as hx8k.",
+              "type": "string"
+            },
+            "nextpnr_package": {
+              "description": "The package nextpnr uses, such as tq144:4k.",
+              "type": "string"
+            },
+            "part_number": {
+              "description": "The vendor's part number, such as ICE40HX4K-TQ144.",
+              "type": "string"
+            },
+            "size": {
+              "description": "The device size, such as 8k.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "architecture",
+            "part_number",
+            "size",
+            "nextpnr_device",
+            "nextpnr_package"
+          ],
+          "type": "object"
+        },
+        "ProgrammingVariant": {
+          "additionalProperties": false,
+          "description": "One way to program a board, such as to flash with a particular cable.",
+          "properties": {
+            "args": {
+              "description": "The programmer's arguments, as a template. The engine replaces\n${VID}, ${PID}, ${BUS} and ${DEV} with the device's USB vendor ID,\nproduct ID, bus and device number, ${SERIAL} with its serial number,\nand ${BITSTREAM} with the bitstream path.",
+              "type": "string"
+            },
+            "programmer": {
+              "description": "The programmer to run: openfpgaloader or iceprog.",
+              "type": "string"
+            },
+            "usb": {
+              "$ref": "#/$defs/UsbFilter",
+              "description": "The USB filter that finds the board's device."
+            }
+          },
+          "required": [
+            "programmer",
+            "args",
+            "usb"
+          ],
+          "type": "object"
+        },
+        "UsbFilter": {
+          "additionalProperties": false,
+          "description": "Which USB devices are this board.",
+          "properties": {
+            "pid": {
+              "description": "USB product ID, four lowercase hex digits, such as 6010.",
+              "pattern": "^[0-9a-f]{4}$",
+              "type": "string"
+            },
+            "product_regex": {
+              "description": "A regular expression the device's product name must match, when\nseveral boards share the same USB IDs. Omitted means any product name.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "vid": {
+              "description": "USB vendor ID, four lowercase hex digits, such as 0403.",
+              "pattern": "^[0-9a-f]{4}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "vid",
+            "pid"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "What to lint.",
+      "properties": {
+        "board": {
+          "$ref": "#/$defs/BoardSpec",
+          "description": "The target board: a catalog ID such as alhambra-ii (get_catalog lists\nthem), or a full board definition. It selects the FPGA's primitive\nmodels, such as SB_IO for iCE40."
+        },
+        "defines": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Verilog macro definitions, from name to value, such as\n{\"WIDTH\": \"8\"}. An empty value defines the macro with no text, for\n`ifdef. SYNTHESIZE is always defined, and APIO_SIM is defined as 0.",
+          "type": "object"
+        },
+        "source_files": {
+          "description": "The design files to check (.v or .sv), relative to the source folder,\nwith / as the separator, such as [\"main.v\", \"rtl/uart.v\"]. Don't list\nincluded files.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "source_folder": {
+          "description": "The folder with the design files, as an absolute path.",
+          "type": "string"
+        },
+        "testbench_files": {
+          "default": [],
+          "description": "Testbench files to check too, such as [\"main_tb.v\"], relative to the\nsource folder. Defaults to none.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "top_module": {
+          "default": null,
+          "description": "Name of the top-level module, such as main. When omitted, Verilator\nchecks every module that no other module uses.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "verbose": {
+          "default": false,
+          "description": "Let Verilator print more detail, shown in the live output and the\nlogs. It doesn't change the result. Defaults to false.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "board",
+        "source_folder",
+        "source_files"
+      ],
+      "title": "LintInput",
+      "type": "object"
+    },
+    "outputSchema": {
+      "$defs": {
+        "Diagnostic": {
+          "description": "A problem reported by a tool, at a file and line when known.",
+          "properties": {
+            "column": {
+              "description": "Column number, starting at 1, when known.",
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "file": {
+              "description": "File, relative to the source folder, when known.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "line": {
+              "description": "Line number, starting at 1, when known.",
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "severity": {
+              "$ref": "#/$defs/Severity"
+            },
+            "text": {
+              "description": "The problem, in words.",
+              "type": "string"
+            },
+            "tool": {
+              "description": "Name of the tool that reported it, when known.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "severity",
+            "text"
+          ],
+          "type": "object"
+        },
+        "Severity": {
+          "description": "How serious a diagnostic is.",
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ],
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "What lint found.",
+      "properties": {
+        "diagnostics": {
+          "description": "The problems found, in Verilator's order: errors and warnings at file\nand line where known.",
+          "items": {
+            "$ref": "#/$defs/Diagnostic"
+          },
+          "type": "array"
+        },
+        "passed": {
+          "description": "True when Verilator found no errors and no warnings.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "passed",
+        "diagnostics"
+      ],
+      "title": "LintOutput",
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
     "name": "build",
     "description": "Builds an FPGA design into a bitstream: synthesizes the Verilog or SystemVerilog sources, places and routes them on the board's FPGA using the constraint file (.pcf, which maps top-level ports to pins), and packs the bitstream into the build folder. Give the source files explicitly; the engine doesn't search for them, though `include files are found next to the including file or in the source folder. A build with no changes since the last one returns at once with up_to_date set. The first build may install the toolchain package first, which takes a few minutes. Design problems come back as a design error with diagnostics at file and line. After a successful build, program_board programs the bitstream into the board.",
     "inputSchema": {
