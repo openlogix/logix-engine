@@ -104,6 +104,9 @@ pub struct SimulateOutput {
     /// What the testbench printed, such as with $display. May span several
     /// lines.
     pub output: String,
+    /// How many failures the testbench reported. diagnostics lists the first
+    /// 100 of them, each with its time.
+    pub failure_count: u64,
     /// The waveform (.vcd), relative to the build folder.
     pub waveform_file: String,
     /// The layout file GTKWave opens, as an absolute path.
@@ -229,6 +232,7 @@ pub async fn run(
         passed: r.passed,
         diagnostics: r.diagnostics,
         output: r.output,
+        failure_count: r.failure_count,
         waveform_file,
         layout_file: layout.to_string_lossy().into_owned(),
         layout_created,

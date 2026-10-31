@@ -106,6 +106,9 @@ pub struct TestbenchResult {
     /// True if the engine stopped the testbench at its first failure, so its
     /// output and waveform end there.
     pub stopped_at_failure: bool,
+    /// How many failures the testbench reported. diagnostics lists the first
+    /// 100 of them, each with its time.
+    pub failure_count: u64,
 }
 
 impl From<TestbenchRun> for TestbenchResult {
@@ -117,6 +120,7 @@ impl From<TestbenchRun> for TestbenchResult {
             output: r.output,
             waveform_file: r.waveform_file,
             stopped_at_failure: r.stopped_at_failure,
+            failure_count: r.failure_count,
         }
     }
 }

@@ -148,8 +148,22 @@ pub async fn toolchain(
     Ok((dir.join("bin"), dir))
 }
 
-/// Keeps the first of each diagnostic with the same file, line and text.
+/// Keeps the first of each diagnostic with the same file, line, text and
+/// simulation time. A testbench check that fails again at another time is
+/// another failure and is kept.
 pub fn dedup(diagnostics: &mut Vec<crate::errors::Diagnostic>) {
     let mut seen = std::collections::HashSet::new();
-    diagnostics.retain(|d| seen.insert((d.file.clone(), d.line, d.column, d.text.clone())));
+    diagnostics.retain(|d| {
+        seen.insert((
+            d.file.clone(),
+            d.line,
+            d.column,
+            d.text.clone(),
+            d.time_ns.map(f64::to_bits),
+        ))
+    });
 }
+
+/// The most testbench failures a result lists in its diagnostics. A result
+/// also gives the total, failure_count.
+pub const MAX_FAILURES_LISTED: usize = 100;

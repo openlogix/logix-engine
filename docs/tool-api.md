@@ -246,6 +246,7 @@ It uses Apio's commands: `iverilog -g2012 -o <build folder>/<testbench>.out`, th
 | `output` | multiline text | What the testbench printed, such as with `$display` |
 | `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder, when the testbench wrote one with `$dumpvars` |
 | `stopped_at_failure` | boolean | True if the engine stopped the testbench at its first failure, so its output and waveform end there |
+| `failure_count` | integer | How many failures the testbench reported. `diagnostics` lists the first 100, each with its time; a check that fails again at another time is another failure |
 
 **Errors:** design errors for compile errors and `$dumpfile`. Setup errors with `install_packages`. Request errors, such as an unknown board, a missing file or a build folder that breaks the keyword rules. Tool failures, engine errors and cancellation.
 
@@ -279,7 +280,8 @@ Output:
       ],
       "output": "ERROR: main_tb.v:10: q is 3, expected 9\n       Time: 95000  Scope: main_tb",
       "waveform_file": "main_tb.vcd",
-      "stopped_at_failure": true
+      "stopped_at_failure": true,
+      "failure_count": 1
     }
   ]
 }
@@ -321,6 +323,7 @@ This is the one case where the engine creates or deletes a file in the source fo
 | `passed` | boolean | As in the testbench results of the test tool: true when the testbench reached `$finish` without a failure |
 | `diagnostics` | list of diagnostics | As in the testbench results of the test tool, in [Table 27](#test-tool) |
 | `output` | multiline text | What the testbench printed |
+| `failure_count` | integer | How many failures the testbench reported, as in the test tool |
 | `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder |
 | `layout_file` | absolute path | The layout file GTKWave opens |
 | `layout_created` | boolean | True if the engine wrote a default layout, false if it kept the user's |

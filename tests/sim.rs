@@ -691,3 +691,42 @@ async fn simulate_runs_to_the_end_and_marks_the_first_failure() {
     let layout = std::fs::read_to_string(src.join("main_tb.gtkw")).unwrap();
     assert!(layout.contains("\n*0 95000\n"), "{layout}");
 }
+
+#[tokio::test]
+async fn repeated_failures_are_each_kept_up_to_a_limit_and_counted() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    // The same check fails 150 times, 1 ns apart.
+    std::fs::write(
+        src.join("main_tb.v"),
+        r#"`timescale 1ns/1ps
+module main_tb;
+  integer i;
+  initial begin
+    $dumpvars(0, main_tb);
+    for (i = 0; i < 150; i = i + 1) #1 $error("same failure");
+    $finish;
+  end
+endmodule
+"#,
+    )
+    .unwrap();
+    let input = test_input(&src, json!({"stop_at_first_failure": false}));
+    let out = test::run(&state, input, &call()).await.unwrap();
+    let tb = &out.testbenches[0];
+    assert_eq!(tb.failure_count, 150);
+    assert_eq!(tb.diagnostics.len(), 100, "the first 100 are listed");
+    assert_eq!(tb.diagnostics[0].time_ns, Some(1.0));
+    assert_eq!(tb.diagnostics[99].time_ns, Some(100.0));
+
+    let out = test::run(&state, test_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    assert_eq!(out.testbenches[0].failure_count, 1);
+
+    let out = simulate::run(&state, simulate_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    assert_eq!(out.failure_count, 150);
+    assert_eq!(out.diagnostics.len(), 100);
+}

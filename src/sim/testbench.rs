@@ -41,6 +41,9 @@ pub struct TestbenchRun {
     /// When the first failure happened, in the waveform's time units, when
     /// known.
     pub first_failure_ticks: Option<u64>,
+    /// How many failures the testbench reported. Diagnostics list the first
+    /// MAX_FAILURES_LISTED.
+    pub failure_count: u64,
 }
 
 /// The testbench's path in the build folder without an extension, such as
@@ -250,6 +253,21 @@ pub async fn compile_and_run(
         .iter()
         .find(|m| m.diagnostic.severity == Severity::Error)
         .and_then(|m| m.ticks);
+    let failure_count = messages
+        .iter()
+        .filter(|m| m.diagnostic.severity == Severity::Error)
+        .count();
+    let mut failures_listed = 0;
+    let messages: Vec<_> = messages
+        .into_iter()
+        .filter(|m| {
+            if m.diagnostic.severity != Severity::Error {
+                return true;
+            }
+            failures_listed += 1;
+            failures_listed <= super::MAX_FAILURES_LISTED
+        })
+        .collect();
     diagnostics.extend(messages.into_iter().map(|m| {
         let mut d = m.diagnostic;
         if let (Some(ticks), Some(ns)) = (m.ticks, ns_per_tick) {
@@ -271,6 +289,7 @@ pub async fn compile_and_run(
         waveform_file: waveform.then(|| format!("{stem}.vcd")),
         stopped_at_failure: run.is_none(),
         first_failure_ticks,
+        failure_count: failure_count as u64,
     })
 }
 

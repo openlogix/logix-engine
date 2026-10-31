@@ -1069,6 +1069,11 @@
               },
               "type": "array"
             },
+            "failure_count": {
+              "description": "How many failures the testbench reported. diagnostics lists the first\n100 of them, each with its time.",
+              "minimum": 0,
+              "type": "integer"
+            },
             "file": {
               "description": "The testbench, relative to the source folder.",
               "type": "string"
@@ -1098,7 +1103,8 @@
             "passed",
             "diagnostics",
             "output",
-            "stopped_at_failure"
+            "stopped_at_failure",
+            "failure_count"
           ],
           "type": "object"
         }
@@ -1435,6 +1441,11 @@
           },
           "type": "array"
         },
+        "failure_count": {
+          "description": "How many failures the testbench reported. diagnostics lists the first\n100 of them, each with its time.",
+          "minimum": 0,
+          "type": "integer"
+        },
         "layout_created": {
           "description": "True if the engine wrote a default layout, false if it kept one the\nuser saved.",
           "type": "boolean"
@@ -1464,6 +1475,7 @@
         "passed",
         "diagnostics",
         "output",
+        "failure_count",
         "waveform_file",
         "layout_file",
         "layout_created",
