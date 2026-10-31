@@ -711,6 +711,13 @@
               "description": "The problem, in words.",
               "type": "string"
             },
+            "time_ns": {
+              "description": "For a testbench failure, the simulation time it happened at, in\nnanoseconds, when known.",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
             "tool": {
               "description": "Name of the tool that reported it, when known.",
               "type": [
@@ -766,7 +773,7 @@
   },
   {
     "name": "test",
-    "description": "Runs testbenches with Icarus Verilog, like apio test: compiles the design files with each testbench, runs it, and reports whether it passed. A testbench fails by calling $fatal or $error, or by printing a failure line from Apio's assertion macros (*** ASSERTION FAILED or ERROR at file:line); it must end with $finish, and must not call $dumpfile, since the engine sets where its waveform goes (call $dumpvars to write one). Every listed testbench runs, even after one fails. A failing testbench is the result, not an error: passed is false, and each testbench's diagnostics and output say why. Compile errors are a design error with diagnostics at file and line. The first call may install the toolchain package first, which takes a few minutes. To look at a testbench's signals in a waveform viewer, use simulate.",
+    "description": "Runs testbenches with Icarus Verilog, like apio test: compiles the design files with each testbench, runs it, and reports whether it passed. A testbench fails by calling $fatal or $error, or by printing a failure line from Apio's assertion macros (*** ASSERTION FAILED or ERROR at file:line); it must end with $finish, and must not call $dumpfile, since the engine sets where its waveform goes (call $dumpvars to write one). Every listed testbench runs, even after one fails; each stops at its first failure unless stop_at_first_failure is false. A failing testbench is the result, not an error: passed is false, and each testbench's diagnostics and output say why. Compile errors are a design error with diagnostics at file and line. The first call may install the toolchain package first, which takes a few minutes. To look at a testbench's signals in a waveform viewer, use simulate.",
     "inputSchema": {
       "$defs": {
         "Architecture": {
@@ -957,6 +964,11 @@
           "description": "The folder with the design files, as an absolute path. The testbenches\nrun in it, so they read data files, such as with $readmemh, relative\nto it.",
           "type": "string"
         },
+        "stop_at_first_failure": {
+          "default": true,
+          "description": "Stop each testbench at its first failure ($fatal, $error or a\nfailure line from Apio's assertion macros), so a failing run ends\nfast. Its output and waveform then end there. False runs each\ntestbench to the end, to see every failure. Defaults to true.",
+          "type": "boolean"
+        },
         "testbench_files": {
           "description": "The testbenches to run, in order, relative to the source folder, such\nas [\"main_tb.v\", \"rtl/uart_tb.v\"]. Each is compiled with the design\nfiles and run on its own.",
           "items": {
@@ -1016,6 +1028,13 @@
               "description": "The problem, in words.",
               "type": "string"
             },
+            "time_ns": {
+              "description": "For a testbench failure, the simulation time it happened at, in\nnanoseconds, when known.",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
             "tool": {
               "description": "Name of the tool that reported it, when known.",
               "type": [
@@ -1062,6 +1081,10 @@
               "description": "True when it ran to the end without $fatal, $error or a failure line\nfrom Apio's assertion macros (*** ASSERTION FAILED, ERROR at).",
               "type": "boolean"
             },
+            "stopped_at_failure": {
+              "description": "True if the engine stopped the testbench at its first failure, so its\noutput and waveform end there.",
+              "type": "boolean"
+            },
             "waveform_file": {
               "description": "The waveform (.vcd), relative to the build folder, when the testbench\nwrote one with $dumpvars.",
               "type": [
@@ -1074,7 +1097,8 @@
             "file",
             "passed",
             "diagnostics",
-            "output"
+            "output",
+            "stopped_at_failure"
           ],
           "type": "object"
         }
@@ -1110,7 +1134,7 @@
   },
   {
     "name": "simulate",
-    "description": "Simulates one testbench with Icarus Verilog and opens its waveform in GTKWave, like apio sim: compiles the design files with the testbench, runs it to write the waveform (.vcd) into the build folder, then starts GTKWave detached and returns without waiting for it. The testbench must call $dumpvars and $finish, and must not call $dumpfile. GTKWave opens the layout file (.gtkw), which holds the signals shown; when it is missing, or is still a default one, the engine writes a default with the testbench's top-level signals, deleted again when GTKWave exits unless the user saved it; a layout the user saved is kept. Set open_viewer to false to only write the waveform, such as when no one is at the screen. A failing testbench is still simulated and shown, with passed false. Compile errors are a design error with diagnostics at file and line. To just check whether testbenches pass, use test.",
+    "description": "Simulates one testbench with Icarus Verilog and opens its waveform in GTKWave, like apio sim: compiles the design files with the testbench, runs it to write the waveform (.vcd) into the build folder, then starts GTKWave detached and returns without waiting for it. The testbench must call $dumpvars and $finish, and must not call $dumpfile. GTKWave opens the layout file (.gtkw), which holds the signals shown; when it is missing, or is still a default one, the engine writes a default with the testbench's top-level signals, deleted again when GTKWave exits unless the user saved it; a layout the user saved is kept. Set open_viewer to false to only write the waveform, such as when no one is at the screen. A failing testbench runs to the end and is shown, with passed false and GTKWave's marker at the first failure in a default layout. Compile errors are a design error with diagnostics at file and line. To just check whether testbenches pass, use test.",
     "inputSchema": {
       "$defs": {
         "Architecture": {
@@ -1368,6 +1392,13 @@
             "text": {
               "description": "The problem, in words.",
               "type": "string"
+            },
+            "time_ns": {
+              "description": "For a testbench failure, the simulation time it happened at, in\nnanoseconds, when known.",
+              "type": [
+                "number",
+                "null"
+              ]
             },
             "tool": {
               "description": "Name of the tool that reported it, when known.",
@@ -1699,6 +1730,13 @@
             "text": {
               "description": "The problem, in words.",
               "type": "string"
+            },
+            "time_ns": {
+              "description": "For a testbench failure, the simulation time it happened at, in\nnanoseconds, when known.",
+              "type": [
+                "number",
+                "null"
+              ]
             },
             "tool": {
               "description": "Name of the tool that reported it, when known.",

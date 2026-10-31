@@ -25,7 +25,8 @@ impl EngineTool for Test {
         Apio's assertion macros (*** ASSERTION FAILED or ERROR at file:line); it must end \
         with $finish, and must not \
         call $dumpfile, since the engine sets where its waveform goes (call $dumpvars to \
-        write one). Every listed testbench runs, even after one fails. A failing testbench is \
+        write one). Every listed testbench runs, even after one fails; \
+        each stops at its first failure unless stop_at_first_failure is false. A failing testbench is \
         the result, not an error: passed is false, and each testbench's diagnostics and output \
         say why. Compile errors are a design error with diagnostics at file and line. The \
         first call may install the toolchain package first, which takes a few minutes. To \
@@ -67,10 +68,20 @@ pub struct TestInput {
     /// `ifdef. APIO_SIM is always defined as 0.
     #[serde(default)]
     pub defines: BTreeMap<String, String>,
+    /// Stop each testbench at its first failure ($fatal, $error or a
+    /// failure line from Apio's assertion macros), so a failing run ends
+    /// fast. Its output and waveform then end there. False runs each
+    /// testbench to the end, to see every failure. Defaults to true.
+    #[serde(default = "default_true")]
+    pub stop_at_first_failure: bool,
     /// Let iverilog print more detail, shown in the live output and the
     /// logs. It doesn't change the result. Defaults to false.
     #[serde(default)]
     pub verbose: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// One testbench's result.
@@ -92,6 +103,9 @@ pub struct TestbenchResult {
     /// wrote one with $dumpvars.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waveform_file: Option<String>,
+    /// True if the engine stopped the testbench at its first failure, so its
+    /// output and waveform end there.
+    pub stopped_at_failure: bool,
 }
 
 impl From<TestbenchRun> for TestbenchResult {
@@ -102,6 +116,7 @@ impl From<TestbenchRun> for TestbenchResult {
             diagnostics: r.diagnostics,
             output: r.output,
             waveform_file: r.waveform_file,
+            stopped_at_failure: r.stopped_at_failure,
         }
     }
 }
@@ -121,6 +136,7 @@ pub async fn run(
     input: TestInput,
     call: &Call,
 ) -> Result<TestOutput, ToolError> {
+    let input_stop = input.stop_at_first_failure;
     if input.testbench_files.is_empty() {
         return Err(ToolError::request("testbench_files is empty."));
     }
@@ -157,6 +173,7 @@ pub async fn run(
             &build_folder,
             tb,
             false,
+            input_stop,
             &phases,
             call,
         )

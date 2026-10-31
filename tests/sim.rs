@@ -606,3 +606,88 @@ async fn apio_assertion_macros_fail_both_test_and_simulate() {
             .any(|d| d.text.starts_with("Assertion failed"))
     );
 }
+
+/// A testbench that fails at 10 ns, then keeps busy for a few seconds and
+/// fails again: the guidelines' style, with $error and no mode checks.
+const SLOW_FAILING_TB: &str = r#"`timescale 1ns/1ps
+module main_tb;
+  integer i;
+  reg [31:0] x = 0;
+  initial begin
+    $dumpvars(0, main_tb);
+    #10 $error("first failure");
+    for (i = 0; i < 10000000; i = i + 1) x = x + i;
+    $display("still running");
+    #5 $error("second failure");
+    $finish;
+  end
+endmodule
+"#;
+
+#[tokio::test]
+async fn test_stops_at_the_first_failure_unless_asked_not_to() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    std::fs::write(src.join("main_tb.v"), SLOW_FAILING_TB).unwrap();
+
+    let start = std::time::Instant::now();
+    let out = test::run(&state, test_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    let fast = start.elapsed();
+    let tb = &out.testbenches[0];
+    assert!(!tb.passed);
+    assert!(tb.stopped_at_failure);
+    assert!(!tb.output.contains("still running"), "{}", tb.output);
+    assert_eq!(tb.diagnostics.len(), 1, "{:#?}", tb.diagnostics);
+    assert_eq!(tb.diagnostics[0].text, "first failure");
+    assert_eq!(tb.diagnostics[0].line, Some(7));
+    assert_eq!(tb.diagnostics[0].time_ns, Some(10.0));
+
+    let input = test_input(&src, json!({"stop_at_first_failure": false}));
+    let start = std::time::Instant::now();
+    let out = test::run(&state, input, &call()).await.unwrap();
+    let full = start.elapsed();
+    let tb = &out.testbenches[0];
+    assert!(!tb.passed);
+    assert!(!tb.stopped_at_failure);
+    assert!(tb.output.contains("still running"), "{}", tb.output);
+    let times: Vec<_> = tb.diagnostics.iter().map(|d| d.time_ns).collect();
+    assert_eq!(times, [Some(10.0), Some(15.0)]);
+    assert!(
+        fast < full,
+        "stopping early is faster: {fast:?} vs {full:?}"
+    );
+}
+
+#[tokio::test]
+async fn simulate_runs_to_the_end_and_marks_the_first_failure() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    std::fs::write(
+        src.join("main_tb.v"),
+        MAIN_TB.replace("$fatal(1,", "$error("),
+    )
+    .unwrap();
+    std::fs::write(
+        src.join("main_tb.v"),
+        MAIN_TB.replace(
+            "if (q !== 4'd9) $fatal(1, \"q is %d, expected 9\", q);",
+            "if (q !== 4'd3) $error(\"q is %0d, expected 3\", q);",
+        ),
+    )
+    .unwrap();
+    let out = simulate::run(&state, simulate_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    assert!(!out.passed);
+    assert!(
+        out.output.contains("main_tb passed"),
+        "ran to the end: {}",
+        out.output
+    );
+    assert_eq!(out.diagnostics[0].text, "q is 9, expected 3");
+    assert_eq!(out.diagnostics[0].time_ns, Some(95.0));
+    let layout = std::fs::read_to_string(src.join("main_tb.gtkw")).unwrap();
+    assert!(layout.contains("\n*0 95000\n"), "{layout}");
+}

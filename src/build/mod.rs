@@ -203,11 +203,43 @@ pub async fn run_logged(
     cwd: &Path,
     call: &Call,
 ) -> Result<crate::runner::ToolRun, ToolError> {
+    run_watched(
+        operation,
+        tool,
+        bin_dir,
+        args,
+        cwd,
+        call,
+        &call.cancel,
+        &|_| {},
+    )
+    .await?
+    .ok_or_else(|| ToolError::cancelled(format!("The {operation} was cancelled.")))
+}
+
+/// Like run_logged, also calling `watch` with each output line. Cancelling
+/// `stop`, a child of the call's cancel token, ends the run early: then it
+/// returns None, and the caller has seen the output through `watch`.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_watched(
+    operation: &str,
+    tool: &str,
+    bin_dir: &Path,
+    args: &[OsString],
+    cwd: &Path,
+    call: &Call,
+    stop: &tokio_util::sync::CancellationToken,
+    watch: &(dyn Fn(&str) + Send + Sync),
+) -> Result<Option<crate::runner::ToolRun>, ToolError> {
     let program = bin_dir.join(tool);
     call.output.command(tool, &command_line(&program, args));
-    let on_line = |line: &str| call.output.line(tool, OutputLevel::of(line), line);
-    match run_tool_with(&program, args, cwd, bin_dir, &call.cancel, &on_line).await {
-        Ok(run) => Ok(run),
+    let on_line = |line: &str| {
+        call.output.line(tool, OutputLevel::of(line), line);
+        watch(line);
+    };
+    match run_tool_with(&program, args, cwd, bin_dir, stop, &on_line).await {
+        Ok(run) => Ok(Some(run)),
+        Err(RunError::Cancelled) if !call.cancel.is_cancelled() => Ok(None),
         Err(RunError::Cancelled) => Err(ToolError::cancelled(format!(
             "The {operation} was cancelled."
         ))),

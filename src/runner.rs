@@ -1,6 +1,8 @@
 //! Runs a packaged tool as a subprocess (docs/architecture.md, "Process
 //! isolation"): its own working folder and a minimal environment, output
-//! captured, and on cancel its whole process tree stopped.
+//! captured, and on cancel its whole process tree stopped: asked to exit
+//! first (SIGTERM), so tools can finish writing files, then killed after a
+//! short grace period.
 
 use std::ffi::OsString;
 use std::path::Path;
@@ -137,9 +139,15 @@ pub async fn run_tool_with(
                 None => break child.wait().await.map_err(RunError::Spawn)?,
             },
             _ = cancel.cancelled() => {
-                kill_tree(pid);
-                let _ = child.kill().await;
-                log::info!("Cancelled {}", program.display());
+                // Ask first, so tools can finish writing their files, such
+                // as a waveform; then force whatever is left.
+                signal_tree(pid, Signal::Terminate);
+                let exited = tokio::time::timeout(STOP_GRACE, child.wait()).await;
+                signal_tree(pid, Signal::Kill);
+                if exited.is_err() {
+                    let _ = child.kill().await;
+                }
+                log::info!("Stopped {}", program.display());
                 return Err(RunError::Cancelled);
             }
         }
@@ -170,18 +178,33 @@ pub fn command_line(program: &Path, args: &[OsString]) -> String {
     words.join(" ")
 }
 
-/// Stops the tool and the processes it started, which share its process
+/// How long a stopped tool gets to exit before it is killed.
+const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
+
+#[derive(Clone, Copy)]
+enum Signal {
+    /// Ask to exit (SIGTERM). vvp, for one, then writes out its waveform.
+    Terminate,
+    /// Force (SIGKILL).
+    Kill,
+}
+
+/// Signals the tool and the processes it started, which share its process
 /// group.
-fn kill_tree(pid: Option<u32>) {
+fn signal_tree(pid: Option<u32>, signal: Signal) {
     #[cfg(unix)]
     if let Some(pid) = pid {
+        let sig = match signal {
+            Signal::Terminate => libc::SIGTERM,
+            Signal::Kill => libc::SIGKILL,
+        };
         // SAFETY: killpg only sends a signal; a stale group ID fails harmlessly.
         unsafe {
-            libc::killpg(pid as libc::pid_t, libc::SIGKILL);
+            libc::killpg(pid as libc::pid_t, sig);
         }
     }
     #[cfg(not(unix))]
-    let _ = pid;
+    let _ = (pid, signal);
 }
 
 #[cfg(test)]
@@ -253,6 +276,26 @@ mod tests {
             run.output
         );
         assert!(!run.output.contains("CARGO"), "{}", run.output);
+    }
+
+    #[tokio::test]
+    async fn cancel_kills_a_tool_that_ignores_the_request_to_exit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let args: Vec<OsString> = vec!["-c".into(), "trap '' TERM; sleep 30".into()];
+        let cancel = CancellationToken::new();
+        let c = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            c.cancel();
+        });
+        let start = Instant::now();
+        let r = run_tool(Path::new("/bin/sh"), &args, tmp.path(), tmp.path(), &cancel).await;
+        assert!(matches!(r, Err(RunError::Cancelled)));
+        let took = start.elapsed();
+        assert!(
+            took >= STOP_GRACE && took < STOP_GRACE + Duration::from_secs(3),
+            "{took:?}"
+        );
     }
 
     #[tokio::test]

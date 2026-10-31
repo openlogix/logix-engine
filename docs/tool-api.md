@@ -83,6 +83,7 @@ On success, a tool returns its output object as structured content. On failure, 
 | `severity` | enum | `error`, `warning` or `info` |
 | `text` | text | The problem, in words |
 | `tool` | text | Optional name of the tool that reported it |
+| `time_ns` | number | Optional. For a testbench failure, the simulation time it happened at, in nanoseconds, when known |
 
 **Table 5.** Suggested action codes
 
@@ -209,15 +210,11 @@ Output:
 
 ## test tool
 
-Runs testbenches with Icarus Verilog, like `apio test`. For each testbench in order, iverilog compiles the design files, the FPGA's primitive models and the testbench into the build folder, then vvp runs it and writes its waveform there. Every testbench runs, even after one fails.
+Runs testbenches with Icarus Verilog, like `apio test`. For each testbench in order, iverilog compiles the design files, the FPGA's primitive models and the testbench into the build folder, then vvp runs it and writes its waveform there. Every testbench runs, even after one fails. By default the engine stops each testbench at its first failure, so a failing run ends fast; see [Test and simulate modes](#test-and-simulate-modes).
 
-It uses Apio's commands: `iverilog -g2012 -o <build folder>/<testbench>.out`, the request's macros, `APIO_SIM=0`, the FPGA's primitive models, the design files and the testbench, then `vvp <testbench>.out -dumpfile=<build folder>/<testbench>.vcd`. Both run in the source folder, so a testbench reads data files, such as with `$readmemh`, relative to it, as in Apio. `SYNTHESIZE` isn't defined, so designs can tell simulation from synthesis.
+It uses Apio's commands: `iverilog -g2012 -o <build folder>/<testbench>.out`, the request's macros, `APIO_SIM=0`, the FPGA's primitive models, the design files and the testbench, then `vvp -i <testbench>.out -dumpfile=<build folder>/<testbench>.vcd`. The `-i` isn't in Apio's command: it makes vvp print each line at once instead of when it exits, so the engine sees a failure while the testbench runs. It doesn't change the results. Both run in the source folder, so a testbench reads data files, such as with `$readmemh`, relative to it, as in Apio. `SYNTHESIZE` isn't defined, so designs can tell simulation from synthesis.
 
-**Testbench rules,** as in Apio:
-
-- A testbench fails by calling `$fatal`, or `$error`, which Apio doesn't count but the engine does, or by printing a failure line from Apio's assertion macros: `*** ASSERTION FAILED ...` or `ERROR at <file>:<line>: ...`. Those macros skip `$fatal` when `APIO_SIM` is 1, so under `simulate` the printed line is the only sign of the failure. A testbench passes when it reaches `$finish` without any of these. One that never stops runs until the host cancels the operation.
-- It must not call `$dumpfile`, since the engine sets where the waveform goes. A testbench that does is a design error at that line. It calls `$dumpvars` to write a waveform.
-- File names don't need to end in `_tb`, since the request lists the testbenches, but hosts that follow Apio's naming find them that way.
+**Testbench rules:** see [Writing testbenches](#writing-testbenches). A testbench fails by calling `$error` or `$fatal`, or by printing a failure line from Apio's assertion macros. It must not call `$dumpfile`, which is a design error at that line.
 
 **Failures are the result.** A failing testbench is returned in `testbenches` with `passed` set to false, not as an error. Compile errors are a design error, since nothing could run.
 
@@ -229,6 +226,7 @@ It uses Apio's commands: `iverilog -g2012 -o <build folder>/<testbench>.out`, th
 | `source_folder`, `source_files`, `build_folder` | See folder fields in [Table 2](#folders) | Yes | The design files, without testbenches |
 | `testbench_files` | list of relative paths | Yes | The testbenches to run, in order, relative to the source folder. At least one. A file may be listed only once in `source_files` and `testbench_files` together |
 | `defines` | map of text | No | Macro definitions, as in the [build tool](#build-tool). `APIO_SIM` is always defined as `0` |
+| `stop_at_first_failure` | boolean | No | Stop each testbench at its first failure, so a failing run ends fast; its output and waveform then end there. False runs each testbench to the end, to see every failure. Defaults to true |
 | `verbose` | boolean | No | Run iverilog with `-v`. Defaults to false |
 
 **Table 26.** test tool outputs
@@ -247,6 +245,7 @@ It uses Apio's commands: `iverilog -g2012 -o <build folder>/<testbench>.out`, th
 | `diagnostics` | list of diagnostics | Compile warnings, and the testbench's `$fatal`, `$error` and `$warning` messages at file and line. The failure lines of Apio's assertion macros are errors too, at file and line when they give one, such as `ERROR at main_tb.v:52: ...` and `*** ASSERTION FAILED at main_tb.v:52: ...`; `*** ASSERTION FAILED in main_tb ...` has no location |
 | `output` | multiline text | What the testbench printed, such as with `$display` |
 | `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder, when the testbench wrote one with `$dumpvars` |
+| `stopped_at_failure` | boolean | True if the engine stopped the testbench at its first failure, so its output and waveform end there |
 
 **Errors:** design errors for compile errors and `$dumpfile`. Setup errors with `install_packages`. Request errors, such as an unknown board, a missing file or a build folder that breaks the keyword rules. Tool failures, engine errors and cancellation.
 
@@ -276,10 +275,11 @@ Output:
       "file": "main_tb.v",
       "passed": false,
       "diagnostics": [
-        { "file": "main_tb.v", "line": 10, "severity": "error", "text": "q is  3, expected 9", "tool": "vvp" }
+        { "file": "main_tb.v", "line": 10, "severity": "error", "text": "q is 3, expected 9", "tool": "vvp", "time_ns": 95 }
       ],
-      "output": "FATAL: main_tb.v:10: q is  3, expected 9\n       Time: 95000  Scope: main_tb",
-      "waveform_file": "main_tb.vcd"
+      "output": "ERROR: main_tb.v:10: q is 3, expected 9\n       Time: 95000  Scope: main_tb",
+      "waveform_file": "main_tb.vcd",
+      "stopped_at_failure": true
     }
   ]
 }
@@ -287,11 +287,11 @@ Output:
 
 ## simulate tool
 
-Simulates one testbench and opens its waveform in GTKWave, like `apio sim --detach`. It compiles and runs the testbench as the [test tool](#test-tool) does, with the same commands, testbench rules and build folder files, except that `APIO_SIM` is defined as `1`. Then it makes sure there is a layout file and starts GTKWave fully detached, with `--rcvar=do_initial_zoom_fit 1`, the waveform and the layout, and returns without waiting for it. GTKWave keeps running after the operation and after the engine exits.
+Simulates one testbench and opens its waveform in GTKWave, like `apio sim --detach`. It compiles and runs the testbench as the [test tool](#test-tool) does, with the same commands, testbench rules and build folder files, except that `APIO_SIM` is defined as `1` and the testbench always runs to the end, so the whole waveform is there to look at. Then it makes sure there is a layout file and starts GTKWave fully detached, with `--rcvar=do_initial_zoom_fit 1`, the waveform and the layout, and returns without waiting for it. GTKWave keeps running after the operation and after the engine exits.
 
 **Layout files.** A GTKWave layout (`.gtkw`) holds the signals shown and how. It is a project file the user changes by saving from GTKWave, which reads and saves the same path, so the host names it in `layout_file`, usually next to the testbench, such as `main_tb.gtkw`.
 
-- **Missing or default:** when the file doesn't exist, or is a default one the engine or Apio generated (it has their marker line), the engine writes a default layout there with the testbench's top-level signals, so GTKWave doesn't open empty. A default is replaced on each simulation, so it follows design changes.
+- **Missing or default:** when the file doesn't exist, or is a default one the engine or Apio generated (it has their marker line), the engine writes a default layout there with the testbench's top-level signals, so GTKWave doesn't open empty. When the testbench failed, the default layout also puts GTKWave's marker at the first failure that has a time. A default is replaced on each simulation, so it follows design changes.
 - **Saved by the user:** a layout without the marker is the user's and is never changed. GTKWave opens it, and saving from GTKWave updates it.
 - **Unsaved defaults are cleaned up:** when GTKWave exits, the engine deletes the layout if it still has the marker, so default layouts the user never saved don't pile up in the project or end up in version control. This is best-effort: if the engine exits before GTKWave, the default stays until a later simulation replaces or deletes it.
 - **No layout file:** when `layout_file` is omitted, the layout goes into the build folder as `<testbench>.gtkw`, where a saved layout is lost when the folder is cleaned.
@@ -356,6 +356,58 @@ Output:
   "viewer_opened": true
 }
 ```
+
+## Test and simulate modes
+
+The same testbench serves two purposes: `test` is a batch check that should fail fast, and `simulate` produces a waveform the user can look at to find the problem. The testbench only states what is correct; the engine applies each mode's policy:
+
+| | `test` | `simulate` |
+| --- | --- | --- |
+| At the first failure | Stops the testbench, unless `stop_at_first_failure` is false | Lets it run to the end |
+| Waveform | Kept, up to the failure | Complete |
+| Finding the failure | Each failure's file, line and simulation time (`time_ns`) | The same, and a default layout puts GTKWave's marker at the first failure |
+| `passed` | False after any failure | False after any failure |
+
+To stop a testbench, the engine asks vvp to exit, which writes out the waveform so far. Any tool the engine stops, such as when the host cancels, is asked to exit first and killed if it hasn't after two seconds.
+
+## Writing testbenches
+
+These are the engine's guidelines for testbenches. Testbenches written for Apio keep working: `APIO_SIM` is still defined (0 in `test` and `lint`, 1 in `simulate`), and the failure lines of Apio's assertion macros count as failures.
+
+1. **Report a failure with `$error`, then keep going.** Put the expected and actual values in the message. The engine reads `$error` with its file, line and simulation time, and decides whether to stop.
+2. **Use `$fatal` only when going on makes no sense,** such as a missing data file. It stops the run in both modes.
+3. **Don't check the mode.** No `` if (!`APIO_SIM) $fatal ``: the engine stops `test` at the first failure and lets `simulate` run to the end.
+4. **End with `$finish`.** A testbench that never finishes runs until the host cancels it.
+5. **Call `$dumpvars(0, <testbench module>)` at the start** to write a waveform, and **never call `$dumpfile`**: the engine decides where the waveform goes.
+6. **Read data files relative to the source folder,** such as `$readmemh("data/rom.hex", rom)`. Testbenches run there.
+7. **`SYNTHESIZE` isn't defined in `test` and `simulate`,** so `` `ifdef SYNTHESIZE `` / `` `else `` selects the simulation code.
+8. **Name testbenches `<name>_tb.v` or `<name>_tb.sv`** and give them a `` `timescale ``. The engine doesn't need the names, since requests list the testbenches, but Apio and hosts that follow its naming find them that way.
+
+**Example**
+
+```verilog
+`timescale 1ns/1ps
+
+// Reports a failed check with the actual and expected values. Not fatal.
+`define CHECK(actual, want) if ((actual) !== (want)) $error("%s is %0h, expected %0h", `"actual`", (actual), (want));
+
+module counter_tb;
+  reg clk = 0;
+  wire [3:0] q;
+  counter dut(.clk(clk), .q(q));
+  always #5 clk = ~clk;
+
+  initial begin
+    $dumpvars(0, counter_tb);
+    #95  `CHECK(q, 4'd9)
+    #10  `CHECK(q, 4'd10)
+    $display("End of simulation");
+    $finish;
+  end
+endmodule
+```
+
+A failed check reports, for example, `q is a, expected b` at `counter_tb.v:15` with its time. Two Icarus Verilog pitfalls when writing such a macro: keep it on one line, since iverilog reports wrong line numbers after a macro continued over several lines, and don't use a parameter's name inside the message string, since iverilog replaces it there too.
 
 ## build tool
 

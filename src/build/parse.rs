@@ -79,6 +79,7 @@ pub fn parse_yosys(output: &str, source_folder: &str) -> Parsed {
             severity,
             text,
             tool: Some("yosys".into()),
+            time_ns: None,
         };
         match severity {
             Severity::Error => parsed.errors.push(d),
@@ -114,6 +115,7 @@ pub fn parse_nextpnr(output: &str, constraint_file: &str) -> Parsed {
             severity,
             text,
             tool: Some("nextpnr".into()),
+            time_ns: None,
         };
         match severity {
             Severity::Error => parsed.errors.push(d),

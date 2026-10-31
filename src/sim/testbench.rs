@@ -10,12 +10,12 @@
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use regex::Regex;
 
 use super::{SimLibrary, Sources, dedup, parse};
-use crate::build::{MARKER, run_logged, tool_failed};
+use crate::build::{MARKER, run_logged, run_watched, tool_failed};
 use crate::errors::{Category, Diagnostic, Severity, ToolError};
 use crate::text::to_multiline_text;
 use crate::tools::Call;
@@ -36,6 +36,11 @@ pub struct TestbenchRun {
     /// The waveform, relative to the build folder, when the testbench wrote
     /// one.
     pub waveform_file: Option<String>,
+    /// True if the engine stopped the run at its first failure.
+    pub stopped_at_failure: bool,
+    /// When the first failure happened, in the waveform's time units, when
+    /// known.
+    pub first_failure_ticks: Option<u64>,
 }
 
 /// The testbench's path in the build folder without an extension, such as
@@ -72,6 +77,7 @@ pub fn check_no_dumpfile(source_folder: &Path, testbench: &str) -> Result<(), To
         text: "Don't call $dumpfile in a testbench: the engine sets where the waveform is written."
             .into(),
         tool: None,
+        time_ns: None,
     });
     Err(err)
 }
@@ -144,7 +150,9 @@ pub fn prepare_build_folder(build_folder: &Path, stem: &str) -> Result<PathBuf, 
 }
 
 /// Compiles and runs one testbench. Compile errors are a design error; a
-/// testbench that fails is a result. `operation` names the operation in the
+/// testbench that fails is a result. With `stop_at_first_failure`, the
+/// engine stops the run at the testbench's first failure (after its "Time:"
+/// line), so a batch run fails fast without the testbench knowing the mode. `operation` names the operation in the
 /// cancel message. The tools run in the source folder, so a testbench reads
 /// data files, such as with $readmemh, relative to it, as in Apio.
 #[allow(clippy::too_many_arguments)]
@@ -157,6 +165,7 @@ pub async fn compile_and_run(
     build_folder: &Path,
     testbench: &str,
     interactive: bool,
+    stop_at_first_failure: bool,
     phases: &crate::progress::Phases,
     call: &Call,
 ) -> Result<TestbenchRun, ToolError> {
@@ -193,24 +202,75 @@ pub async fn compile_and_run(
     phases.start(format!("Running {testbench}"));
     let mut dumpfile = OsString::from("-dumpfile=");
     dumpfile.push(&vcd);
-    let args: Vec<OsString> = vec![out_file.into(), dumpfile];
-    let run = run_logged(operation, "vvp", bin, &args, src, call).await?;
-    let ran = parse::parse_vvp(&run.output, &src_text);
-    let failed = ran.iter().any(|d| d.severity == Severity::Error);
-    diagnostics.extend(ran);
+    // -i makes vvp send each line at once rather than when it exits, so a
+    // failure is seen while the testbench still runs.
+    let args: Vec<OsString> = vec!["-i".into(), out_file.into(), dumpfile];
+    let stop = call.cancel.child_token();
+    // The lines so far, and whether a failure was seen whose "Time:" line is
+    // still to come.
+    let seen: Mutex<(Vec<String>, bool)> = Mutex::new((Vec::new(), false));
+    let watch = |line: &str| {
+        let mut seen = seen.lock().unwrap();
+        seen.0.push(line.to_string());
+        if !stop_at_first_failure {
+            return;
+        }
+        if seen.1 {
+            stop.cancel();
+            return;
+        }
+        match parse::classify_vvp_line(line) {
+            parse::VvpLine::TaggedFailure => seen.1 = true,
+            parse::VvpLine::MacroFailure => stop.cancel(),
+            parse::VvpLine::Other => {}
+        }
+    };
+    let run = run_watched(operation, "vvp", bin, &args, src, call, &stop, &watch).await?;
+    let (lines, _) = seen.into_inner().unwrap();
+    let (output, exited_ok) = match &run {
+        Some(run) => (run.output.clone(), run.status.success()),
+        None => {
+            log::info!("Stopped {testbench} at its first failure");
+            (lines.join("\n"), false)
+        }
+    };
+    let messages = parse::parse_vvp(&output, &src_text);
+    let failed = messages
+        .iter()
+        .any(|m| m.diagnostic.severity == Severity::Error);
+    let waveform = vcd.is_file();
+    let ns_per_tick = if waveform {
+        fs::File::open(&vcd)
+            .ok()
+            .and_then(|f| parse::vcd_timescale_ns(std::io::BufReader::new(f)))
+    } else {
+        None
+    };
+    let first_failure_ticks = messages
+        .iter()
+        .find(|m| m.diagnostic.severity == Severity::Error)
+        .and_then(|m| m.ticks);
+    diagnostics.extend(messages.into_iter().map(|m| {
+        let mut d = m.diagnostic;
+        if let (Some(ticks), Some(ns)) = (m.ticks, ns_per_tick) {
+            d.time_ns = Some(ticks as f64 * ns);
+        }
+        d
+    }));
     dedup(&mut diagnostics);
-    let output = run
-        .output
+    let output = output
         .lines()
         .filter(|l| !l.starts_with("VCD info: dumpfile"))
         .collect::<Vec<_>>()
         .join("\n");
     Ok(TestbenchRun {
         file: testbench.to_string(),
-        passed: run.status.success() && !failed,
+        passed: exited_ok && !failed,
         diagnostics,
         output: to_multiline_text(&output),
-        waveform_file: vcd.is_file().then(|| format!("{stem}.vcd")),
+        waveform_file: waveform.then(|| format!("{stem}.vcd")),
+        stopped_at_failure: run.is_none(),
+        first_failure_ticks,
     })
 }
 

@@ -73,6 +73,7 @@ pub fn parse_verilator(output: &str, source_folder: &str) -> Vec<Diagnostic> {
             severity,
             text,
             tool: Some("verilator".into()),
+            time_ns: None,
         };
         locate(
             &mut d,
@@ -128,6 +129,7 @@ pub fn parse_iverilog(output: &str, source_folder: &str) -> Vec<Diagnostic> {
             severity,
             text: to_text(&caps["text"]),
             tool: Some("iverilog".into()),
+            time_ns: None,
         };
         if located {
             locate(
@@ -175,16 +177,63 @@ fn error_at_line() -> &'static Regex {
     })
 }
 
+fn time_line() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"^\s+Time: (?P<ticks>\d+)\s+Scope: ").unwrap())
+}
+
+/// How a line of a testbench's output reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VvpLine {
+    /// A failure from $fatal or $error, followed by its "Time:" line.
+    TaggedFailure,
+    /// A failure line from Apio's assertion macros, with nothing after it.
+    MacroFailure,
+    /// Anything else.
+    Other,
+}
+
+/// Classifies one line of a testbench's output, so a run can be stopped at
+/// its first failure.
+pub fn classify_vvp_line(line: &str) -> VvpLine {
+    let line = line.trim_end();
+    if let Some(c) = vvp_line().captures(line) {
+        if &c["kind"] != "WARNING" {
+            return VvpLine::TaggedFailure;
+        }
+        return VvpLine::Other;
+    }
+    if assertion_line().is_match(line) || error_at_line().is_match(line) {
+        return VvpLine::MacroFailure;
+    }
+    VvpLine::Other
+}
+
+/// A message from a testbench run, with the simulation time vvp gave for it,
+/// in the waveform's time units (its $timescale), when known.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VvpMessage {
+    pub diagnostic: Diagnostic,
+    pub ticks: Option<u64>,
+}
+
 /// Parses a testbench run's output from vvp: the messages of $fatal, $error
-/// and $warning, and the failure lines Apio's assertion macros print. Under
-/// simulate those macros skip $fatal (APIO_SIM is 1), so their line is the
-/// only sign of a failure. Other lines, such as a testbench's own $display
-/// text, are left out.
-pub fn parse_vvp(output: &str, source_folder: &str) -> Vec<Diagnostic> {
-    let mut out = Vec::new();
+/// and $warning, with the time from the "Time:" line vvp prints after each,
+/// and the failure lines Apio's assertion macros print. Under simulate those
+/// macros skip $fatal (APIO_SIM is 1), so their line is the only sign of a
+/// failure. Other lines, such as a testbench's own $display text, are left
+/// out.
+pub fn parse_vvp(output: &str, source_folder: &str) -> Vec<VvpMessage> {
+    let mut out: Vec<VvpMessage> = Vec::new();
+    // The tagged message the next "Time:" line belongs to.
+    let mut awaiting_time: Option<usize> = None;
     for line in output.lines() {
         let line = line.trim_end();
-        let (c, severity, text) = if let Some(c) = vvp_line().captures(line) {
+        if let (Some(i), Some(c)) = (awaiting_time.take(), time_line().captures(line)) {
+            out[i].ticks = c["ticks"].parse().ok();
+            continue;
+        }
+        let (c, severity, text, tagged) = if let Some(c) = vvp_line().captures(line) {
             let kind = c["kind"].to_string();
             let mut text = to_text(&c["text"]);
             if text.is_empty() {
@@ -199,7 +248,7 @@ pub fn parse_vvp(output: &str, source_folder: &str) -> Vec<Diagnostic> {
             } else {
                 Severity::Error
             };
-            (c, severity, text)
+            (c, severity, text, true)
         } else if let Some(c) = assertion_line().captures(line) {
             let rest = to_text(&c["text"]);
             let text = if c.name("file").is_some() || !rest.starts_with("in ") {
@@ -207,10 +256,10 @@ pub fn parse_vvp(output: &str, source_folder: &str) -> Vec<Diagnostic> {
             } else {
                 format!("Assertion failed {rest}")
             };
-            (c, Severity::Error, text)
+            (c, Severity::Error, text, false)
         } else if let Some(c) = error_at_line().captures(line) {
             let text = to_text(&c["text"]);
-            (c, Severity::Error, text)
+            (c, Severity::Error, text, false)
         } else {
             continue;
         };
@@ -221,6 +270,7 @@ pub fn parse_vvp(output: &str, source_folder: &str) -> Vec<Diagnostic> {
             severity,
             text,
             tool: Some("vvp".into()),
+            time_ns: None,
         };
         locate(
             &mut d,
@@ -229,9 +279,38 @@ pub fn parse_vvp(output: &str, source_folder: &str) -> Vec<Diagnostic> {
             None,
             source_folder,
         );
-        out.push(d);
+        if tagged {
+            awaiting_time = Some(out.len());
+        }
+        out.push(VvpMessage {
+            diagnostic: d,
+            ticks: None,
+        });
     }
     out
+}
+
+/// The length of one time unit of a VCD file, in nanoseconds, from its
+/// $timescale, such as "1ps" (0.001) or "10 ns" (10).
+pub fn vcd_timescale_ns(vcd: impl std::io::BufRead) -> Option<f64> {
+    let mut words = vcd
+        .lines()
+        .map_while(Result::ok)
+        .flat_map(|l| l.split_whitespace().map(str::to_string).collect::<Vec<_>>());
+    words.find(|w| w == "$timescale")?;
+    let text: String = words.take_while(|w| w != "$end").collect();
+    let digits: String = text.chars().take_while(char::is_ascii_digit).collect();
+    let number: f64 = digits.parse().ok()?;
+    let unit = match &text[digits.len()..] {
+        "s" => 1e9,
+        "ms" => 1e6,
+        "us" => 1e3,
+        "ns" => 1.0,
+        "ps" => 1e-3,
+        "fs" => 1e-6,
+        _ => return None,
+    };
+    Some(number * unit)
 }
 
 #[cfg(test)]
@@ -341,8 +420,12 @@ ERROR: just text from $display
 FATAL: tb/z_tb.v:9: 
        Time: 0  Scope: z_tb
 z_tb.v:1: $finish called at 0 (1s)";
-        let d = parse_vvp(out, "/src");
+        let m = parse_vvp(out, "/src");
+        let d: Vec<_> = m.iter().map(|m| m.diagnostic.clone()).collect();
         assert_eq!(d.len(), 4, "{d:#?}");
+        // Each $fatal, $error and $warning gets the time of its "Time:" line.
+        assert_eq!(m[0].ticks, Some(0));
+        assert_eq!(m[2].ticks, None, "Apio's macro lines have no time");
         assert_eq!(d[0].severity, Severity::Warning);
         assert_eq!(d[0].text, "careful");
         assert_eq!(d[1].severity, Severity::Error);
@@ -363,7 +446,10 @@ End of simulation
 ERROR at bcd/bcd_tb.v:41: expected count = 101 but got 100
 *** ASSERTION FAILED at main_tb.v:52: expected 'h01, actual 'h00
 main_tb.v:36: $finish called at 80100000 (1ps)";
-        let d = parse_vvp(out, "/src");
+        let d: Vec<_> = parse_vvp(out, "/src")
+            .into_iter()
+            .map(|m| m.diagnostic)
+            .collect();
         assert_eq!(d.len(), 3, "{d:#?}");
         assert!(d.iter().all(|d| d.severity == Severity::Error));
         assert_eq!(
@@ -376,5 +462,51 @@ main_tb.v:36: $finish called at 80100000 (1ps)";
         assert_eq!(d[1].line, Some(41));
         assert_eq!(d[2].text, "Assertion failed: expected 'h01, actual 'h00");
         assert_eq!(d[2].line, Some(52));
+    }
+
+    // Real output from vvp (oss-cad-suite 2026-10-22), timescale 1ns/1ps.
+    #[test]
+    fn vvp_times_and_line_kinds() {
+        let out = "ERROR: a_tb.v:6: first failure
+       Time: 100500  Scope: a_tb
+done
+FATAL: a_tb.v:9: stop
+       Time: 101500  Scope: a_tb";
+        let m = parse_vvp(out, "/src");
+        assert_eq!(m.len(), 2);
+        assert_eq!(m[0].ticks, Some(100500));
+        assert_eq!(m[1].ticks, Some(101500));
+
+        assert_eq!(
+            classify_vvp_line("ERROR: a_tb.v:6: first failure"),
+            VvpLine::TaggedFailure
+        );
+        assert_eq!(
+            classify_vvp_line("FATAL: a_tb.v:6: "),
+            VvpLine::TaggedFailure
+        );
+        assert_eq!(
+            classify_vvp_line("WARNING: a_tb.v:6: careful"),
+            VvpLine::Other
+        );
+        assert_eq!(
+            classify_vvp_line("*** ASSERTION FAILED in main_tb (clk_num=4): expected"),
+            VvpLine::MacroFailure
+        );
+        assert_eq!(
+            classify_vvp_line("ERROR at main_tb.v:3: expected 1"),
+            VvpLine::MacroFailure
+        );
+        assert_eq!(classify_vvp_line("ERROR: just text"), VvpLine::Other);
+        assert_eq!(classify_vvp_line("done"), VvpLine::Other);
+    }
+
+    #[test]
+    fn vcd_timescales() {
+        let ns = |t: &str| vcd_timescale_ns(std::io::Cursor::new(t.to_string()));
+        assert_eq!(ns("$date x $end\n$timescale\n\t1ps\n$end\n"), Some(0.001));
+        assert_eq!(ns("$timescale 10 ns $end"), Some(10.0));
+        assert_eq!(ns("$timescale 1us $end"), Some(1000.0));
+        assert_eq!(ns("$scope module a $end"), None);
     }
 }

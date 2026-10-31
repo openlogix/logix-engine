@@ -30,8 +30,8 @@ impl EngineTool for Simulate {
         holds the signals shown; when it is missing, or is still a default one, the engine \
         writes a default with the testbench's top-level signals, deleted again when GTKWave \
         exits unless the user saved it; a layout the user saved is kept. Set open_viewer to false to only write the waveform, such as \
-        when no one is at the screen. A failing testbench is still simulated and shown, with \
-        passed false. Compile errors are a design error with diagnostics at file and line. To \
+        when no one is at the screen. A failing testbench runs to the end and is \
+        shown, with passed false and GTKWave's marker at the first failure in a default layout. Compile errors are a design error with diagnostics at file and line. To \
         just check whether testbenches pass, use test.";
     const READ_ONLY: bool = false;
     const OPEN_WORLD: bool = true;
@@ -185,6 +185,7 @@ pub async fn run(
         &build_folder,
         &tb,
         true,
+        false,
         &phases,
         call,
     )
@@ -206,11 +207,13 @@ pub async fn run(
             severity: Severity::Error,
             text: "The testbench wrote no waveform. Call $dumpvars in it.".into(),
             tool: None,
+            time_ns: None,
         });
         return Err(err);
     };
     let vcd = build_folder.join(&waveform_file);
-    let layout_created = gtkwave::write_default_if_needed(&layout, &vcd, &tb)?;
+    let layout_created =
+        gtkwave::write_default_if_needed(&layout, &vcd, &tb, r.first_failure_ticks)?;
 
     if input.open_viewer {
         let program = bin.join("gtkwave");

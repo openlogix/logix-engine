@@ -84,9 +84,14 @@ pub fn top_level_signals(vcd: impl BufRead) -> Vec<String> {
     signals
 }
 
-/// The default layout for a testbench: a header with the marker, then the
+/// The default layout for a testbench: a header with the marker, GTKWave's
+/// primary marker at the first failure when there is one, then the
 /// top-level signals.
-pub fn default_layout(testbench: &str, signals: &[String]) -> String {
+///
+/// GTKWave reads "*<zoom> <marker>" as the zoom and the primary marker's
+/// time, in the waveform's time units. The zoom is a placeholder: GTKWave
+/// is started with do_initial_zoom_fit, which replaces it.
+pub fn default_layout(testbench: &str, signals: &[String], failure_ticks: Option<u64>) -> String {
     let mut text = format!(
         "[*] GTKWave layout for the testbench {testbench}\n\
          [*] {MARKER}.\n\
@@ -94,6 +99,11 @@ pub fn default_layout(testbench: &str, signals: &[String]) -> String {
          [*] layout from GTKWave, which is then kept.\n\
          [*]\n"
     );
+    if let Some(ticks) = failure_ticks {
+        text.push_str(&format!(
+            "[*] The marker is at the first failure.\n*0 {ticks}\n"
+        ));
+    }
     for s in signals {
         text.push_str(s);
         text.push('\n');
@@ -107,6 +117,7 @@ pub fn write_default_if_needed(
     layout: &Path,
     vcd: &Path,
     testbench: &str,
+    failure_ticks: Option<u64>,
 ) -> Result<bool, ToolError> {
     if layout.exists() && !is_generated(layout) {
         log::info!("Keeping the user's layout {}", layout.display());
@@ -119,7 +130,7 @@ pub fn write_default_if_needed(
         )
     })?;
     let signals = top_level_signals(BufReader::new(file));
-    fs::write(layout, default_layout(testbench, &signals)).map_err(|e| {
+    fs::write(layout, default_layout(testbench, &signals, failure_ticks)).map_err(|e| {
         ToolError::setup(format!(
             "Can't write the layout file {}: {e}",
             layout.display()
@@ -293,21 +304,21 @@ $end
         fs::write(&vcd, VCD).unwrap();
         let layout = tmp.path().join("main_tb.gtkw");
 
-        assert!(write_default_if_needed(&layout, &vcd, "main_tb.v").unwrap());
+        assert!(write_default_if_needed(&layout, &vcd, "main_tb.v", None).unwrap());
         let text = fs::read_to_string(&layout).unwrap();
         assert!(text.contains(MARKER));
         assert!(text.contains("main_tb.v"));
         assert!(text.ends_with("multi_tb.r\n"), "{text}");
 
         // A generated one, by the engine or by Apio, is replaced.
-        assert!(write_default_if_needed(&layout, &vcd, "main_tb.v").unwrap());
+        assert!(write_default_if_needed(&layout, &vcd, "main_tb.v", None).unwrap());
         fs::write(&layout, format!("[*] {APIO_MARKER}.\nold\n")).unwrap();
-        assert!(write_default_if_needed(&layout, &vcd, "main_tb.v").unwrap());
+        assert!(write_default_if_needed(&layout, &vcd, "main_tb.v", None).unwrap());
         assert!(!fs::read_to_string(&layout).unwrap().contains("old"));
 
         // One the user saved is kept.
         fs::write(&layout, "[*] saved by the user\nmulti_tb.clk\n").unwrap();
-        assert!(!write_default_if_needed(&layout, &vcd, "main_tb.v").unwrap());
+        assert!(!write_default_if_needed(&layout, &vcd, "main_tb.v", None).unwrap());
         assert_eq!(
             fs::read_to_string(&layout).unwrap(),
             "[*] saved by the user\nmulti_tb.clk\n"
@@ -362,8 +373,8 @@ $end
         fs::write(&vcd, VCD).unwrap();
         let default = tmp.path().join("default.gtkw");
         let saved = tmp.path().join("saved.gtkw");
-        write_default_if_needed(&default, &vcd, "main_tb.v").unwrap();
-        write_default_if_needed(&saved, &vcd, "main_tb.v").unwrap();
+        write_default_if_needed(&default, &vcd, "main_tb.v", None).unwrap();
+        write_default_if_needed(&saved, &vcd, "main_tb.v", None).unwrap();
         // The user saves one of them from GTKWave, which drops the marker.
         fs::write(&saved, "[*] saved by the user\n").unwrap();
 
@@ -387,5 +398,13 @@ $end
         assert!(!default.exists());
         assert!(saved.exists());
         delete_if_generated(&tmp.path().join("missing.gtkw"));
+    }
+
+    #[test]
+    fn default_layouts_mark_the_first_failure() {
+        let signals = vec!["main_tb.clk".to_string()];
+        let text = default_layout("main_tb.v", &signals, Some(95000));
+        assert!(text.contains("\n*0 95000\nmain_tb.clk\n"), "{text}");
+        assert!(!default_layout("main_tb.v", &signals, None).contains("\n*"));
     }
 }

@@ -45,6 +45,10 @@ pub struct Diagnostic {
     /// Name of the tool that reported it, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool: Option<String>,
+    /// For a testbench failure, the simulation time it happened at, in
+    /// nanoseconds, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_ns: Option<f64>,
 }
 
 /// How serious a diagnostic is.
