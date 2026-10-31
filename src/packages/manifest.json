@@ -14,6 +14,21 @@
           "sha256": "5fdbffd3c0c64de04f6181ab5d27d8a340374d1c581a8c6e49beb45214be9f1b"
         }
       }
+    },
+    {
+      "name": "verible",
+      "version": "2026-10-22",
+      "description": "Verible's Verilog formatter and other Verilog tools, from Apio's packages",
+      "files": {
+        "darwin-arm64": {
+          "owner": "fpgawars",
+          "repo": "tools-verible",
+          "tag": "2026-10-22",
+          "file": "apio-verible-darwin-arm64-20261022.tgz",
+          "size": 7939686,
+          "sha256": "5759bc301e5eb208af774df0844e19cb181cdb60aa4abb4b92c646c6b8798d71"
+        }
+      }
     }
   ]
 }

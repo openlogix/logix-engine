@@ -249,11 +249,24 @@ pub async fn run_watched(
             Err(
                 ToolError::new(Category::Tool, format!("Can't start {tool}: {e}")).with_action(
                     crate::errors::ActionCode::InstallPackages,
-                    format!("Reinstall the {TOOLCHAIN} package, which may be damaged."),
+                    format!(
+                        "Reinstall the {} package, which may be damaged.",
+                        package_of(bin_dir)
+                    ),
                 ),
             )
         }
     }
+}
+
+/// The package a bin folder belongs to: packages/<name>/<version>/bin.
+fn package_of(bin_dir: &Path) -> String {
+    bin_dir
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::file_name)
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| TOOLCHAIN.to_string())
 }
 
 /// A tool that exited with an error status, as a tool error with its output.
@@ -461,6 +474,12 @@ pub async fn build(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_program_that_cant_start_names_its_package() {
+        let bin = Path::new("/e/packages/verible/2026-10-22/bin");
+        assert_eq!(package_of(bin), "verible");
+    }
 
     #[test]
     fn includes_are_found_recursively_and_must_stay_inside() {

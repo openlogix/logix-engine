@@ -1730,6 +1730,235 @@
     }
   },
   {
+    "name": "format",
+    "description": "Formats Verilog and SystemVerilog files in place with Verible's formatter, like apio format. List the files to format (.v, .sv, .vh or .svh); the engine doesn't search for them. Formatting changes only layout, never meaning. Each file is rewritten only when its layout changes; files lists each one as formatted, unchanged or failed. A file Verible can't parse, such as one with a syntax error, is left unchanged: passed is false and diagnostics gives the error at file and line. That is a result, not an error. Code between // verilog_format: off and // verilog_format: on comments is left as is. The first call may install the Verible package first.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "What to format.",
+      "properties": {
+        "source_files": {
+          "description": "The files to format (.v, .sv, .vh or .svh), relative to the source\nfolder, with / as the separator, such as [\"main.v\", \"rtl/defs.vh\"].\nEach is rewritten in place. A file may be listed only once.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "source_folder": {
+          "description": "The folder with the files, as an absolute path.",
+          "type": "string"
+        },
+        "verbose": {
+          "default": false,
+          "description": "Let the formatter print more detail, shown in the live output and\nthe logs. It doesn't change the result. Defaults to false.",
+          "type": "boolean"
+        },
+        "verible_options": {
+          "default": [],
+          "description": "Extra options for Verible's formatter, each as --name or\n--name=value, such as [\"--column_limit=80\",\n\"--indentation_spaces=4\"], like Apio's format-verible-options.\nDefaults to none, which gives Verible's default style.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "source_folder",
+        "source_files"
+      ],
+      "title": "FormatInput",
+      "type": "object"
+    },
+    "outputSchema": {
+      "$defs": {
+        "CommandRecord": {
+          "additionalProperties": false,
+          "description": "One program the engine ran, with what it takes to run it again.",
+          "properties": {
+            "args": {
+              "description": "The program as an absolute path, then its arguments, exactly as\npassed.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cwd": {
+              "description": "The folder it ran in, as an absolute path.",
+              "type": "string"
+            },
+            "package": {
+              "description": "The package the program came from, with its version, such as\n\"oss-cad-suite 2026-10-22\". Omitted for a program from elsewhere, such\nas a custom programmer command.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "shell": {
+              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, HOME and TMPDIR).",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The program's name, such as yosys.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool",
+            "cwd",
+            "args",
+            "shell"
+          ],
+          "type": "object"
+        },
+        "Diagnostic": {
+          "description": "A problem reported by a tool, at a file and line when known.",
+          "properties": {
+            "column": {
+              "description": "Column number, starting at 1, when known.",
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "file": {
+              "description": "File, relative to the source folder, when known.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "line": {
+              "description": "Line number, starting at 1, when known.",
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "severity": {
+              "$ref": "#/$defs/Severity"
+            },
+            "text": {
+              "description": "The problem, in words.",
+              "type": "string"
+            },
+            "time_ns": {
+              "description": "For a testbench failure, the simulation time it happened at, in\nnanoseconds, when known.",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "tool": {
+              "description": "Name of the tool that reported it, when known.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "severity",
+            "text"
+          ],
+          "type": "object"
+        },
+        "FileResult": {
+          "additionalProperties": false,
+          "description": "One file's result.",
+          "properties": {
+            "file": {
+              "description": "The file, relative to the source folder, as given in the request.",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/$defs/FileStatus"
+            }
+          },
+          "required": [
+            "file",
+            "status"
+          ],
+          "type": "object"
+        },
+        "FileStatus": {
+          "description": "What happened to a file.",
+          "oneOf": [
+            {
+              "const": "formatted",
+              "description": "The file was rewritten with the formatted text.",
+              "type": "string"
+            },
+            {
+              "const": "unchanged",
+              "description": "The file was already formatted and wasn't changed.",
+              "type": "string"
+            },
+            {
+              "const": "failed",
+              "description": "The formatter couldn't format the file, such as for a syntax error.\nThe file wasn't changed, and diagnostics say why.",
+              "type": "string"
+            }
+          ]
+        },
+        "Severity": {
+          "description": "How serious a diagnostic is.",
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ],
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "What format did.",
+      "properties": {
+        "commands": {
+          "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
+          "items": {
+            "$ref": "#/$defs/CommandRecord"
+          },
+          "type": "array"
+        },
+        "diagnostics": {
+          "description": "Why files failed, such as syntax errors at file, line and column.",
+          "items": {
+            "$ref": "#/$defs/Diagnostic"
+          },
+          "type": "array"
+        },
+        "files": {
+          "description": "Each file, in the request's order, with what happened to it.",
+          "items": {
+            "$ref": "#/$defs/FileResult"
+          },
+          "type": "array"
+        },
+        "passed": {
+          "description": "True when every file is formatted now, whether it was rewritten or\nalready formatted.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "passed",
+        "files",
+        "diagnostics",
+        "commands"
+      ],
+      "title": "FormatOutput",
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
     "name": "build",
     "description": "Builds an FPGA design into a bitstream: synthesizes the Verilog or SystemVerilog sources, places and routes them on the board's FPGA using the constraint file (.pcf, which maps top-level ports to pins), and packs the bitstream into the build folder. Give the source files explicitly; the engine doesn't search for them, though `include files are found next to the including file or in the source folder. A build with no changes since the last one returns at once with up_to_date set. The first build may install the toolchain package first, which takes a few minutes. Design problems come back as a design error with diagnostics at file and line. After a successful build, program_board programs the bitstream into the board.",
     "inputSchema": {

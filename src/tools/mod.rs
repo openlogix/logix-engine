@@ -4,6 +4,7 @@
 
 pub mod build;
 pub mod clean_build;
+pub mod format;
 pub mod get_catalog;
 pub mod get_engine_info;
 pub mod install_packages;
@@ -114,6 +115,7 @@ pub fn all_definitions() -> Vec<Tool> {
         definition::<lint::Lint>(),
         definition::<test::Test>(),
         definition::<simulate::Simulate>(),
+        definition::<format::Format>(),
         definition::<build::Build>(),
         definition::<clean_build::CleanBuild>(),
         definition::<list_devices::ListDevices>(),
@@ -180,6 +182,7 @@ pub async fn call(
 ) -> Option<CallToolResult> {
     use build::Build;
     use clean_build::CleanBuild;
+    use format::Format;
     use get_catalog::GetCatalog;
     use get_engine_info::GetEngineInfo;
     use install_packages::InstallPackages;
@@ -221,6 +224,13 @@ pub async fn call(
         Simulate::NAME => to_call_result(with_commands(
             match parse_input::<Simulate>(arguments) {
                 Ok(input) => simulate::run(state, input, call).await,
+                Err(e) => Err(e),
+            },
+            call,
+        )),
+        Format::NAME => to_call_result(with_commands(
+            match parse_input::<Format>(arguments) {
+                Ok(input) => format::run(state, input, call).await,
                 Err(e) => Err(e),
             },
             call,

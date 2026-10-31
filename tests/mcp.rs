@@ -88,10 +88,13 @@ async fn get_engine_info_reports_the_launch_settings() {
         out["protocol_versions"],
         json!(["2026-07-28", "2025-11-25"])
     );
-    // A fresh engine folder has the manifest's package, not yet installed.
+    // A fresh engine folder has the manifest's packages, not yet installed.
     assert_eq!(
         out["packages"],
-        json!([{"name": "oss-cad-suite", "version": "2026-10-22", "status": "missing"}])
+        json!([
+            {"name": "oss-cad-suite", "version": "2026-10-22", "status": "missing"},
+            {"name": "verible", "version": "2026-10-22", "status": "missing"}
+        ])
     );
 
     // The log file is in the engine folder's logs subfolder, named
@@ -187,8 +190,8 @@ impl ClientHandler for ProgressClient {
     }
 }
 
-/// Installs the real oss-cad-suite (about 526 MB) through MCP, with
-/// progress. Run: cargo test --test mcp -- --ignored
+/// Installs the real packages (oss-cad-suite is about 526 MB) through MCP,
+/// with progress. Run: cargo test --test mcp -- --ignored
 #[tokio::test]
 #[ignore]
 async fn real_install_packages_with_progress() {
@@ -209,8 +212,10 @@ async fn real_install_packages_with_progress() {
     let result = client.call_tool(params).await.unwrap();
     assert_ne!(result.is_error, Some(true), "{result:?}");
     let out = result.structured_content.unwrap();
-    assert_eq!(out["installed"], json!(["oss-cad-suite"]));
-    assert_eq!(out["packages"][0]["status"], "installed");
+    assert_eq!(out["installed"], json!(["oss-cad-suite", "verible"]));
+    for p in out["packages"].as_array().unwrap() {
+        assert_eq!(p["status"], "installed", "{p}");
+    }
 
     let progress = handler.0.lock().unwrap().clone();
     assert!(progress.len() > 10, "{}", progress.len());
@@ -218,7 +223,13 @@ async fn real_install_packages_with_progress() {
         progress[0].message.as_deref(),
         Some("Installing oss-cad-suite")
     );
-    assert!(progress.iter().all(|p| p.total == Some(100.0)));
+    assert!(
+        progress
+            .iter()
+            .any(|p| p.message.as_deref() == Some("Installing verible"))
+    );
+    // One phase per package, 100 each.
+    assert!(progress.iter().all(|p| p.total == Some(200.0)));
     assert!(progress.windows(2).all(|w| w[1].progress > w[0].progress));
     client.cancel().await.unwrap();
 }

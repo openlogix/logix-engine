@@ -1,6 +1,6 @@
 # Tool API
 
-This is the engine's tool API: the seven tools of Milestone 1, and `lint`, `test` and `simulate` from Milestone 2. It is not frozen yet: the rule that the tool API never breaks applies from the first release. Each tool is an MCP tool. Its inputs are the tool's arguments, and its outputs are the tool's structured content. The exact JSON schemas and tool descriptions are in [schemas/tools.json](../schemas/tools.json).
+This is the engine's tool API: the seven tools of Milestone 1, and `lint`, `test`, `simulate` and `format` from Milestone 2. It is not frozen yet: the rule that the tool API never breaks applies from the first release. Each tool is an MCP tool. Its inputs are the tool's arguments, and its outputs are the tool's structured content. The exact JSON schemas and tool descriptions are in [schemas/tools.json](../schemas/tools.json).
 
 ## Schemas and validation
 
@@ -115,11 +115,11 @@ A host that wants to show the tools' output as it happens, such as in a console,
 
 Lines that the engine reads into diagnostics still come in the tool result too. The live lines are for showing, not for parsing.
 
-**Verbose.** Tools that run other tools take an optional boolean `verbose`, like Apio's `--verbose`. It asks those tools to print more detail, which shows in the live output and the logs, and never changes the result. Each tool maps it to what its tools offer: `build` runs yosys and nextpnr without `-q`, `lint` runs Verilator without `--quiet`, `test` and `simulate` run iverilog with `-v`, and `program_board` adds openFPGALoader's `--verbose` or iceprog's `-v`. A build that is up to date runs nothing, so it prints nothing extra.
+**Verbose.** Tools that run other tools take an optional boolean `verbose`, like Apio's `--verbose`. It asks those tools to print more detail, which shows in the live output and the logs, and never changes the result. Each tool maps it to what its tools offer: `build` runs yosys and nextpnr without `-q`, `lint` runs Verilator without `--quiet`, `test` and `simulate` run iverilog with `-v`, `format` adds Verible's `--verbose`, and `program_board` adds openFPGALoader's `--verbose` or iceprog's `-v`. A build that is up to date runs nothing, so it prints nothing extra.
 
 ### Commands
 
-Results of the tools that run programs (`lint`, `test`, `simulate`, `build` and `program_board`) list the programs they ran in `commands`, in order, and so does `data.commands` in an error from them. Like Apio's command listing, it lets anyone run a step again without the engine, such as to report a bug to the tool's developers. A build that is up to date runs nothing, so its list is empty.
+Results of the tools that run programs (`lint`, `test`, `simulate`, `format`, `build` and `program_board`) list the programs they ran in `commands`, in order, and so does `data.commands` in an error from them. Like Apio's command listing, it lets anyone run a step again without the engine, such as to report a bug to the tool's developers. A build that is up to date runs nothing, so its list is empty.
 
 **Table 30.** Command fields
 
@@ -459,6 +459,64 @@ endmodule
 ```
 
 A failed check reports, for example, `q is a, expected b` at `counter_tb.v:15` with its time. Two Icarus Verilog pitfalls when writing such a macro: keep it on one line, since iverilog reports wrong line numbers after a macro continued over several lines, and don't use a parameter's name inside the message string, since iverilog replaces it there too.
+
+## format tool
+
+Formats Verilog and SystemVerilog files in place with Verible's formatter, like `apio format`. Formatting changes only layout, such as indentation, spacing and line breaks, never meaning. The host lists the files; the engine doesn't search for them. To format text that isn't saved yet, such as an editor's buffer, a host writes it to a file in a scratch folder and formats it there, since requests never carry source text.
+
+Each file is formatted on its own, in order, with Apio's command: `verible-verilog-format --nofailsafe_success --inplace`, the request's options, then the file. Verible rewrites a file only when its layout changes. A file reached through a symbolic link is formatted where it really is, which must be inside the source folder, and the link stays. Code between `// verilog_format: off` and `// verilog_format: on` comments is left as is.
+
+**Problems are the result.** A file Verible can't format, such as one with a syntax error, is left unchanged and listed as `failed`, with the problems in `diagnostics` and `passed` set to false, as in lint. The other files are still formatted. A statement too complex for Verible to lay out within its search limit fails the same way; its diagnostic suggests the option `--max_search_states=2000000` or `verilog_format: off` comments.
+
+**Table 31.** format tool inputs
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `source_folder` | absolute path | Yes | The folder with the files |
+| `source_files` | list of relative paths | Yes | The files to format, relative to the source folder: `.v`, `.sv`, `.vh` or `.svh`, as Apio formats. Each is rewritten in place, and may be listed only once |
+| `verible_options` | list of text | No | Extra options for the formatter, like Apio's `format-verible-options`, such as `["--column_limit=80", "--indentation_spaces=4"]`. Each must be one option, `--name` or `--name=value`, so it can't name a file. `--inplace`, which the engine always passes, and the options that read options from elsewhere (`--flagfile`, `--fromenv`, `--tryfromenv`) are refused. Defaults to none, which gives Verible's default style |
+| `verbose` | boolean | No | Add Verible's `--verbose`. Defaults to false |
+
+**Table 32.** format tool outputs
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `passed` | boolean | True when every file is formatted now, whether it was rewritten or already formatted |
+| `files` | list of objects | Each file, in the request's order, with its `file` as given and its `status`: `formatted` (rewritten), `unchanged` (already formatted) or `failed` (left unchanged; see `diagnostics`) |
+| `diagnostics` | list of diagnostics | Why files failed, such as syntax errors at file, line and column |
+| `commands` | list of commands | The programs this call ran, one per file. See [Commands](#commands) |
+
+**Errors:** setup errors with `install_packages`, for the `verible` package. Request errors, such as a missing file, a file that isn't Verilog or SystemVerilog, a file outside the source folder or an option that isn't allowed. Tool failures, when Verible fails without reporting a problem, such as for an option it doesn't know. Engine errors and cancellation.
+
+**Example**
+
+Input:
+
+```json
+{
+  "source_folder": "/home/u/proj",
+  "source_files": ["main.v", "main_tb.v", "uart.v"]
+}
+```
+
+Output:
+
+```json
+{
+  "passed": false,
+  "files": [
+    { "file": "main.v", "status": "formatted" },
+    { "file": "main_tb.v", "status": "unchanged" },
+    { "file": "uart.v", "status": "failed" }
+  ],
+  "diagnostics": [
+    {
+      "file": "uart.v", "line": 12, "column": 6, "severity": "error",
+      "text": "syntax error at token \"end\"", "tool": "verible"
+    }
+  ]
+}
+```
 
 ## build tool
 
