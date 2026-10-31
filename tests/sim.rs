@@ -12,7 +12,7 @@ use logix_engine::packages::PackageManager;
 use logix_engine::packages::manifest;
 use logix_engine::progress::{NoProgress, OutputLevel, OutputSink, Phases};
 use logix_engine::state::{self, EngineState};
-use logix_engine::tools::{Call, lint, test};
+use logix_engine::tools::{Call, lint, simulate, test};
 use serde_json::{Value, json};
 use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
@@ -405,4 +405,110 @@ async fn test_can_be_cancelled() {
         err.message
     );
     assert!(start.elapsed() < std::time::Duration::from_secs(10));
+}
+
+fn simulate_input(src: &Path, extra: Value) -> simulate::SimulateInput {
+    let v = json!({
+        "board": "alhambra-ii",
+        "source_folder": src,
+        "source_files": ["main.v", "rtl/counter.v"],
+        "testbench_file": "main_tb.v",
+        "build_folder": src.join("_build/default"),
+        "layout_file": "main_tb.gtkw",
+        "open_viewer": false,
+    });
+    serde_json::from_value(with(v, extra)).expect("a valid simulate input")
+}
+
+#[tokio::test]
+async fn simulate_writes_the_waveform_and_a_default_layout_then_keeps_the_users() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    // APIO_SIM is 1 when simulating for a viewer.
+    std::fs::write(
+        src.join("main_tb.v"),
+        MAIN_TB.replace(
+            "$finish;",
+            "if (`APIO_SIM != 1) $fatal(1, \"APIO_SIM\");\n    $finish;",
+        ),
+    )
+    .unwrap();
+    let out = simulate::run(&state, simulate_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    assert!(out.passed, "{out:#?}");
+    assert_eq!(out.waveform_file, "main_tb.vcd");
+    assert!(src.join("_build/default/main_tb.vcd").is_file());
+    assert_eq!(out.layout_file, src.join("main_tb.gtkw").to_string_lossy());
+    assert!(out.layout_created);
+    assert!(!out.viewer_opened);
+    let layout = std::fs::read_to_string(src.join("main_tb.gtkw")).unwrap();
+    assert!(layout.contains("GENERATED AUTOMATICALLY BY LOGIX ENGINE"));
+    let signals: Vec<_> = layout.lines().filter(|l| !l.starts_with("[*]")).collect();
+    assert_eq!(signals, ["main_tb.clk", "main_tb.q[3:0]"]);
+
+    // A layout the user saved from GTKWave is kept.
+    std::fs::write(src.join("main_tb.gtkw"), "[*] mine\nmain_tb.q[3:0]\n").unwrap();
+    let out = simulate::run(&state, simulate_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    assert!(!out.layout_created);
+    assert_eq!(
+        std::fs::read_to_string(src.join("main_tb.gtkw")).unwrap(),
+        "[*] mine\nmain_tb.q[3:0]\n"
+    );
+
+    // Without a layout file, the default goes into the build folder.
+    let input = simulate_input(&src, json!({"layout_file": null}));
+    let out = simulate::run(&state, input, &call()).await.unwrap();
+    let in_build = src.join("_build/default/main_tb.gtkw");
+    assert_eq!(out.layout_file, in_build.to_string_lossy());
+    assert!(in_build.is_file());
+}
+
+#[tokio::test]
+async fn simulate_shows_a_failing_testbench_but_needs_a_waveform() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    std::fs::write(src.join("main_tb.v"), MAIN_TB.replace("4'd9", "4'd3")).unwrap();
+    let out = simulate::run(&state, simulate_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    assert!(!out.passed);
+    // The comparison changed, not the message.
+    assert_eq!(out.diagnostics[0].text, "q is  9, expected 9");
+    assert_eq!(out.diagnostics[0].line, Some(10));
+    assert!(src.join("_build/default/main_tb.vcd").is_file());
+
+    std::fs::write(
+        src.join("main_tb.v"),
+        MAIN_TB.replace("$dumpvars(0, main_tb);", ""),
+    )
+    .unwrap();
+    let err = simulate::run(&state, simulate_input(&src, json!({})), &call())
+        .await
+        .unwrap_err();
+    assert_eq!(err.category, Category::Design);
+    assert!(err.message.contains("$dumpvars"), "{}", err.message);
+}
+
+#[tokio::test]
+async fn simulate_request_errors() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    for (extra, needle) in [
+        (json!({"testbench_file": "nope_tb.v"}), "testbench_file"),
+        (json!({"testbench_file": "main.v"}), "listed more than once"),
+        (json!({"layout_file": "main_tb.txt"}), "must end with .gtkw"),
+        (
+            json!({"layout_file": "missing/main_tb.gtkw"}),
+            "layout_file",
+        ),
+    ] {
+        let err = simulate::run(&state, simulate_input(&src, extra.clone()), &call())
+            .await
+            .unwrap_err();
+        assert_eq!(err.category, Category::Request, "{extra}");
+        assert!(err.message.contains(needle), "{extra}: {}", err.message);
+    }
 }

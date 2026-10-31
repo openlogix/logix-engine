@@ -1,6 +1,6 @@
-# Tool API (Milestone 1)
+# Tool API
 
-This is the engine's tool API for Milestone 1. It is not frozen yet: the rule that the tool API never breaks applies from the first release. Each tool is an MCP tool. Its inputs are the tool's arguments, and its outputs are the tool's structured content. The tools and fields are settled for Milestone 1. The exact JSON schemas and tool descriptions will be written while it is coded.
+This is the engine's tool API: the seven tools of Milestone 1, and `lint`, `test` and `simulate` from Milestone 2. It is not frozen yet: the rule that the tool API never breaks applies from the first release. Each tool is an MCP tool. Its inputs are the tool's arguments, and its outputs are the tool's structured content. The exact JSON schemas and tool descriptions are in [schemas/tools.json](../schemas/tools.json).
 
 ## Schemas and validation
 
@@ -114,7 +114,7 @@ A host that wants to show the tools' output as it happens, such as in a console,
 
 Lines that the engine reads into diagnostics still come in the tool result too. The live lines are for showing, not for parsing.
 
-**Verbose.** Tools that run other tools take an optional boolean `verbose`, like Apio's `--verbose`. It asks those tools to print more detail, which shows in the live output and the logs, and never changes the result. Each tool maps it to what its tools offer: `build` runs yosys and nextpnr without `-q`, `lint` runs Verilator without `--quiet`, `test` runs iverilog with `-v`, and `program_board` adds openFPGALoader's `--verbose` or iceprog's `-v`. A build that is up to date runs nothing, so it prints nothing extra.
+**Verbose.** Tools that run other tools take an optional boolean `verbose`, like Apio's `--verbose`. It asks those tools to print more detail, which shows in the live output and the logs, and never changes the result. Each tool maps it to what its tools offer: `build` runs yosys and nextpnr without `-q`, `lint` runs Verilator without `--quiet`, `test` and `simulate` run iverilog with `-v`, and `program_board` adds openFPGALoader's `--verbose` or iceprog's `-v`. A build that is up to date runs nothing, so it prints nothing extra.
 
 ### Progress
 
@@ -280,6 +280,77 @@ Output:
       "waveform_file": "main_tb.vcd"
     }
   ]
+}
+```
+
+## simulate tool
+
+Simulates one testbench and opens its waveform in GTKWave, like `apio sim --detach`. It compiles and runs the testbench as the [test tool](#test-tool) does, with the same commands, testbench rules and build folder files, except that `APIO_SIM` is defined as `1`. Then it makes sure there is a layout file and starts GTKWave fully detached, with `--rcvar=do_initial_zoom_fit 1`, the waveform and the layout, and returns without waiting for it. GTKWave keeps running after the operation and after the engine exits.
+
+**Layout files.** A GTKWave layout (`.gtkw`) holds the signals shown and how. It is a project file the user changes by saving from GTKWave, which reads and saves the same path, so the host names it in `layout_file`, usually next to the testbench, such as `main_tb.gtkw`.
+
+- **Missing or default:** when the file doesn't exist, or is a default one the engine or Apio generated (it has their marker line), the engine writes a default layout there with the testbench's top-level signals, so GTKWave doesn't open empty. A default is replaced on each simulation, so it follows design changes.
+- **Saved by the user:** a layout without the marker is the user's and is never changed. GTKWave opens it, and saving from GTKWave updates it.
+- **No layout file:** when `layout_file` is omitted, the layout goes into the build folder as `<testbench>.gtkw`, where a saved layout is lost when the folder is cleaned.
+
+This is the one case where the engine creates a file in the source folder. See [Safe file changes](requirements.md).
+
+**A failing testbench** is still simulated and shown, since its waveform is how the user finds the problem. `passed` is false. A testbench that writes no waveform, because it doesn't call `$dumpvars`, is a design error.
+
+**Viewer.** `open_viewer` set to false only writes the waveform and the layout, such as for an AI agent or when no one is at the screen. Opening a viewer needs a local frontend: a network adapter turns it off or refuses it for remote frontends, which view waveforms on their own.
+
+**Table 28.** simulate tool inputs
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `board` | board specification | Yes | The target board. It selects the FPGA's primitive models |
+| `source_folder`, `source_files`, `build_folder` | See folder fields in [Table 2](#folders) | Yes | The design files, without testbenches |
+| `testbench_file` | relative path | Yes | The testbench to simulate, relative to the source folder |
+| `layout_file` | relative path | No | The GTKWave layout file, relative to the source folder, ending in `.gtkw`. Its folder must exist; the file may not. When omitted, the layout goes into the build folder |
+| `open_viewer` | boolean | No | Start GTKWave on the waveform. Defaults to true |
+| `defines` | map of text | No | Macro definitions, as in the [build tool](#build-tool). `APIO_SIM` is always defined as `1` |
+| `verbose` | boolean | No | Run iverilog with `-v`. Defaults to false |
+
+**Table 29.** simulate tool outputs
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `passed` | boolean | True when the testbench reached `$finish` without `$fatal` or `$error` |
+| `diagnostics` | list of diagnostics | As in the testbench results of the test tool, in [Table 27](#test-tool) |
+| `output` | multiline text | What the testbench printed |
+| `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder |
+| `layout_file` | absolute path | The layout file GTKWave opens |
+| `layout_created` | boolean | True if the engine wrote a default layout, false if it kept the user's |
+| `viewer_opened` | boolean | True if GTKWave was started |
+
+**Errors:** design errors for compile errors, `$dumpfile` and a testbench without `$dumpvars`. Setup errors with `install_packages`, or when the layout file can't be written. Request errors, such as a missing file, a layout file that isn't `.gtkw` or whose folder doesn't exist, or a build folder that breaks the keyword rules. Tool failures, such as when GTKWave can't start, engine errors and cancellation.
+
+**Example**
+
+Input:
+
+```json
+{
+  "board": "alhambra-ii",
+  "source_folder": "/home/u/proj",
+  "source_files": ["main.v"],
+  "testbench_file": "main_tb.v",
+  "build_folder": "/home/u/proj/_build/default",
+  "layout_file": "main_tb.gtkw"
+}
+```
+
+Output:
+
+```json
+{
+  "passed": true,
+  "diagnostics": [],
+  "output": "main_tb passed\nmain_tb.v:12: $finish called at 95000 (1ps)",
+  "waveform_file": "main_tb.vcd",
+  "layout_file": "/home/u/proj/main_tb.gtkw",
+  "layout_created": true,
+  "viewer_opened": true
 }
 ```
 
@@ -635,4 +706,5 @@ Output:
 - **What clean_build may delete.** Today it deletes only folders the engine marked with `.logix-build`, so it leaves old build folders made by Apio alone until the engine builds in them. The alternative is to delete any folder that passes the build folder path checks, as `apio clean` does. That cleans Apio's old folders too, but a wrong path such as `/home/u/builds/myproject` passes those checks, since one of its last two folder names contains "build". A middle way would be to also refuse folders that directly contain design files, such as `.v`, `.sv` or `.pcf` files.
 - **Extra tool arguments for build.** Apio lets users pass extra options to the synthesis and place-and-route tools, so the build tool likely needs something similar. One option is to define abstract build phases, such as synthesis, place and route, and bitstream, offer portable options such as a target frequency and a seed, and add extra arguments per phase as an explicit escape hatch, passed unchanged to whatever tool runs that phase. The build output would then report which tool and version ran each phase.
 - **Include folders for build.** Some projects keep header files in a separate folder. An optional `include_folders` input, a list of relative paths under `source_folder`, would let the host name extra places to look up included files.
+- **Separating simulation from viewing.** Today `simulate` writes the waveform and also opens GTKWave. Longer term, `simulate` could only write the waveform and return the top-level signals, with opening a viewer as an optional step or its own tool. GTKWave layouts would then be one viewer's concern, and other viewers, such as Surfer or a waveform view inside an IDE, would fit the same way. It only adds fields and tools, so it breaks nothing.
 - **Choosing a programming variant.** Boards already define several named programming variants, such as flash and sram, or different cables, such as FT232 and FT2232, each with its own argument template and USB filter. For now, `program_board` and `list_devices` always use the default variant. Later, an optional input could name another variant, and asking for one the board doesn't have would be a request error. Adding it later doesn't break existing hosts.

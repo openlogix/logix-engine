@@ -10,6 +10,7 @@ pub mod install_packages;
 pub mod lint;
 pub mod list_devices;
 pub mod program_board;
+pub mod simulate;
 pub mod test;
 
 use std::sync::Arc;
@@ -109,6 +110,7 @@ pub fn all_definitions() -> Vec<Tool> {
         definition::<get_catalog::GetCatalog>(),
         definition::<lint::Lint>(),
         definition::<test::Test>(),
+        definition::<simulate::Simulate>(),
         definition::<build::Build>(),
         definition::<clean_build::CleanBuild>(),
         definition::<list_devices::ListDevices>(),
@@ -166,6 +168,7 @@ pub async fn call(
     use lint::Lint;
     use list_devices::ListDevices;
     use program_board::ProgramBoard;
+    use simulate::Simulate;
     use test::Test;
     let result = match name {
         GetEngineInfo::NAME => to_call_result(
@@ -184,6 +187,10 @@ pub async fn call(
         }),
         Test::NAME => to_call_result(match parse_input::<Test>(arguments) {
             Ok(input) => test::run(state, input, call).await,
+            Err(e) => Err(e),
+        }),
+        Simulate::NAME => to_call_result(match parse_input::<Simulate>(arguments) {
+            Ok(input) => simulate::run(state, input, call).await,
             Err(e) => Err(e),
         }),
         CleanBuild::NAME => to_call_result(
