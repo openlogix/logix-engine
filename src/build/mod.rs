@@ -233,6 +233,8 @@ pub async fn run_watched(
 ) -> Result<Option<crate::runner::ToolRun>, ToolError> {
     let program = bin_dir.join(tool);
     call.output.command(tool, &command_line(&program, args));
+    call.commands
+        .push(crate::commands::record(&program, args, cwd, bin_dir));
     let on_line = |line: &str| {
         call.output.line(tool, OutputLevel::of(line), line);
         watch(line);

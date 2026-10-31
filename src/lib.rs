@@ -8,6 +8,7 @@
 pub mod board;
 pub mod build;
 pub mod catalog;
+pub mod commands;
 pub mod devices;
 pub mod errors;
 pub mod logging;

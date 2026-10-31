@@ -87,6 +87,10 @@ pub struct BuildOutput {
     pub timing: BTreeMap<String, f64>,
     /// Warnings from the tools.
     pub warnings: Vec<Diagnostic>,
+    /// The programs this call ran, in order, each with the exact command and
+    /// a shell line that runs it again without the engine, such as for a bug
+    /// report to the tool's developers.
+    pub commands: Vec<crate::commands::CommandRecord>,
 }
 
 fn identifier() -> &'static Regex {
@@ -195,6 +199,7 @@ pub async fn run(
     let request = check(input)?;
     let r = build::build(state, request, call).await?;
     Ok(BuildOutput {
+        commands: call.commands.take(),
         bitstream: r.bitstream,
         up_to_date: r.up_to_date,
         resources_usage: r.resources_usage,

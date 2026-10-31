@@ -183,8 +183,7 @@ pub fn launch_detached(
     bin_dir: &Path,
     on_exit: impl FnOnce() + Send + 'static,
 ) -> Result<(), ToolError> {
-    let mut path = OsString::from(bin_dir);
-    path.push(":/usr/bin:/bin");
+    let path = crate::commands::tool_path(bin_dir);
     let mut cmd = Command::new(program);
     cmd.args(args)
         .current_dir(cwd)

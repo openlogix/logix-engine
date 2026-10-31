@@ -85,6 +85,10 @@ pub struct LintOutput {
     /// The problems found, in Verilator's order: errors and warnings at file
     /// and line where known.
     pub diagnostics: Vec<Diagnostic>,
+    /// The programs this call ran, in order, each with the exact command and
+    /// a shell line that runs it again without the engine, such as for a bug
+    /// report to the tool's developers.
+    pub commands: Vec<crate::commands::CommandRecord>,
 }
 
 /// Checks the source fields lint, test and simulate share: the board, the
@@ -153,6 +157,7 @@ pub async fn run(
 ) -> Result<LintOutput, ToolError> {
     let r = lint::lint(state, check(input)?, call).await?;
     Ok(LintOutput {
+        commands: call.commands.take(),
         passed: r.passed,
         diagnostics: r.diagnostics,
     })

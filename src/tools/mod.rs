@@ -33,6 +33,8 @@ pub struct Call {
     /// Live tool output, line by line.
     pub output: Arc<dyn OutputSink>,
     pub cancel: CancellationToken,
+    /// The programs the call ran, for the result's commands list.
+    pub commands: Arc<crate::commands::CommandLog>,
 }
 
 impl Call {
@@ -42,6 +44,7 @@ impl Call {
             progress,
             output: Arc::new(crate::progress::NoOutput),
             cancel,
+            commands: Default::default(),
         }
     }
 }
@@ -153,6 +156,21 @@ fn to_value(err: &ToolError) -> serde_json::Value {
     serde_json::to_value(err).unwrap_or_else(|_| serde_json::json!({"category": "engine"}))
 }
 
+/// Puts the commands a failed call ran into its error's data, as
+/// data.commands, so a failure can be reproduced without the engine.
+fn with_commands<O>(result: Result<O, ToolError>, call: &Call) -> Result<O, ToolError> {
+    result.map_err(|mut err| {
+        let commands = call.commands.take();
+        if !commands.is_empty() {
+            err.data.get_or_insert_with(Default::default).insert(
+                "commands".into(),
+                serde_json::to_value(commands).unwrap_or_default(),
+            );
+        }
+        err
+    })
+}
+
 /// Runs a tool by name. Returns None for an unknown tool.
 pub async fn call(
     state: &EngineState,
@@ -171,42 +189,64 @@ pub async fn call(
     use simulate::Simulate;
     use test::Test;
     let result = match name {
-        GetEngineInfo::NAME => to_call_result(
+        GetEngineInfo::NAME => to_call_result(with_commands(
             parse_input::<GetEngineInfo>(arguments).and_then(|i| get_engine_info::run(state, i)),
-        ),
-        GetCatalog::NAME => to_call_result(
+            call,
+        )),
+        GetCatalog::NAME => to_call_result(with_commands(
             parse_input::<GetCatalog>(arguments).and_then(|i| get_catalog::run(state, i)),
-        ),
-        Build::NAME => to_call_result(match parse_input::<Build>(arguments) {
-            Ok(input) => build::run(state, input, call).await,
-            Err(e) => Err(e),
-        }),
-        Lint::NAME => to_call_result(match parse_input::<Lint>(arguments) {
-            Ok(input) => lint::run(state, input, call).await,
-            Err(e) => Err(e),
-        }),
-        Test::NAME => to_call_result(match parse_input::<Test>(arguments) {
-            Ok(input) => test::run(state, input, call).await,
-            Err(e) => Err(e),
-        }),
-        Simulate::NAME => to_call_result(match parse_input::<Simulate>(arguments) {
-            Ok(input) => simulate::run(state, input, call).await,
-            Err(e) => Err(e),
-        }),
-        CleanBuild::NAME => to_call_result(
+            call,
+        )),
+        Build::NAME => to_call_result(with_commands(
+            match parse_input::<Build>(arguments) {
+                Ok(input) => build::run(state, input, call).await,
+                Err(e) => Err(e),
+            },
+            call,
+        )),
+        Lint::NAME => to_call_result(with_commands(
+            match parse_input::<Lint>(arguments) {
+                Ok(input) => lint::run(state, input, call).await,
+                Err(e) => Err(e),
+            },
+            call,
+        )),
+        Test::NAME => to_call_result(with_commands(
+            match parse_input::<Test>(arguments) {
+                Ok(input) => test::run(state, input, call).await,
+                Err(e) => Err(e),
+            },
+            call,
+        )),
+        Simulate::NAME => to_call_result(with_commands(
+            match parse_input::<Simulate>(arguments) {
+                Ok(input) => simulate::run(state, input, call).await,
+                Err(e) => Err(e),
+            },
+            call,
+        )),
+        CleanBuild::NAME => to_call_result(with_commands(
             parse_input::<CleanBuild>(arguments).and_then(|i| clean_build::run(state, i)),
-        ),
-        ListDevices::NAME => to_call_result(
+            call,
+        )),
+        ListDevices::NAME => to_call_result(with_commands(
             parse_input::<ListDevices>(arguments).and_then(|i| list_devices::run(state, i)),
-        ),
-        ProgramBoard::NAME => to_call_result(match parse_input::<ProgramBoard>(arguments) {
-            Ok(input) => program_board::run(state, input, call).await,
-            Err(e) => Err(e),
-        }),
-        InstallPackages::NAME => to_call_result(match parse_input::<InstallPackages>(arguments) {
-            Ok(input) => install_packages::run(state, input, call).await,
-            Err(e) => Err(e),
-        }),
+            call,
+        )),
+        ProgramBoard::NAME => to_call_result(with_commands(
+            match parse_input::<ProgramBoard>(arguments) {
+                Ok(input) => program_board::run(state, input, call).await,
+                Err(e) => Err(e),
+            },
+            call,
+        )),
+        InstallPackages::NAME => to_call_result(with_commands(
+            match parse_input::<InstallPackages>(arguments) {
+                Ok(input) => install_packages::run(state, input, call).await,
+                Err(e) => Err(e),
+            },
+            call,
+        )),
         _ => return None,
     };
     Some(result)

@@ -112,6 +112,16 @@ async fn builds_then_is_up_to_date_until_an_input_changes() {
 
     let out = build_it(&state, &src, json!({})).await.unwrap();
     assert!(!out.up_to_date);
+    let tools: Vec<_> = out.commands.iter().map(|c| c.tool.as_str()).collect();
+    assert_eq!(tools, ["yosys", "nextpnr-ice40", "icepack"]);
+    assert!(
+        out.commands[0]
+            .package
+            .as_deref()
+            .unwrap()
+            .starts_with("oss-cad-suite ")
+    );
+    assert_eq!(out.commands[0].cwd, src.to_string_lossy());
     assert_eq!(out.bitstream, "hardware.bin");
     let bin = std::fs::read(out_dir.join("hardware.bin")).unwrap();
     assert!(bin.len() > 100_000, "an hx8k bitstream is about 135 KB");
@@ -137,6 +147,10 @@ async fn builds_then_is_up_to_date_until_an_input_changes() {
     // Same inputs: up to date, same result.
     let again = build_it(&state, &src, json!({})).await.unwrap();
     assert!(again.up_to_date);
+    assert!(
+        again.commands.is_empty(),
+        "an up-to-date build runs nothing"
+    );
     assert_eq!(again.resources_usage, out.resources_usage);
 
     // An included file changes: rebuilds.
@@ -520,6 +534,9 @@ async fn program_board_runs_the_command_with_the_device_and_bitstream() {
     .unwrap();
     assert_eq!(out.programmer, "custom");
     assert_eq!(out.device.device, 9);
+    assert_eq!(out.commands.len(), 1);
+    assert_eq!(out.commands[0].args[0], script.to_string_lossy());
+    assert_eq!(out.commands[0].package, None, "a custom programmer");
     let args = std::fs::read_to_string(&log).unwrap();
     assert_eq!(
         args.trim(),

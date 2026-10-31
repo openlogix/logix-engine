@@ -804,3 +804,70 @@ async fn a_testbench_without_finish_fails_and_long_output_is_shortened() {
     assert!(tb.output.ends_with("line 5999"));
     assert_eq!(tb.output.lines().count(), 5001);
 }
+
+#[tokio::test]
+async fn results_list_commands_that_run_again_without_the_engine() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    let out = lint::run(&state, lint_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    assert!(out.passed);
+    assert_eq!(out.commands.len(), 1);
+    let cmd = &out.commands[0];
+    assert_eq!(cmd.tool, "verilator_bin");
+    assert!(
+        cmd.package
+            .as_deref()
+            .unwrap()
+            .starts_with("oss-cad-suite ")
+    );
+    // The shell line reproduces the result: clean, then a warning.
+    let rerun = |shell: &str| {
+        std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(shell)
+            .output()
+            .unwrap()
+    };
+    assert!(rerun(&cmd.shell).status.success());
+    std::fs::write(src.join("main.v"), MAIN.replace(".I3(q[3])", ".I3(q)")).unwrap();
+    let again = rerun(&cmd.shell);
+    assert!(!again.status.success());
+    assert!(String::from_utf8_lossy(&again.stderr).contains("WIDTHTRUNC"));
+
+    let out = test::run(&state, test_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    let tools: Vec<_> = out.commands.iter().map(|c| c.tool.as_str()).collect();
+    assert_eq!(tools, ["iverilog", "vvp"]);
+}
+
+#[tokio::test]
+async fn failed_calls_carry_their_commands_in_the_error() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    std::fs::write(
+        src.join("rtl/counter.v"),
+        COUNTER.replace("cnt + 1'b1;", "cnt +;"),
+    )
+    .unwrap();
+    let args = serde_json::to_value(json!({
+        "board": "alhambra-ii",
+        "source_folder": src,
+        "source_files": ["main.v", "rtl/counter.v"],
+        "testbench_files": ["main_tb.v"],
+        "build_folder": src.join("_build/default"),
+    }))
+    .unwrap();
+    let result = logix_engine::tools::call(&state, "test", args.as_object().cloned(), &call())
+        .await
+        .unwrap();
+    assert_eq!(result.is_error, Some(true));
+    let err = result.structured_content.unwrap();
+    assert_eq!(err["category"], "design");
+    let commands = err["data"]["commands"].as_array().unwrap();
+    assert_eq!(commands.len(), 1, "{err:#}");
+    assert_eq!(commands[0]["tool"], "iverilog");
+    assert!(commands[0]["shell"].as_str().unwrap().contains("iverilog"));
+}

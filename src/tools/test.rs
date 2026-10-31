@@ -151,6 +151,10 @@ pub struct TestOutput {
     pub passed: bool,
     /// Each testbench's result, in the order given.
     pub testbenches: Vec<TestbenchResult>,
+    /// The programs this call ran, in order, each with the exact command and
+    /// a shell line that runs it again without the engine, such as for a bug
+    /// report to the tool's developers.
+    pub commands: Vec<crate::commands::CommandRecord>,
 }
 
 pub async fn run(
@@ -211,6 +215,7 @@ pub async fn run(
         results.push(TestbenchResult::from(r));
     }
     Ok(TestOutput {
+        commands: call.commands.take(),
         passed: results.iter().all(|r| r.passed),
         testbenches: results,
     })

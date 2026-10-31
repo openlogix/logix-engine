@@ -130,6 +130,10 @@ pub struct SimulateOutput {
     pub layout_created: bool,
     /// True if GTKWave was started.
     pub viewer_opened: bool,
+    /// The programs this call ran, in order, each with the exact command and
+    /// a shell line that runs it again without the engine, such as for a bug
+    /// report to the tool's developers.
+    pub commands: Vec<crate::commands::CommandRecord>,
 }
 
 /// Checks the layout file: a relative path ending in .gtkw, in a folder
@@ -247,12 +251,15 @@ pub async fn run(
         let args = gtkwave::gtkwave_args(&vcd, &layout);
         call.output
             .command("gtkwave", &command_line(&program, &args));
+        call.commands
+            .push(crate::commands::record(&program, &args, &src, &bin));
         let delete = layout.clone();
         gtkwave::launch_detached(&program, &args, &src, &bin, move || {
             gtkwave::delete_if_generated(&delete)
         })?;
     }
     Ok(SimulateOutput {
+        commands: call.commands.take(),
         passed: r.passed,
         diagnostics: r.diagnostics,
         output: r.output,

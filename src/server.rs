@@ -89,11 +89,13 @@ impl ServerHandler for EngineServer {
                 progress: n.clone(),
                 output: n.clone(),
                 cancel: context.ct.clone(),
+                commands: Default::default(),
             },
             None => tools::Call {
                 progress: Arc::new(NoProgress),
                 output: Arc::new(NoOutput),
                 cancel: context.ct.clone(),
+                commands: Default::default(),
             },
         };
         let result = tools::call(&self.state, &name, request.arguments, &call).await;

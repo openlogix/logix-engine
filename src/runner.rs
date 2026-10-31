@@ -55,8 +55,7 @@ pub async fn run_tool_with(
     if cancel.is_cancelled() {
         return Err(RunError::Cancelled);
     }
-    let mut path = OsString::from(bin_dir);
-    path.push(":/usr/bin:/bin");
+    let path = crate::commands::tool_path(bin_dir);
     let mut cmd = Command::new(program);
     cmd.args(args)
         .current_dir(cwd)

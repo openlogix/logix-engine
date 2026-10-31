@@ -64,6 +64,10 @@ pub struct ProgramBoardOutput {
     /// The programmer that was used, such as openfpgaloader, or custom for a
     /// programmer_command.
     pub programmer: String,
+    /// The programs this call ran, in order, each with the exact command and
+    /// a shell line that runs it again without the engine, such as for a bug
+    /// report to the tool's developers.
+    pub commands: Vec<crate::commands::CommandRecord>,
 }
 
 pub async fn run_with(
@@ -167,9 +171,15 @@ pub async fn run_with(
     });
     call.output
         .command(&tool_name, &command_line(&program, &args));
+    call.commands
+        .push(crate::commands::record(&program, &args, &folder, &bin));
     let run = run_tool_with(&program, &args, &folder, &bin, &call.cancel, &on_line).await;
     match run {
-        Ok(r) if r.status.success() => Ok(ProgramBoardOutput { device, programmer }),
+        Ok(r) if r.status.success() => Ok(ProgramBoardOutput {
+            device,
+            programmer,
+            commands: call.commands.take(),
+        }),
         Ok(r) => Err(program::failure(
             &program.file_name().unwrap_or_default().to_string_lossy(),
             &board.description,

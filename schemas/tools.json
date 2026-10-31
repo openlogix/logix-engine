@@ -678,6 +678,45 @@
     },
     "outputSchema": {
       "$defs": {
+        "CommandRecord": {
+          "additionalProperties": false,
+          "description": "One program the engine ran, with what it takes to run it again.",
+          "properties": {
+            "args": {
+              "description": "The program as an absolute path, then its arguments, exactly as\npassed.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cwd": {
+              "description": "The folder it ran in, as an absolute path.",
+              "type": "string"
+            },
+            "package": {
+              "description": "The package the program came from, with its version, such as\n\"oss-cad-suite 2026-10-22\". Omitted for a program from elsewhere, such\nas a custom programmer command.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "shell": {
+              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, HOME and TMPDIR).",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The program's name, such as yosys.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool",
+            "cwd",
+            "args",
+            "shell"
+          ],
+          "type": "object"
+        },
         "Diagnostic": {
           "description": "A problem reported by a tool, at a file and line when known.",
           "properties": {
@@ -746,6 +785,13 @@
       "additionalProperties": false,
       "description": "What lint found.",
       "properties": {
+        "commands": {
+          "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
+          "items": {
+            "$ref": "#/$defs/CommandRecord"
+          },
+          "type": "array"
+        },
         "diagnostics": {
           "description": "The problems found, in Verilator's order: errors and warnings at file\nand line where known.",
           "items": {
@@ -760,7 +806,8 @@
       },
       "required": [
         "passed",
-        "diagnostics"
+        "diagnostics",
+        "commands"
       ],
       "title": "LintOutput",
       "type": "object"
@@ -1010,6 +1057,45 @@
     },
     "outputSchema": {
       "$defs": {
+        "CommandRecord": {
+          "additionalProperties": false,
+          "description": "One program the engine ran, with what it takes to run it again.",
+          "properties": {
+            "args": {
+              "description": "The program as an absolute path, then its arguments, exactly as\npassed.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cwd": {
+              "description": "The folder it ran in, as an absolute path.",
+              "type": "string"
+            },
+            "package": {
+              "description": "The package the program came from, with its version, such as\n\"oss-cad-suite 2026-10-22\". Omitted for a program from elsewhere, such\nas a custom programmer command.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "shell": {
+              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, HOME and TMPDIR).",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The program's name, such as yosys.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool",
+            "cwd",
+            "args",
+            "shell"
+          ],
+          "type": "object"
+        },
         "Diagnostic": {
           "description": "A problem reported by a tool, at a file and line when known.",
           "properties": {
@@ -1158,6 +1244,13 @@
       "additionalProperties": false,
       "description": "The test results.",
       "properties": {
+        "commands": {
+          "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
+          "items": {
+            "$ref": "#/$defs/CommandRecord"
+          },
+          "type": "array"
+        },
         "passed": {
           "description": "True when every testbench passed.",
           "type": "boolean"
@@ -1172,7 +1265,8 @@
       },
       "required": [
         "passed",
-        "testbenches"
+        "testbenches",
+        "commands"
       ],
       "title": "TestOutput",
       "type": "object"
@@ -1429,6 +1523,45 @@
     },
     "outputSchema": {
       "$defs": {
+        "CommandRecord": {
+          "additionalProperties": false,
+          "description": "One program the engine ran, with what it takes to run it again.",
+          "properties": {
+            "args": {
+              "description": "The program as an absolute path, then its arguments, exactly as\npassed.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cwd": {
+              "description": "The folder it ran in, as an absolute path.",
+              "type": "string"
+            },
+            "package": {
+              "description": "The package the program came from, with its version, such as\n\"oss-cad-suite 2026-10-22\". Omitted for a program from elsewhere, such\nas a custom programmer command.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "shell": {
+              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, HOME and TMPDIR).",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The program's name, such as yosys.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool",
+            "cwd",
+            "args",
+            "shell"
+          ],
+          "type": "object"
+        },
         "Diagnostic": {
           "description": "A problem reported by a tool, at a file and line when known.",
           "properties": {
@@ -1527,6 +1660,13 @@
       "additionalProperties": false,
       "description": "The simulation result.",
       "properties": {
+        "commands": {
+          "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
+          "items": {
+            "$ref": "#/$defs/CommandRecord"
+          },
+          "type": "array"
+        },
         "diagnostics": {
           "description": "Compile warnings and the testbench's $fatal, $error and $warning\nmessages, at file and line.",
           "items": {
@@ -1577,7 +1717,8 @@
         "waveform_file",
         "layout_file",
         "layout_created",
-        "viewer_opened"
+        "viewer_opened",
+        "commands"
       ],
       "title": "SimulateOutput",
       "type": "object"
@@ -1808,6 +1949,45 @@
     },
     "outputSchema": {
       "$defs": {
+        "CommandRecord": {
+          "additionalProperties": false,
+          "description": "One program the engine ran, with what it takes to run it again.",
+          "properties": {
+            "args": {
+              "description": "The program as an absolute path, then its arguments, exactly as\npassed.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cwd": {
+              "description": "The folder it ran in, as an absolute path.",
+              "type": "string"
+            },
+            "package": {
+              "description": "The package the program came from, with its version, such as\n\"oss-cad-suite 2026-10-22\". Omitted for a program from elsewhere, such\nas a custom programmer command.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "shell": {
+              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, HOME and TMPDIR).",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The program's name, such as yosys.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool",
+            "cwd",
+            "args",
+            "shell"
+          ],
+          "type": "object"
+        },
         "Diagnostic": {
           "description": "A problem reported by a tool, at a file and line when known.",
           "properties": {
@@ -1899,6 +2079,13 @@
           "description": "Path of the bitstream, relative to the build folder.",
           "type": "string"
         },
+        "commands": {
+          "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
+          "items": {
+            "$ref": "#/$defs/CommandRecord"
+          },
+          "type": "array"
+        },
         "resources_usage": {
           "additionalProperties": {
             "$ref": "#/$defs/ResourceUsage"
@@ -1930,7 +2117,8 @@
         "up_to_date",
         "resources_usage",
         "timing",
-        "warnings"
+        "warnings",
+        "commands"
       ],
       "title": "BuildOutput",
       "type": "object"
@@ -2310,6 +2498,45 @@
     },
     "outputSchema": {
       "$defs": {
+        "CommandRecord": {
+          "additionalProperties": false,
+          "description": "One program the engine ran, with what it takes to run it again.",
+          "properties": {
+            "args": {
+              "description": "The program as an absolute path, then its arguments, exactly as\npassed.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cwd": {
+              "description": "The folder it ran in, as an absolute path.",
+              "type": "string"
+            },
+            "package": {
+              "description": "The package the program came from, with its version, such as\n\"oss-cad-suite 2026-10-22\". Omitted for a program from elsewhere, such\nas a custom programmer command.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "shell": {
+              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, HOME and TMPDIR).",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The program's name, such as yosys.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool",
+            "cwd",
+            "args",
+            "shell"
+          ],
+          "type": "object"
+        },
         "Device": {
           "additionalProperties": false,
           "description": "A connected device.",
@@ -2390,6 +2617,13 @@
       "additionalProperties": false,
       "description": "What was programmed.",
       "properties": {
+        "commands": {
+          "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
+          "items": {
+            "$ref": "#/$defs/CommandRecord"
+          },
+          "type": "array"
+        },
         "device": {
           "$ref": "#/$defs/Device",
           "description": "The device that was programmed."
@@ -2401,7 +2635,8 @@
       },
       "required": [
         "device",
-        "programmer"
+        "programmer",
+        "commands"
       ],
       "title": "ProgramBoardOutput",
       "type": "object"

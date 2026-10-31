@@ -39,7 +39,7 @@ The Type columns in this document use these logical types. Each maps to a JSON t
 | enum | string | One of the values listed in the field's description |
 | list of X | array | Items of type X |
 | map of X | object | Keys are catalog IDs or names, and values are of type X |
-| error, diagnostic, action, device, resource, testbench result | object | See error fields in [Table 3](#results-and-errors), diagnostic fields in [Table 4](#results-and-errors), action codes in [Table 5](#results-and-errors), device fields in [Table 13](#list_devices-tool), resource fields in [Table 7](#build-tool), and testbench result fields in [Table 27](#test-tool) |
+| error, diagnostic, action, device, resource, testbench result, command | object | See error fields in [Table 3](#results-and-errors), diagnostic fields in [Table 4](#results-and-errors), action codes in [Table 5](#results-and-errors), device fields in [Table 13](#list_devices-tool), resource fields in [Table 7](#build-tool), testbench result fields in [Table 27](#test-tool), and command fields in [Table 30](#commands) |
 
 ### Folders
 
@@ -71,7 +71,7 @@ On success, a tool returns its output object as structured content. On failure, 
 | `details` | multiline text | Troubleshooting details, such as tool output |
 | `diagnostics` | list of diagnostics | Problems with file and line, mainly for design errors. See diagnostic fields in Table 4 |
 | `action` | action | Optional suggested action, with an enum code from Table 5 and a text description |
-| `data` | object | Optional extra data, such as candidate devices |
+| `data` | object | Optional extra data, such as candidate devices, or `commands`, the programs a failed call ran, as in [Commands](#commands) |
 
 **Table 4.** Diagnostic fields
 
@@ -116,6 +116,34 @@ A host that wants to show the tools' output as it happens, such as in a console,
 Lines that the engine reads into diagnostics still come in the tool result too. The live lines are for showing, not for parsing.
 
 **Verbose.** Tools that run other tools take an optional boolean `verbose`, like Apio's `--verbose`. It asks those tools to print more detail, which shows in the live output and the logs, and never changes the result. Each tool maps it to what its tools offer: `build` runs yosys and nextpnr without `-q`, `lint` runs Verilator without `--quiet`, `test` and `simulate` run iverilog with `-v`, and `program_board` adds openFPGALoader's `--verbose` or iceprog's `-v`. A build that is up to date runs nothing, so it prints nothing extra.
+
+### Commands
+
+Results of the tools that run programs (`lint`, `test`, `simulate`, `build` and `program_board`) list the programs they ran in `commands`, in order, and so does `data.commands` in an error from them. Like Apio's command listing, it lets anyone run a step again without the engine, such as to report a bug to the tool's developers. A build that is up to date runs nothing, so its list is empty.
+
+**Table 30.** Command fields
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `tool` | text | The program's name, such as `yosys` |
+| `package` | text | The package it came from and its version, such as `oss-cad-suite 2026-10-22`. Omitted for a program from elsewhere, such as a custom programmer command |
+| `cwd` | absolute path | The folder it ran in |
+| `args` | list of text | The program as an absolute path, then its arguments, exactly as passed |
+| `shell` | text | One POSIX shell command line that runs it again the same way: in the same folder, with the same minimal environment, `PATH` (the package's `bin` folder, then `/usr/bin:/bin`), `HOME` and `TMPDIR` |
+
+Example:
+
+```json
+{
+  "tool": "verilator_bin",
+  "package": "oss-cad-suite 2026-10-22",
+  "cwd": "/home/u/proj",
+  "args": ["/home/u/.logix/packages/oss-cad-suite/2026-10-22/bin/verilator_bin", "--lint-only", "--quiet", "main.v"],
+  "shell": "cd /home/u/proj && env -i PATH=/home/u/.logix/packages/oss-cad-suite/2026-10-22/bin:/usr/bin:/bin HOME=\"$HOME\" TMPDIR=\"$TMPDIR\" /home/u/.logix/packages/oss-cad-suite/2026-10-22/bin/verilator_bin --lint-only --quiet main.v"
+}
+```
+
+Files the engine generated for a step, such as lint's Verilator config in the engine folder's `tmp/` or a testbench's `.limit.v` in the build folder, are named by absolute path and stay where they are, so the line works as long as they do.
 
 ### Progress
 
@@ -174,6 +202,7 @@ It runs Verilator with Apio's options, so it reports the same problems: `--lint-
 | --- | --- | --- |
 | `passed` | boolean | True when Verilator found no errors and no warnings |
 | `diagnostics` | list of diagnostics | The problems found, at file, line and column where known. A Verilator warning code, such as `WIDTHTRUNC`, ends the text in parentheses, since a `/* verilator lint_off WIDTHTRUNC */` comment names it. Problems in the primitive models keep their location in the text |
+| `commands` | list of commands | The programs this call ran, in order, so they can be run again without the engine. See [Commands](#commands) |
 
 **Errors:** setup errors with `install_packages`. Request errors, such as an unknown board, a missing file or an included file outside the source folder. Tool failures, when Verilator fails without reporting a problem. Engine errors and cancellation.
 
@@ -237,6 +266,7 @@ It uses Apio's commands: `iverilog -g2012 -o <build folder>/<testbench>.out`, th
 | --- | --- | --- |
 | `passed` | boolean | True when every testbench passed |
 | `testbenches` | list of testbench results | Each testbench's result, in the order given. See Table 27 |
+| `commands` | list of commands | The programs this call ran, in order, so they can be run again without the engine. See [Commands](#commands) |
 
 **Table 27.** Testbench result fields
 
@@ -333,6 +363,7 @@ This is the one case where the engine creates or deletes a file in the source fo
 | `layout_file` | absolute path | The layout file GTKWave opens |
 | `layout_created` | boolean | True if the engine wrote a default layout, false if it kept the user's |
 | `viewer_opened` | boolean | True if GTKWave was started |
+| `commands` | list of commands | The programs this call ran, in order, so they can be run again without the engine. See [Commands](#commands) |
 
 **Errors:** design errors for compile errors, `$dumpfile` and a testbench without `$dumpvars`. Setup errors with `install_packages`, or when the layout file can't be written. Request errors, such as a missing file, a layout file that isn't `.gtkw` or whose folder doesn't exist, or a build folder that breaks the keyword rules. Tool failures, such as when GTKWave can't start, engine errors and cancellation.
 
@@ -454,6 +485,7 @@ For iCE40 it runs yosys (`synth_ice40`), nextpnr-ice40 and icepack with the same
 | `resources_usage` | map of resource usage | Resource use, keyed by the toolchain's resource names. For iCE40: `ICESTORM_LC` (logic cells, each a LUT and a flip-flop), `ICESTORM_RAM` (block RAMs), `SB_IO` (I/O pins), `SB_GB` (global buffers), `ICESTORM_PLL` and others. Each value has integer `used` and `available` fields |
 | `timing` | map of numbers | Maximum frequency in MHz for each clock net, keyed by the clock net name nextpnr reports, rounded to 0.01 MHz |
 | `warnings` | list of diagnostics | Warnings from the tools. See diagnostic fields in [Table 4](#results-and-errors) |
+| `commands` | list of commands | The programs this call ran, in order, so they can be run again without the engine. See [Commands](#commands) |
 
 **Errors:** design errors, such as syntax errors or unknown pin names. Setup errors with `install_packages`. Request errors, such as an unknown board or a build folder that breaks the keyword rules. Tool failures, engine errors and cancellation. A clock that misses its intended frequency is not an error: the host compares the frequencies in `timing` with its own targets.
 
@@ -532,6 +564,7 @@ Programs a bitstream into the board it was built for. The `program_board` tool t
 | --- | --- | --- |
 | `device` | device | The device that was programmed. See device fields in [Table 13](#list_devices-tool) |
 | `programmer` | catalog ID | The programmer that was used, such as `openfpgaloader`, or `custom` when `programmer_command` was given |
+| `commands` | list of commands | The programs this call ran, in order, so they can be run again without the engine. See [Commands](#commands) |
 
 **Errors:** setup errors with `connect_board` when no device matches, `select_device` when several match, `fix_device_permissions` or `install_drivers`. With `select_device`, `data.candidates` lists the matching devices so the host can let the user pick one and retry. A request error when the build folder has no build record. Other request errors, tool failures, engine errors and cancellation.
 
