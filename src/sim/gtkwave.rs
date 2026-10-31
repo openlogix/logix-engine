@@ -109,6 +109,7 @@ pub fn write_default_if_needed(
     testbench: &str,
 ) -> Result<bool, ToolError> {
     if layout.exists() && !is_generated(layout) {
+        log::info!("Keeping the user's layout {}", layout.display());
         return Ok(false);
     }
     let file = fs::File::open(vcd).map_err(|e| {
@@ -124,6 +125,11 @@ pub fn write_default_if_needed(
             layout.display()
         ))
     })?;
+    log::info!(
+        "Wrote the default layout {} ({} signals)",
+        layout.display(),
+        signals.len()
+    );
     Ok(true)
 }
 
@@ -141,11 +147,16 @@ pub fn gtkwave_args(vcd: &Path, layout: &Path) -> Vec<OsString> {
 /// layouts the user never saved don't pile up in the project. A layout the
 /// user saved has no marker and is kept.
 pub fn delete_if_generated(path: &Path) {
-    if is_generated(path) {
-        match fs::remove_file(path) {
-            Ok(()) => log::info!("Deleted the unsaved default layout {}", path.display()),
-            Err(e) => log::info!("Can't delete the default layout {}: {e}", path.display()),
-        }
+    if !is_generated(path) {
+        log::info!("GTKWave closed; keeping the layout {}", path.display());
+        return;
+    }
+    match fs::remove_file(path) {
+        Ok(()) => log::info!(
+            "GTKWave closed; deleted the unsaved default layout {}",
+            path.display()
+        ),
+        Err(e) => log::info!("Can't delete the default layout {}: {e}", path.display()),
     }
 }
 
