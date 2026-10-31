@@ -11,6 +11,7 @@ use logix_engine::errors::{Category, Severity};
 use logix_engine::packages::PackageManager;
 use logix_engine::packages::manifest;
 use logix_engine::progress::{NoProgress, OutputLevel, OutputSink, Phases};
+use logix_engine::sim::testbench::Ending;
 use logix_engine::state::{self, EngineState};
 use logix_engine::tools::{Call, lint, simulate, test};
 use serde_json::{Value, json};
@@ -637,7 +638,7 @@ async fn test_stops_at_the_first_failure_unless_asked_not_to() {
     let fast = start.elapsed();
     let tb = &out.testbenches[0];
     assert!(!tb.passed);
-    assert!(tb.stopped_at_failure);
+    assert_eq!(tb.ending, Ending::FirstFailure);
     assert!(!tb.output.contains("still running"), "{}", tb.output);
     assert_eq!(tb.diagnostics.len(), 1, "{:#?}", tb.diagnostics);
     assert_eq!(tb.diagnostics[0].text, "first failure");
@@ -650,7 +651,7 @@ async fn test_stops_at_the_first_failure_unless_asked_not_to() {
     let full = start.elapsed();
     let tb = &out.testbenches[0];
     assert!(!tb.passed);
-    assert!(!tb.stopped_at_failure);
+    assert_eq!(tb.ending, Ending::Finished);
     assert!(tb.output.contains("still running"), "{}", tb.output);
     let times: Vec<_> = tb.diagnostics.iter().map(|d| d.time_ns).collect();
     assert_eq!(times, [Some(10.0), Some(15.0)]);
@@ -729,4 +730,77 @@ endmodule
         .unwrap();
     assert_eq!(out.failure_count, 150);
     assert_eq!(out.diagnostics.len(), 100);
+}
+
+#[tokio::test]
+async fn runs_that_dont_end_are_stopped_by_the_limits() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    // A clock forever, with no `timescale and no $finish.
+    let forever = "module main_tb;\n  reg clk = 0;\n  initial $dumpvars(0, main_tb);\n  always #5 clk = ~clk;\nendmodule\n";
+    std::fs::write(src.join("main_tb.v"), forever).unwrap();
+
+    // Simulated time limit.
+    let input = test_input(&src, json!({"max_sim_time_ns": 250}));
+    let out = test::run(&state, input, &call()).await.unwrap();
+    let tb = &out.testbenches[0];
+    assert_eq!(tb.ending, Ending::SimTimeLimit, "{tb:#?}");
+    assert!(!tb.passed);
+    assert!(
+        tb.diagnostics.is_empty(),
+        "no timescale warning: {:#?}",
+        tb.diagnostics
+    );
+    assert!(src.join("_build/default/main_tb.vcd").is_file());
+
+    // Real time limit.
+    let start = std::time::Instant::now();
+    let input = test_input(&src, json!({"timeout_seconds": 1}));
+    let out = test::run(&state, input, &call()).await.unwrap();
+    assert_eq!(out.testbenches[0].ending, Ending::Timeout);
+    assert!(!out.passed);
+    assert!(start.elapsed() < std::time::Duration::from_secs(8));
+
+    let input = simulate_input(&src, json!({"max_sim_time_ns": 100}));
+    let out = simulate::run(&state, input, &call()).await.unwrap();
+    assert_eq!(out.ending, Ending::SimTimeLimit);
+    let input = simulate_input(&src, json!({"timeout_seconds": 1}));
+    let out = simulate::run(&state, input, &call()).await.unwrap();
+    assert_eq!(out.ending, Ending::Timeout);
+
+    for (extra, needle) in [
+        (json!({"max_sim_time_ns": 0}), "max_sim_time_ns"),
+        (json!({"timeout_seconds": 0}), "timeout_seconds"),
+    ] {
+        let err = simulate::run(&state, simulate_input(&src, extra), &call())
+            .await
+            .unwrap_err();
+        assert!(err.message.contains(needle), "{}", err.message);
+    }
+}
+
+#[tokio::test]
+async fn a_testbench_without_finish_fails_and_long_output_is_shortened() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    // Prints 6000 lines, then runs out of events without $finish.
+    std::fs::write(
+        src.join("main_tb.v"),
+        "module main_tb;\n  integer i;\n  initial for (i = 0; i < 6000; i = i + 1) $display(\"line %0d\", i);\nendmodule\n",
+    )
+    .unwrap();
+    let out = test::run(&state, test_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    let tb = &out.testbenches[0];
+    assert_eq!(tb.ending, Ending::NoFinish);
+    assert!(!tb.passed);
+    assert!(tb.output.starts_with("line 0\n"));
+    assert!(
+        tb.output.contains("\n[... 1000 lines left out ...]\n"),
+        "{}",
+        &tb.output[..100]
+    );
+    assert!(tb.output.ends_with("line 5999"));
+    assert_eq!(tb.output.lines().count(), 5001);
 }

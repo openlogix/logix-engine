@@ -227,6 +227,8 @@ It uses Apio's commands: `iverilog -g2012 -o <build folder>/<testbench>.out`, th
 | `testbench_files` | list of relative paths | Yes | The testbenches to run, in order, relative to the source folder. At least one. A file may be listed only once in `source_files` and `testbench_files` together |
 | `defines` | map of text | No | Macro definitions, as in the [build tool](#build-tool). `APIO_SIM` is always defined as `0` |
 | `stop_at_first_failure` | boolean | No | Stop each testbench at its first failure, so a failing run ends fast; its output and waveform then end there. False runs each testbench to the end, to see every failure. Defaults to true |
+| `max_sim_time_ns` | integer | No | Stop each testbench when simulated time reaches this many nanoseconds. Defaults to no limit. See [Runs that don't end](#runs-that-dont-end) |
+| `timeout_seconds` | integer | No | Stop each testbench after this many seconds of real time. Defaults to 600; 0 means no limit |
 | `verbose` | boolean | No | Run iverilog with `-v`. Defaults to false |
 
 **Table 26.** test tool outputs
@@ -241,11 +243,11 @@ It uses Apio's commands: `iverilog -g2012 -o <build folder>/<testbench>.out`, th
 | Field | Type | Description |
 | --- | --- | --- |
 | `file` | relative path | The testbench, relative to the source folder |
-| `passed` | boolean | True when it reached `$finish` without `$fatal`, `$error` or a failure line from Apio's assertion macros |
+| `passed` | boolean | True when it ended itself with `$finish` (`ending` is `finished`) without `$fatal`, `$error` or a failure line from Apio's assertion macros |
 | `diagnostics` | list of diagnostics | Compile warnings, and the testbench's `$fatal`, `$error` and `$warning` messages at file and line. The failure lines of Apio's assertion macros are errors too, at file and line when they give one, such as `ERROR at main_tb.v:52: ...` and `*** ASSERTION FAILED at main_tb.v:52: ...`; `*** ASSERTION FAILED in main_tb ...` has no location |
-| `output` | multiline text | What the testbench printed, such as with `$display` |
+| `output` | multiline text | What the testbench printed, such as with `$display`. When it printed more than 5,000 lines, the first and last 2,500, with a line saying how many were left out between them |
 | `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder, when the testbench wrote one with `$dumpvars` |
-| `stopped_at_failure` | boolean | True if the engine stopped the testbench at its first failure, so its output and waveform end there |
+| `ending` | enum | How the run ended: `finished` (the testbench ended itself, with `$finish` or `$fatal`), `first_failure`, `sim_time_limit` or `timeout` (the engine stopped it; its output and waveform end there), or `no_finish` (it ran out of things to simulate without calling `$finish`, which usually means it stopped early by mistake) |
 | `failure_count` | integer | How many failures the testbench reported. `diagnostics` lists the first 100, each with its time; a check that fails again at another time is another failure |
 
 **Errors:** design errors for compile errors and `$dumpfile`. Setup errors with `install_packages`. Request errors, such as an unknown board, a missing file or a build folder that breaks the keyword rules. Tool failures, engine errors and cancellation.
@@ -280,7 +282,7 @@ Output:
       ],
       "output": "ERROR: main_tb.v:10: q is 3, expected 9\n       Time: 95000  Scope: main_tb",
       "waveform_file": "main_tb.vcd",
-      "stopped_at_failure": true,
+      "ending": "first_failure",
       "failure_count": 1
     }
   ]
@@ -313,6 +315,8 @@ This is the one case where the engine creates or deletes a file in the source fo
 | `testbench_file` | relative path | Yes | The testbench to simulate, relative to the source folder |
 | `layout_file` | relative path | No | The GTKWave layout file, relative to the source folder, ending in `.gtkw`. Its folder must exist; the file may not. When omitted, the layout goes into the build folder |
 | `open_viewer` | boolean | No | Start GTKWave on the waveform. Defaults to true |
+| `max_sim_time_ns` | integer | No | Stop the testbench when simulated time reaches this many nanoseconds. Defaults to no limit |
+| `timeout_seconds` | integer | No | Stop the testbench after this many seconds of real time. Defaults to no limit |
 | `defines` | map of text | No | Macro definitions, as in the [build tool](#build-tool). `APIO_SIM` is always defined as `1` |
 | `verbose` | boolean | No | Run iverilog with `-v`. Defaults to false |
 
@@ -324,6 +328,7 @@ This is the one case where the engine creates or deletes a file in the source fo
 | `diagnostics` | list of diagnostics | As in the testbench results of the test tool, in [Table 27](#test-tool) |
 | `output` | multiline text | What the testbench printed |
 | `failure_count` | integer | How many failures the testbench reported, as in the test tool |
+| `ending` | enum | How the run ended, as in the test tool. Never `first_failure` |
 | `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder |
 | `layout_file` | absolute path | The layout file GTKWave opens |
 | `layout_created` | boolean | True if the engine wrote a default layout, false if it kept the user's |
@@ -353,6 +358,8 @@ Output:
   "passed": true,
   "diagnostics": [],
   "output": "main_tb passed\nmain_tb.v:12: $finish called at 95000 (1ps)",
+  "failure_count": 0,
+  "ending": "finished",
   "waveform_file": "main_tb.vcd",
   "layout_file": "/home/u/proj/main_tb.gtkw",
   "layout_created": true,
@@ -369,7 +376,17 @@ The same testbench serves two purposes: `test` is a batch check that should fail
 | At the first failure | Stops the testbench, unless `stop_at_first_failure` is false | Lets it run to the end |
 | Waveform | Kept, up to the failure | Complete |
 | Finding the failure | Each failure's file, line and simulation time (`time_ns`) | The same, and a default layout puts GTKWave's marker at the first failure |
-| `passed` | False after any failure | False after any failure |
+| Limits | `timeout_seconds` (default 600) and `max_sim_time_ns` | The same, with no default |
+| `passed` | False after any failure, or when stopped by a limit | The same |
+
+### Runs that don't end
+
+A testbench that never calls `$finish`, such as one with a free-running clock, or one stuck in a loop, would run forever. Two limits stop it, and a testbench stopped by either fails, with `ending` saying which:
+
+- **`max_sim_time_ns`** stops it when simulated time passes the limit, so the result is the same on every computer. The engine compiles a small extra module, `<testbench>.limit.v` in the build folder, that ends the simulation at that time; Icarus runs it alongside the testbench without changes to the user's files. Its 1 ns time unit makes the waveform's time unit at most 1 ns.
+- **`timeout_seconds`** stops it after that much real time. It also catches a loop that doesn't advance simulated time. `test` stops after 10 minutes unless told otherwise, so an AI agent or CI run can't hang; `simulate` has no default, since someone is watching.
+
+A testbench that runs out of things to simulate without calling `$finish` ends with `no_finish` and fails too: it usually means it stopped early by mistake.
 
 To stop a testbench, the engine asks vvp to exit, which writes out the waveform so far. Any tool the engine stops, such as when the host cancels, is asked to exit first and killed if it hasn't after two seconds.
 
@@ -380,7 +397,7 @@ These are the engine's guidelines for testbenches. Testbenches written for Apio 
 1. **Report a failure with `$error`, then keep going.** Put the expected and actual values in the message. The engine reads `$error` with its file, line and simulation time, and decides whether to stop.
 2. **Use `$fatal` only when going on makes no sense,** such as a missing data file. It stops the run in both modes.
 3. **Don't check the mode.** No `` if (!`APIO_SIM) $fatal ``: the engine stops `test` at the first failure and lets `simulate` run to the end.
-4. **End with `$finish`.** A testbench that never finishes runs until the host cancels it.
+4. **End with `$finish`.** A testbench that runs out of things to do without it fails, and one that never ends is stopped by a [limit](#runs-that-dont-end) and fails.
 5. **Call `$dumpvars(0, <testbench module>)` at the start** to write a waveform, and **never call `$dumpfile`**: the engine decides where the waveform goes.
 6. **Read data files relative to the source folder,** such as `$readmemh("data/rom.hex", rom)`. Testbenches run there.
 7. **`SYNTHESIZE` isn't defined in `test` and `simulate`,** so `` `ifdef SYNTHESIZE `` / `` `else `` selects the simulation code.

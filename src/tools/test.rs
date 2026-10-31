@@ -11,7 +11,7 @@ use super::{Call, EngineTool};
 use crate::board::BoardSpec;
 use crate::errors::{Diagnostic, ToolError};
 use crate::progress::Phases;
-use crate::sim::testbench::{self, TestbenchRun};
+use crate::sim::testbench::{self, Ending, RunOptions, TestbenchRun};
 use crate::sim::{SimLibrary, Sources, TOOLCHAIN, toolchain};
 use crate::state::EngineState;
 
@@ -74,6 +74,17 @@ pub struct TestInput {
     /// testbench to the end, to see every failure. Defaults to true.
     #[serde(default = "default_true")]
     pub stop_at_first_failure: bool,
+    /// Stop each testbench when simulated time reaches this many
+    /// nanoseconds, such as one that never calls $finish. A testbench
+    /// stopped this way fails. Defaults to no limit.
+    #[serde(default)]
+    #[schemars(range(min = 1))]
+    pub max_sim_time_ns: Option<u64>,
+    /// Stop each testbench after this many seconds of real time, such as one
+    /// stuck in a loop. A testbench stopped this way fails. Defaults to 600;
+    /// 0 means no limit.
+    #[serde(default = "default_timeout")]
+    pub timeout_seconds: u64,
     /// Let iverilog print more detail, shown in the live output and the
     /// logs. It doesn't change the result. Defaults to false.
     #[serde(default)]
@@ -84,14 +95,19 @@ fn default_true() -> bool {
     true
 }
 
+fn default_timeout() -> u64 {
+    600
+}
+
 /// One testbench's result.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TestbenchResult {
     /// The testbench, relative to the source folder.
     pub file: String,
-    /// True when it ran to the end without $fatal, $error or a failure line
-    /// from Apio's assertion macros (*** ASSERTION FAILED, ERROR at).
+    /// True when it ended itself with $finish, without $fatal, $error or a
+    /// failure line from Apio's assertion macros (*** ASSERTION FAILED, ERROR
+    /// at).
     pub passed: bool,
     /// Compile warnings and the testbench's $fatal, $error and $warning
     /// messages, at file and line.
@@ -103,9 +119,11 @@ pub struct TestbenchResult {
     /// wrote one with $dumpvars.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waveform_file: Option<String>,
-    /// True if the engine stopped the testbench at its first failure, so its
-    /// output and waveform end there.
-    pub stopped_at_failure: bool,
+    /// How the run ended: finished (the testbench ended itself),
+    /// first_failure, sim_time_limit or timeout (the engine stopped it, and
+    /// its output and waveform end there), or no_finish (it ran out of
+    /// things to simulate without calling $finish, a failure).
+    pub ending: Ending,
     /// How many failures the testbench reported. diagnostics lists the first
     /// 100 of them, each with its time.
     pub failure_count: u64,
@@ -119,7 +137,7 @@ impl From<TestbenchRun> for TestbenchResult {
             diagnostics: r.diagnostics,
             output: r.output,
             waveform_file: r.waveform_file,
-            stopped_at_failure: r.stopped_at_failure,
+            ending: r.ending,
             failure_count: r.failure_count,
         }
     }
@@ -140,7 +158,16 @@ pub async fn run(
     input: TestInput,
     call: &Call,
 ) -> Result<TestOutput, ToolError> {
-    let input_stop = input.stop_at_first_failure;
+    if input.max_sim_time_ns == Some(0) {
+        return Err(ToolError::request("max_sim_time_ns must be at least 1."));
+    }
+    let options = RunOptions {
+        interactive: false,
+        stop_at_first_failure: input.stop_at_first_failure,
+        max_sim_time_ns: input.max_sim_time_ns,
+        timeout: (input.timeout_seconds > 0)
+            .then(|| std::time::Duration::from_secs(input.timeout_seconds)),
+    };
     if input.testbench_files.is_empty() {
         return Err(ToolError::request("testbench_files is empty."));
     }
@@ -176,8 +203,7 @@ pub async fn run(
             &bin,
             &build_folder,
             tb,
-            false,
-            input_stop,
+            options,
             &phases,
             call,
         )

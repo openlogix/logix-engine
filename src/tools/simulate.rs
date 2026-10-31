@@ -14,7 +14,7 @@ use crate::errors::{Category, Diagnostic, Severity, ToolError};
 use crate::paths;
 use crate::progress::Phases;
 use crate::runner::command_line;
-use crate::sim::testbench::{self, build_stem};
+use crate::sim::testbench::{self, Ending, RunOptions, build_stem};
 use crate::sim::{SimLibrary, TOOLCHAIN, gtkwave, toolchain};
 use crate::state::EngineState;
 
@@ -79,6 +79,16 @@ pub struct SimulateInput {
     /// waveform and the layout.
     #[serde(default = "default_true")]
     pub open_viewer: bool,
+    /// Stop the testbench when simulated time reaches this many nanoseconds,
+    /// such as one that never calls $finish. Defaults to no limit.
+    #[serde(default)]
+    #[schemars(range(min = 1))]
+    pub max_sim_time_ns: Option<u64>,
+    /// Stop the testbench after this many seconds of real time, such as one
+    /// stuck in a loop. Defaults to no limit.
+    #[serde(default)]
+    #[schemars(range(min = 1))]
+    pub timeout_seconds: Option<u64>,
     /// Verilog macro definitions, from name to value, such as
     /// {"WIDTH": "8"}. An empty value defines the macro with no text, for
     /// `ifdef. APIO_SIM is always defined as 1.
@@ -107,6 +117,10 @@ pub struct SimulateOutput {
     /// How many failures the testbench reported. diagnostics lists the first
     /// 100 of them, each with its time.
     pub failure_count: u64,
+    /// How the run ended: finished (the testbench ended itself),
+    /// sim_time_limit or timeout (the engine stopped it), or no_finish (it
+    /// ran out of things to simulate without calling $finish, a failure).
+    pub ending: Ending,
     /// The waveform (.vcd), relative to the build folder.
     pub waveform_file: String,
     /// The layout file GTKWave opens, as an absolute path.
@@ -153,6 +167,12 @@ pub async fn run(
     input: SimulateInput,
     call: &Call,
 ) -> Result<SimulateOutput, ToolError> {
+    if input.max_sim_time_ns == Some(0) {
+        return Err(ToolError::request("max_sim_time_ns must be at least 1."));
+    }
+    if input.timeout_seconds == Some(0) {
+        return Err(ToolError::request("timeout_seconds must be at least 1."));
+    }
     let tb = input.testbench_file.clone();
     let sources = check_sources(
         &input.board,
@@ -187,8 +207,12 @@ pub async fn run(
         &bin,
         &build_folder,
         &tb,
-        true,
-        false,
+        RunOptions {
+            interactive: true,
+            stop_at_first_failure: false,
+            max_sim_time_ns: input.max_sim_time_ns,
+            timeout: input.timeout_seconds.map(std::time::Duration::from_secs),
+        },
         &phases,
         call,
     )
@@ -233,6 +257,7 @@ pub async fn run(
         diagnostics: r.diagnostics,
         output: r.output,
         failure_count: r.failure_count,
+        ending: r.ending,
         waveform_file,
         layout_file: layout.to_string_lossy().into_owned(),
         layout_created,

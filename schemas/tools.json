@@ -952,6 +952,15 @@
           "description": "Verilog macro definitions, from name to value, such as\n{\"WIDTH\": \"8\"}. An empty value defines the macro with no text, for\n`ifdef. APIO_SIM is always defined as 0.",
           "type": "object"
         },
+        "max_sim_time_ns": {
+          "default": null,
+          "description": "Stop each testbench when simulated time reaches this many\nnanoseconds, such as one that never calls $finish. A testbench\nstopped this way fails. Defaults to no limit.",
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "source_files": {
           "description": "The design files (.v or .sv), relative to the source folder, with / as\nthe separator, such as [\"main.v\", \"rtl/uart.v\"]. Don't list\ntestbenches or included files.",
           "items": {
@@ -976,6 +985,12 @@
           },
           "minItems": 1,
           "type": "array"
+        },
+        "timeout_seconds": {
+          "default": 600,
+          "description": "Stop each testbench after this many seconds of real time, such as one\nstuck in a loop. A testbench stopped this way fails. Defaults to 600;\n0 means no limit.",
+          "minimum": 0,
+          "type": "integer"
         },
         "verbose": {
           "default": false,
@@ -1049,6 +1064,36 @@
           ],
           "type": "object"
         },
+        "Ending": {
+          "description": "How a testbench run ended.",
+          "oneOf": [
+            {
+              "const": "finished",
+              "description": "The testbench ended itself, with $finish or $fatal.",
+              "type": "string"
+            },
+            {
+              "const": "first_failure",
+              "description": "The engine stopped it at its first failure.",
+              "type": "string"
+            },
+            {
+              "const": "sim_time_limit",
+              "description": "The engine stopped it when simulated time reached max_sim_time_ns.",
+              "type": "string"
+            },
+            {
+              "const": "timeout",
+              "description": "The engine stopped it when it ran longer than timeout_seconds.",
+              "type": "string"
+            },
+            {
+              "const": "no_finish",
+              "description": "It ran out of things to simulate without calling $finish, which\nusually means it stopped early by mistake. Counts as a failure.",
+              "type": "string"
+            }
+          ]
+        },
         "Severity": {
           "description": "How serious a diagnostic is.",
           "enum": [
@@ -1069,6 +1114,10 @@
               },
               "type": "array"
             },
+            "ending": {
+              "$ref": "#/$defs/Ending",
+              "description": "How the run ended: finished (the testbench ended itself),\nfirst_failure, sim_time_limit or timeout (the engine stopped it, and\nits output and waveform end there), or no_finish (it ran out of\nthings to simulate without calling $finish, a failure)."
+            },
             "failure_count": {
               "description": "How many failures the testbench reported. diagnostics lists the first\n100 of them, each with its time.",
               "minimum": 0,
@@ -1083,11 +1132,7 @@
               "type": "string"
             },
             "passed": {
-              "description": "True when it ran to the end without $fatal, $error or a failure line\nfrom Apio's assertion macros (*** ASSERTION FAILED, ERROR at).",
-              "type": "boolean"
-            },
-            "stopped_at_failure": {
-              "description": "True if the engine stopped the testbench at its first failure, so its\noutput and waveform end there.",
+              "description": "True when it ended itself with $finish, without $fatal, $error or a\nfailure line from Apio's assertion macros (*** ASSERTION FAILED, ERROR\nat).",
               "type": "boolean"
             },
             "waveform_file": {
@@ -1103,7 +1148,7 @@
             "passed",
             "diagnostics",
             "output",
-            "stopped_at_failure",
+            "ending",
             "failure_count"
           ],
           "type": "object"
@@ -1327,6 +1372,15 @@
             "null"
           ]
         },
+        "max_sim_time_ns": {
+          "default": null,
+          "description": "Stop the testbench when simulated time reaches this many nanoseconds,\nsuch as one that never calls $finish. Defaults to no limit.",
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "open_viewer": {
           "default": true,
           "description": "Open the waveform in GTKWave. Defaults to true. False only writes the\nwaveform and the layout.",
@@ -1347,6 +1401,15 @@
         "testbench_file": {
           "description": "The testbench to simulate, relative to the source folder, such as\nmain_tb.v.",
           "type": "string"
+        },
+        "timeout_seconds": {
+          "default": null,
+          "description": "Stop the testbench after this many seconds of real time, such as one\nstuck in a loop. Defaults to no limit.",
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "verbose": {
           "default": false,
@@ -1420,6 +1483,36 @@
           ],
           "type": "object"
         },
+        "Ending": {
+          "description": "How a testbench run ended.",
+          "oneOf": [
+            {
+              "const": "finished",
+              "description": "The testbench ended itself, with $finish or $fatal.",
+              "type": "string"
+            },
+            {
+              "const": "first_failure",
+              "description": "The engine stopped it at its first failure.",
+              "type": "string"
+            },
+            {
+              "const": "sim_time_limit",
+              "description": "The engine stopped it when simulated time reached max_sim_time_ns.",
+              "type": "string"
+            },
+            {
+              "const": "timeout",
+              "description": "The engine stopped it when it ran longer than timeout_seconds.",
+              "type": "string"
+            },
+            {
+              "const": "no_finish",
+              "description": "It ran out of things to simulate without calling $finish, which\nusually means it stopped early by mistake. Counts as a failure.",
+              "type": "string"
+            }
+          ]
+        },
         "Severity": {
           "description": "How serious a diagnostic is.",
           "enum": [
@@ -1440,6 +1533,10 @@
             "$ref": "#/$defs/Diagnostic"
           },
           "type": "array"
+        },
+        "ending": {
+          "$ref": "#/$defs/Ending",
+          "description": "How the run ended: finished (the testbench ended itself),\nsim_time_limit or timeout (the engine stopped it), or no_finish (it\nran out of things to simulate without calling $finish, a failure)."
         },
         "failure_count": {
           "description": "How many failures the testbench reported. diagnostics lists the first\n100 of them, each with its time.",
@@ -1476,6 +1573,7 @@
         "diagnostics",
         "output",
         "failure_count",
+        "ending",
         "waveform_file",
         "layout_file",
         "layout_created",
