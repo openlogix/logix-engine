@@ -25,7 +25,8 @@ use crate::tools::Call;
 pub struct TestbenchRun {
     /// The testbench, relative to the source folder.
     pub file: String,
-    /// True when the testbench finished without $fatal or $error.
+    /// True when the testbench finished without $fatal, $error or a failure
+    /// line from Apio's assertion macros.
     pub passed: bool,
     /// Compile warnings and the testbench's $fatal, $error and $warning
     /// messages.

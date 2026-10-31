@@ -147,35 +147,73 @@ fn vvp_line() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
         Regex::new(
-            r"^(?:(?P<kind>FATAL|ERROR|WARNING): |\*+\s*ASSERTION FAILED at )(?P<file>[^\s:][^:]*):(?P<line>\d+):\s*(?P<text>.*)$",
+            r"^(?P<kind>FATAL|ERROR|WARNING): (?P<file>[^\s:][^:]*):(?P<line>\d+):\s*(?P<text>.*)$",
         )
         .unwrap()
     })
 }
 
+/// "*** ASSERTION FAILED at main_tb.v:52: ..." (Apio's older examples) and
+/// "*** ASSERTION FAILED in main_tb (clk_num=400): ..." (a common variant
+/// without a location).
+fn assertion_line() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r"^\*+\s*ASSERTION FAILED(?: at (?P<file>[^\s:][^:]*):(?P<line>\d+):)?\s*:?\s*(?P<text>.*)$",
+        )
+        .unwrap()
+    })
+}
+
+/// "ERROR at main_tb.v:52: expected ..." (the EXPECT_EQ macro in Apio's
+/// docs).
+fn error_at_line() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"^ERROR at (?P<file>[^\s:][^:]*):(?P<line>\d+):\s*(?P<text>.*)$").unwrap()
+    })
+}
+
 /// Parses a testbench run's output from vvp: the messages of $fatal, $error
-/// and $warning, and the "*** ASSERTION FAILED at file:line:" lines that
-/// Apio's example testbenches print. Lines without a location, such as a
-/// testbench's own $display text, are left out.
+/// and $warning, and the failure lines Apio's assertion macros print. Under
+/// simulate those macros skip $fatal (APIO_SIM is 1), so their line is the
+/// only sign of a failure. Other lines, such as a testbench's own $display
+/// text, are left out.
 pub fn parse_vvp(output: &str, source_folder: &str) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     for line in output.lines() {
-        let Some(c) = vvp_line().captures(line.trim_end()) else {
+        let line = line.trim_end();
+        let (c, severity, text) = if let Some(c) = vvp_line().captures(line) {
+            let kind = c["kind"].to_string();
+            let mut text = to_text(&c["text"]);
+            if text.is_empty() {
+                text = match kind.as_str() {
+                    "FATAL" => "The testbench stopped with $fatal.".into(),
+                    "ERROR" => "The testbench reported an error.".into(),
+                    _ => "The testbench reported a warning.".into(),
+                };
+            }
+            let severity = if kind == "WARNING" {
+                Severity::Warning
+            } else {
+                Severity::Error
+            };
+            (c, severity, text)
+        } else if let Some(c) = assertion_line().captures(line) {
+            let rest = to_text(&c["text"]);
+            let text = if c.name("file").is_some() || !rest.starts_with("in ") {
+                format!("Assertion failed: {rest}")
+            } else {
+                format!("Assertion failed {rest}")
+            };
+            (c, Severity::Error, text)
+        } else if let Some(c) = error_at_line().captures(line) {
+            let text = to_text(&c["text"]);
+            (c, Severity::Error, text)
+        } else {
             continue;
         };
-        let kind = c.name("kind").map(|k| k.as_str());
-        let severity = if kind == Some("WARNING") {
-            Severity::Warning
-        } else {
-            Severity::Error
-        };
-        let mut text = to_text(&c["text"]);
-        match kind {
-            None => text = format!("Assertion failed: {text}"),
-            Some("FATAL") if text.is_empty() => text = "The testbench stopped with $fatal.".into(),
-            Some("ERROR") if text.is_empty() => text = "The testbench reported an error.".into(),
-            _ => {}
-        }
         let mut d = Diagnostic {
             file: None,
             line: None,
@@ -314,5 +352,29 @@ z_tb.v:1: $finish called at 0 (1s)";
         assert_eq!(d[3].text, "The testbench stopped with $fatal.");
         assert_eq!(d[3].file.as_deref(), Some("tb/z_tb.v"));
         assert_eq!(d[3].tool.as_deref(), Some("vvp"));
+    }
+
+    #[test]
+    fn apio_assertion_macro_lines() {
+        // Real lines from the three kinds of Apio assertion macros.
+        let out =
+            "*** ASSERTION FAILED in main_tb (clk_num=400): expected (leds == 'h32), actual: 'h31
+End of simulation
+ERROR at bcd/bcd_tb.v:41: expected count = 101 but got 100
+*** ASSERTION FAILED at main_tb.v:52: expected 'h01, actual 'h00
+main_tb.v:36: $finish called at 80100000 (1ps)";
+        let d = parse_vvp(out, "/src");
+        assert_eq!(d.len(), 3, "{d:#?}");
+        assert!(d.iter().all(|d| d.severity == Severity::Error));
+        assert_eq!(
+            d[0].text,
+            "Assertion failed in main_tb (clk_num=400): expected (leds == 'h32), actual: 'h31"
+        );
+        assert_eq!(d[0].file, None);
+        assert_eq!(d[1].text, "expected count = 101 but got 100");
+        assert_eq!(d[1].file.as_deref(), Some("bcd/bcd_tb.v"));
+        assert_eq!(d[1].line, Some(41));
+        assert_eq!(d[2].text, "Assertion failed: expected 'h01, actual 'h00");
+        assert_eq!(d[2].line, Some(52));
     }
 }

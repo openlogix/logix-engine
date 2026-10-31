@@ -21,7 +21,9 @@ impl EngineTool for Test {
     const NAME: &'static str = "test";
     const DESCRIPTION: &'static str = "Runs testbenches with Icarus Verilog, like apio test: \
         compiles the design files with each testbench, runs it, and reports whether it passed. \
-        A testbench fails by calling $fatal or $error; it must end with $finish, and must not \
+        A testbench fails by calling $fatal or $error, or by printing a failure line from \
+        Apio's assertion macros (*** ASSERTION FAILED or ERROR at file:line); it must end \
+        with $finish, and must not \
         call $dumpfile, since the engine sets where its waveform goes (call $dumpvars to \
         write one). Every listed testbench runs, even after one fails. A failing testbench is \
         the result, not an error: passed is false, and each testbench's diagnostics and output \
@@ -77,7 +79,8 @@ pub struct TestInput {
 pub struct TestbenchResult {
     /// The testbench, relative to the source folder.
     pub file: String,
-    /// True when it ran to the end without $fatal or $error.
+    /// True when it ran to the end without $fatal, $error or a failure line
+    /// from Apio's assertion macros (*** ASSERTION FAILED, ERROR at).
     pub passed: bool,
     /// Compile warnings and the testbench's $fatal, $error and $warning
     /// messages, at file and line.

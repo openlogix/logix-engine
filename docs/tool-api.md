@@ -215,7 +215,7 @@ It uses Apio's commands: `iverilog -g2012 -o <build folder>/<testbench>.out`, th
 
 **Testbench rules,** as in Apio:
 
-- A testbench fails by calling `$fatal`, or `$error`, which Apio doesn't count but the engine does. It passes when it reaches `$finish` without either. One that never stops runs until the host cancels the operation.
+- A testbench fails by calling `$fatal`, or `$error`, which Apio doesn't count but the engine does, or by printing a failure line from Apio's assertion macros: `*** ASSERTION FAILED ...` or `ERROR at <file>:<line>: ...`. Those macros skip `$fatal` when `APIO_SIM` is 1, so under `simulate` the printed line is the only sign of the failure. A testbench passes when it reaches `$finish` without any of these. One that never stops runs until the host cancels the operation.
 - It must not call `$dumpfile`, since the engine sets where the waveform goes. A testbench that does is a design error at that line. It calls `$dumpvars` to write a waveform.
 - File names don't need to end in `_tb`, since the request lists the testbenches, but hosts that follow Apio's naming find them that way.
 
@@ -243,8 +243,8 @@ It uses Apio's commands: `iverilog -g2012 -o <build folder>/<testbench>.out`, th
 | Field | Type | Description |
 | --- | --- | --- |
 | `file` | relative path | The testbench, relative to the source folder |
-| `passed` | boolean | True when it reached `$finish` without `$fatal` or `$error` |
-| `diagnostics` | list of diagnostics | Compile warnings, and the testbench's `$fatal`, `$error` and `$warning` messages at file and line. Lines like `*** ASSERTION FAILED at main_tb.v:52: ...`, printed by the check macro in Apio's examples, are errors too |
+| `passed` | boolean | True when it reached `$finish` without `$fatal`, `$error` or a failure line from Apio's assertion macros |
+| `diagnostics` | list of diagnostics | Compile warnings, and the testbench's `$fatal`, `$error` and `$warning` messages at file and line. The failure lines of Apio's assertion macros are errors too, at file and line when they give one, such as `ERROR at main_tb.v:52: ...` and `*** ASSERTION FAILED at main_tb.v:52: ...`; `*** ASSERTION FAILED in main_tb ...` has no location |
 | `output` | multiline text | What the testbench printed, such as with `$display` |
 | `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder, when the testbench wrote one with `$dumpvars` |
 
@@ -318,7 +318,7 @@ This is the one case where the engine creates or deletes a file in the source fo
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `passed` | boolean | True when the testbench reached `$finish` without `$fatal` or `$error` |
+| `passed` | boolean | As in the testbench results of the test tool: true when the testbench reached `$finish` without a failure |
 | `diagnostics` | list of diagnostics | As in the testbench results of the test tool, in [Table 27](#test-tool) |
 | `output` | multiline text | What the testbench printed |
 | `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder |

@@ -548,3 +548,61 @@ async fn simulate_request_errors() {
         assert!(err.message.contains(needle), "{extra}: {}", err.message);
     }
 }
+
+/// A testbench with Apio's assertion macro: it prints the failure, and calls
+/// $fatal only when APIO_SIM is 0, so simulate keeps going.
+const APIO_MACRO_TB: &str = r#"`define EXPECT(signal, value) \
+    if (signal !== (value)) begin \
+        $display("*** ASSERTION FAILED in %m (clk_num=%0d): expected (signal == value), actual: 'h%h", 0, (signal)); \
+        if (!`APIO_SIM) $fatal; \
+    end
+`timescale 1ns/1ps
+module main_tb;
+  reg clk = 0;
+  wire [3:0] q;
+  counter dut(.clk(clk), .q(q));
+  always #5 clk = ~clk;
+  initial begin
+    $dumpvars(0, main_tb);
+    #95;
+    `EXPECT(q, 4'd3)
+    $display("End of simulation");
+    $finish;
+  end
+endmodule
+"#;
+
+#[tokio::test]
+async fn apio_assertion_macros_fail_both_test_and_simulate() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    std::fs::write(src.join("main_tb.v"), APIO_MACRO_TB).unwrap();
+
+    // simulate: the macro skips $fatal, so the run ends cleanly, but the
+    // printed failure still fails it.
+    let out = simulate::run(&state, simulate_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    assert!(!out.passed, "{out:#?}");
+    assert!(out.output.contains("End of simulation"));
+    assert!(
+        out.diagnostics[0]
+            .text
+            .starts_with("Assertion failed in main_tb (clk_num=0): expected (q == 4'd3)"),
+        "{:#?}",
+        out.diagnostics
+    );
+
+    // test: the macro calls $fatal, so the run stops at the failure.
+    let out = test::run(&state, test_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    assert!(!out.passed);
+    let tb = &out.testbenches[0];
+    assert!(!tb.output.contains("End of simulation"), "{}", tb.output);
+    assert!(
+        tb.diagnostics
+            .iter()
+            .any(|d| d.text.starts_with("Assertion failed"))
+    );
+}

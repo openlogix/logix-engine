@@ -766,7 +766,7 @@
   },
   {
     "name": "test",
-    "description": "Runs testbenches with Icarus Verilog, like apio test: compiles the design files with each testbench, runs it, and reports whether it passed. A testbench fails by calling $fatal or $error; it must end with $finish, and must not call $dumpfile, since the engine sets where its waveform goes (call $dumpvars to write one). Every listed testbench runs, even after one fails. A failing testbench is the result, not an error: passed is false, and each testbench's diagnostics and output say why. Compile errors are a design error with diagnostics at file and line. The first call may install the toolchain package first, which takes a few minutes. To look at a testbench's signals in a waveform viewer, use simulate.",
+    "description": "Runs testbenches with Icarus Verilog, like apio test: compiles the design files with each testbench, runs it, and reports whether it passed. A testbench fails by calling $fatal or $error, or by printing a failure line from Apio's assertion macros (*** ASSERTION FAILED or ERROR at file:line); it must end with $finish, and must not call $dumpfile, since the engine sets where its waveform goes (call $dumpvars to write one). Every listed testbench runs, even after one fails. A failing testbench is the result, not an error: passed is false, and each testbench's diagnostics and output say why. Compile errors are a design error with diagnostics at file and line. The first call may install the toolchain package first, which takes a few minutes. To look at a testbench's signals in a waveform viewer, use simulate.",
     "inputSchema": {
       "$defs": {
         "Architecture": {
@@ -1059,7 +1059,7 @@
               "type": "string"
             },
             "passed": {
-              "description": "True when it ran to the end without $fatal or $error.",
+              "description": "True when it ran to the end without $fatal, $error or a failure line\nfrom Apio's assertion macros (*** ASSERTION FAILED, ERROR at).",
               "type": "boolean"
             },
             "waveform_file": {
@@ -1417,7 +1417,7 @@
           "type": "string"
         },
         "passed": {
-          "description": "True when the testbench reached $finish without $fatal or $error.",
+          "description": "True when the testbench reached $finish without $fatal, $error or a\nfailure line from Apio's assertion macros (*** ASSERTION FAILED, ERROR\nat), which skip $fatal under simulation.",
           "type": "boolean"
         },
         "viewer_opened": {

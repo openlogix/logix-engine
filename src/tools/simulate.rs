@@ -94,7 +94,9 @@ pub struct SimulateInput {
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SimulateOutput {
-    /// True when the testbench reached $finish without $fatal or $error.
+    /// True when the testbench reached $finish without $fatal, $error or a
+    /// failure line from Apio's assertion macros (*** ASSERTION FAILED, ERROR
+    /// at), which skip $fatal under simulation.
     pub passed: bool,
     /// Compile warnings and the testbench's $fatal, $error and $warning
     /// messages, at file and line.
