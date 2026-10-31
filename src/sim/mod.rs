@@ -51,6 +51,10 @@ pub struct SimLibrary {
     pub files: Vec<PathBuf>,
     /// Macros the models need, as -D arguments.
     pub defines: Vec<String>,
+    /// Verilator warnings to turn off in the model files besides its lint
+    /// group, which is always off there. Warnings in the models aren't the
+    /// user's to fix.
+    pub verilator_rules_off: Vec<&'static str>,
 }
 
 impl SimLibrary {
@@ -64,9 +68,24 @@ impl SimLibrary {
                     files: vec![dir.join("cells_sim.v")],
                     include_dir: dir,
                     defines: vec!["-DNO_ICE40_DEFAULT_ASSIGNMENTS".into()],
+                    verilator_rules_off: vec!["COMBDLY"],
                 }
             }
         }
+    }
+}
+
+impl SimLibrary {
+    /// A Verilator config (.vlt) that turns off warnings in the model files,
+    /// like Apio's hardware.vlt. Without it, Verilator warns about the
+    /// models' unused primitives when no top module is given.
+    pub fn verilator_config(&self) -> String {
+        let glob = format!("{}/*", self.include_dir.display()).replace('\\', "\\\\");
+        let mut text = format!("`verilator_config\nlint_off -file \"{glob}\"\n");
+        for rule in &self.verilator_rules_off {
+            text.push_str(&format!("lint_off -rule {rule} -file \"{glob}\"\n"));
+        }
+        text
     }
 }
 

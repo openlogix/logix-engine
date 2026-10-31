@@ -143,6 +143,7 @@ Install progress is one phase per package, such as "Installing oss-cad-suite". I
 | `downloads/` | Partial downloads, deleted when an install ends |
 | `locks/` | One lock file per package, held while installing it |
 | `logs/` | Log files, described in [Command line](command-line.md) |
+| `tmp/` | Small files the engine generates for the tools, such as the Verilator config that turns off warnings in the FPGA models. Safe to delete |
 
 A package is unpacked into a temporary folder and renamed into place only when it is complete, so an interrupted install never looks installed. Every file in a package must unpack inside its folder, or the install fails.
 
@@ -150,7 +151,7 @@ A package is unpacked into a temporary folder and renamed into place only when i
 
 Checks the design and, optionally, its testbenches with Verilator in lint-only mode, like `apio lint`. It is much faster than a build and finds likely mistakes that synthesis accepts, such as width mismatches. It writes nothing and needs no build folder.
 
-It runs Verilator with Apio's options, so it reports the same problems: `--lint-only --quiet --bbox-unsup --timing -Wno-TIMESCALEMOD -Wno-MULTITOP`, the macros `SYNTHESIZE` (unless `synthesize` is false) and `APIO_SIM=0`, the top module when given, the request's macros, and the FPGA's primitive models, such as `cells_sim.v` with `NO_ICE40_DEFAULT_ASSIGNMENTS` for iCE40, so designs that use primitives such as `SB_IO` lint cleanly. Verilator treats warnings as failures, as in Apio, so `passed` is false when there are warnings too.
+It runs Verilator with Apio's options, so it reports the same problems: `--lint-only --quiet --bbox-unsup --timing -Wno-TIMESCALEMOD -Wno-MULTITOP`, the macros `SYNTHESIZE` (unless `synthesize` is false) and `APIO_SIM=0`, the top module when given, the request's macros, and the FPGA's primitive models, such as `cells_sim.v` with `NO_ICE40_DEFAULT_ASSIGNMENTS` for iCE40, so designs that use primitives such as `SB_IO` lint cleanly. Verilator treats warnings as failures, as in Apio, so `passed` is false when there are warnings too. Warnings in the primitive models aren't the user's to fix, so the engine turns them off with a Verilator config, like Apio's `hardware.vlt`. Without it they would appear when `top_module` is omitted, since Verilator then checks every unused primitive in the models.
 
 **Problems are the result.** Lint's job is to find problems, so problems in the design are returned in `diagnostics` with `passed` set to false, not as a design error. The other errors in the list below still apply.
 

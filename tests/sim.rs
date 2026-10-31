@@ -156,6 +156,31 @@ async fn lint_passes_a_clean_design_with_fpga_primitives_and_includes() {
 }
 
 #[tokio::test]
+async fn lint_without_a_top_module_ignores_warnings_in_the_fpga_models() {
+    // Without a top module, Verilator checks every unused primitive in the
+    // models too, which has warnings that aren't the user's.
+    let state = engine().await;
+    let (_tmp, src) = project();
+    for synthesize in [true, false] {
+        let input = lint_input(&src, json!({"top_module": null, "synthesize": synthesize}));
+        let out = lint::run(&state, input, &call()).await.unwrap();
+        assert!(out.passed, "{:#?}", out.diagnostics);
+    }
+    // The user's own warnings still count.
+    std::fs::write(src.join("main.v"), MAIN.replace(".I3(q[3])", ".I3(q)")).unwrap();
+    let input = lint_input(&src, json!({"top_module": null}));
+    let out = lint::run(&state, input, &call()).await.unwrap();
+    assert!(!out.passed);
+    assert!(
+        out.diagnostics
+            .iter()
+            .all(|d| d.file.as_deref() == Some("main.v")),
+        "{:#?}",
+        out.diagnostics
+    );
+}
+
+#[tokio::test]
 async fn lint_reports_warnings_and_errors_as_its_result() {
     let state = engine().await;
     let (_tmp, src) = project();

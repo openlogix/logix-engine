@@ -209,7 +209,8 @@ mod tests {
         .unwrap();
         let lib = SimLibrary::for_board(&req.sources.board, Path::new("/pkg"));
         let includes = req.sources.include_args().unwrap();
-        let args: Vec<String> = lint::verilator_args(&req, &lib, &includes)
+        let config = Path::new("/engine/tmp/models.vlt");
+        let args: Vec<String> = lint::verilator_args(&req, &lib, &includes, config)
             .iter()
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
@@ -218,18 +219,43 @@ mod tests {
             "--lint-only --quiet --bbox-unsup --timing -Wno-TIMESCALEMOD -Wno-MULTITOP \
              -DSYNTHESIZE -DAPIO_SIM=0 --top-module main -DA= -DWIDTH=8 \
              -DNO_ICE40_DEFAULT_ASSIGNMENTS -Irtl -I/pkg/share/yosys/ice40 \
-             /pkg/share/yosys/ice40/cells_sim.v main.v rtl/uart.v main_tb.v"
+             /engine/tmp/models.vlt /pkg/share/yosys/ice40/cells_sim.v main.v rtl/uart.v main_tb.v"
         );
 
         let mut verbose = req.clone();
         verbose.sources.verbose = true;
         verbose.top_module = None;
         verbose.synthesize = false;
-        let args: Vec<OsString> = lint::verilator_args(&verbose, &lib, &[]);
+        let args: Vec<OsString> = lint::verilator_args(&verbose, &lib, &[], config);
         assert!(!args.contains(&"--quiet".into()));
         assert!(!args.contains(&"--top-module".into()));
         assert!(!args.contains(&"-DSYNTHESIZE".into()));
         assert!(args.contains(&"-DAPIO_SIM=0".into()));
+    }
+
+    #[test]
+    fn the_verilator_config_turns_off_warnings_in_the_models_only() {
+        let (_tmp, src) = project();
+        let req = check(input(&src, json!({}))).unwrap();
+        let lib = SimLibrary::for_board(&req.sources.board, Path::new("/pkg"));
+        assert_eq!(
+            lib.verilator_config(),
+            "`verilator_config\n\
+             lint_off -file \"/pkg/share/yosys/ice40/*\"\n\
+             lint_off -rule COMBDLY -file \"/pkg/share/yosys/ice40/*\"\n"
+        );
+        let engine = tempfile::tempdir().unwrap();
+        let a = lint::write_verilator_config(engine.path(), &lib).unwrap();
+        let b = lint::write_verilator_config(engine.path(), &lib).unwrap();
+        assert_eq!(a, b);
+        assert!(a.starts_with(engine.path().join("tmp")));
+        assert_eq!(std::fs::read_to_string(&a).unwrap(), lib.verilator_config());
+        assert_eq!(
+            std::fs::read_dir(engine.path().join("tmp"))
+                .unwrap()
+                .count(),
+            1
+        );
     }
 
     #[test]
