@@ -84,14 +84,47 @@ pub fn top_level_signals(vcd: impl BufRead) -> Vec<String> {
     signals
 }
 
-/// The default layout for a testbench: a header with the marker, GTKWave's
-/// primary marker at the first failure when there is one, then the
-/// top-level signals.
+/// The wave area's width GTKWave has in its default window, in pixels,
+/// used to fit the zoom to the whole run.
+const WAVE_WIDTH_PX: f64 = 900.0;
+
+/// GTKWave's zoom that fits `span` waveform time units into the wave area,
+/// as its own zoom-to-fit computes it: -log2(span / width * 200), at most 0.
+pub fn fit_zoom(span: u64) -> f64 {
+    let span = span.max(1) as f64;
+    (-(span / WAVE_WIDTH_PX * 200.0).log2()).min(0.0)
+}
+
+/// The last timestamp in a VCD file, in its time units: the end of the run.
+/// Reads only the end of the file, since waveforms can be large.
+pub fn vcd_end_ticks(vcd: &Path) -> Option<u64> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = fs::File::open(vcd).ok()?;
+    let len = f.metadata().ok()?.len();
+    let start = len.saturating_sub(64 * 1024);
+    f.seek(SeekFrom::Start(start)).ok()?;
+    let mut tail = Vec::new();
+    f.read_to_end(&mut tail).ok()?;
+    String::from_utf8_lossy(&tail)
+        .lines()
+        .rev()
+        .find_map(|l| l.strip_prefix('#')?.trim().parse().ok())
+}
+
+/// The default layout for a testbench: a header with the marker, the zoom
+/// and GTKWave's primary marker, then the top-level signals.
 ///
 /// GTKWave reads "*<zoom> <marker>" as the zoom and the primary marker's
-/// time, in the waveform's time units. The zoom is a placeholder: GTKWave
-/// is started with do_initial_zoom_fit, which replaces it.
-pub fn default_layout(testbench: &str, signals: &[String], failure_ticks: Option<u64>) -> String {
+/// time, in the waveform's time units; -1 means no marker. The zoom fits
+/// the whole run, `end_ticks` long, so the view is right even when GTKWave's
+/// own zoom-to-fit at startup doesn't apply. The marker is at the first
+/// failure, when there is one.
+pub fn default_layout(
+    testbench: &str,
+    signals: &[String],
+    end_ticks: Option<u64>,
+    failure_ticks: Option<u64>,
+) -> String {
     let mut text = format!(
         "[*] GTKWave layout for the testbench {testbench}\n\
          [*] {MARKER}.\n\
@@ -99,10 +132,13 @@ pub fn default_layout(testbench: &str, signals: &[String], failure_ticks: Option
          [*] layout from GTKWave, which is then kept.\n\
          [*]\n"
     );
-    if let Some(ticks) = failure_ticks {
-        text.push_str(&format!(
-            "[*] The marker is at the first failure.\n*0 {ticks}\n"
-        ));
+    if failure_ticks.is_some() {
+        text.push_str("[*] The marker is at the first failure.\n");
+    }
+    if end_ticks.is_some() || failure_ticks.is_some() {
+        let zoom = fit_zoom(end_ticks.unwrap_or(0).max(failure_ticks.unwrap_or(0)));
+        let marker = failure_ticks.map_or("-1".to_string(), |t| t.to_string());
+        text.push_str(&format!("*{zoom:.6} {marker}\n"));
     }
     for s in signals {
         text.push_str(s);
@@ -130,7 +166,11 @@ pub fn write_default_if_needed(
         )
     })?;
     let signals = top_level_signals(BufReader::new(file));
-    fs::write(layout, default_layout(testbench, &signals, failure_ticks)).map_err(|e| {
+    fs::write(
+        layout,
+        default_layout(testbench, &signals, vcd_end_ticks(vcd), failure_ticks),
+    )
+    .map_err(|e| {
         ToolError::setup(format!(
             "Can't write the layout file {}: {e}",
             layout.display()
@@ -400,10 +440,26 @@ $end
     }
 
     #[test]
-    fn default_layouts_mark_the_first_failure() {
+    fn default_layouts_fit_the_run_and_mark_the_first_failure() {
         let signals = vec!["main_tb.clk".to_string()];
-        let text = default_layout("main_tb.v", &signals, Some(95000));
-        assert!(text.contains("\n*0 95000\nmain_tb.clk\n"), "{text}");
-        assert!(!default_layout("main_tb.v", &signals, None).contains("\n*"));
+        let text = default_layout("main_tb.v", &signals, Some(3_196_000), Some(6000));
+        // 3196 ns in ps over 900 px: -log2(3196000 / 900 * 200) = -19.44.
+        assert!(text.contains("\n*-19.437"), "{text}");
+        assert!(text.ends_with(" 6000\nmain_tb.clk\n"), "{text}");
+        let text = default_layout("main_tb.v", &signals, Some(3_196_000), None);
+        assert!(text.contains(" -1\nmain_tb.clk\n"), "no marker: {text}");
+        assert!(!default_layout("main_tb.v", &signals, None, None).contains("\n*"));
+        // Matches a layout GTKWave saved for a 6.5 us run in ps, about -20.4.
+        assert!((fit_zoom(6_500_000) + 20.5).abs() < 0.2);
+        assert_eq!(fit_zoom(1), 0.0);
+    }
+
+    #[test]
+    fn the_end_of_a_vcd_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vcd = tmp.path().join("a.vcd");
+        fs::write(&vcd, format!("{VCD}#5000\n1#\n#101500\nb0 !\n")).unwrap();
+        assert_eq!(vcd_end_ticks(&vcd), Some(101500));
+        assert_eq!(vcd_end_ticks(&tmp.path().join("none.vcd")), None);
     }
 }

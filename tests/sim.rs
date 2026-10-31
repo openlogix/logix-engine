@@ -481,8 +481,18 @@ async fn simulate_writes_the_waveform_and_a_default_layout_then_keeps_the_users(
     assert!(!out.viewer_opened);
     let layout = std::fs::read_to_string(src.join("main_tb.gtkw")).unwrap();
     assert!(layout.contains("GENERATED AUTOMATICALLY BY LOGIX ENGINE"));
-    let signals: Vec<_> = layout.lines().filter(|l| !l.starts_with("[*]")).collect();
+    let signals: Vec<_> = layout
+        .lines()
+        .filter(|l| !l.starts_with('*') && !l.starts_with("[*]"))
+        .collect();
     assert_eq!(signals, ["main_tb.clk", "main_tb.q[3:0]"]);
+    // A passing run: a zoom that fits it, and no marker.
+    assert!(
+        layout
+            .lines()
+            .any(|l| l.starts_with("*-") && l.ends_with(" -1")),
+        "{layout}"
+    );
 
     // A layout the user saved from GTKWave is kept.
     std::fs::write(src.join("main_tb.gtkw"), "[*] mine\nmain_tb.q[3:0]\n").unwrap();
@@ -690,7 +700,15 @@ async fn simulate_runs_to_the_end_and_marks_the_first_failure() {
     assert_eq!(out.diagnostics[0].text, "q is 9, expected 3");
     assert_eq!(out.diagnostics[0].time_ns, Some(95.0));
     let layout = std::fs::read_to_string(src.join("main_tb.gtkw")).unwrap();
-    assert!(layout.contains("\n*0 95000\n"), "{layout}");
+    // A zoom that fits the run, and the marker at the failure (95 ns in ps).
+    let star = layout
+        .lines()
+        .find(|l| l.starts_with('*') && !l.starts_with("[*]"))
+        .unwrap();
+    assert!(
+        star.starts_with("*-") && star.ends_with(" 95000"),
+        "{layout}"
+    );
 }
 
 #[tokio::test]
