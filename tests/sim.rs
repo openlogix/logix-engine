@@ -483,7 +483,7 @@ async fn simulate_writes_the_waveform_and_a_default_layout_then_keeps_the_users(
     assert!(layout.contains("GENERATED AUTOMATICALLY BY LOGIX ENGINE"));
     let signals: Vec<_> = layout
         .lines()
-        .filter(|l| !l.starts_with('*') && !l.starts_with("[*]"))
+        .filter(|l| !l.starts_with('*') && !l.starts_with('['))
         .collect();
     assert_eq!(signals, ["main_tb.clk", "main_tb.q[3:0]"]);
     // A passing run: a zoom that fits it, and no marker.
@@ -709,6 +709,7 @@ async fn simulate_runs_to_the_end_and_marks_the_first_failure() {
         star.starts_with("*-") && star.ends_with(" 95000"),
         "{layout}"
     );
+    assert!(layout.contains("[timestart] "), "{layout}");
 }
 
 #[tokio::test]

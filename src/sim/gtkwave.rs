@@ -111,20 +111,77 @@ pub fn vcd_end_ticks(vcd: &Path) -> Option<u64> {
         .find_map(|l| l.strip_prefix('#')?.trim().parse().ok())
 }
 
-/// The default layout for a testbench: a header with the marker, the zoom
-/// and GTKWave's primary marker, then the top-level signals.
+/// The typical time between a VCD file's timestamps, in its time units: the
+/// median gap among its first timestamps, which for a clocked design is
+/// usually about half a clock period. Reads only the start of the file.
+pub fn vcd_typical_step(vcd: &Path) -> Option<u64> {
+    use std::io::Read;
+    let mut head = Vec::new();
+    fs::File::open(vcd)
+        .ok()?
+        .take(1024 * 1024)
+        .read_to_end(&mut head)
+        .ok()?;
+    let times: Vec<u64> = String::from_utf8_lossy(&head)
+        .lines()
+        .filter_map(|l| l.strip_prefix('#')?.trim().parse().ok())
+        .take(10_000)
+        .collect();
+    let mut gaps: Vec<u64> = times
+        .windows(2)
+        .map(|w| w[1].saturating_sub(w[0]))
+        .filter(|&g| g > 0)
+        .collect();
+    gaps.sort_unstable();
+    gaps.get(gaps.len() / 2).copied()
+}
+
+/// What a default layout shows: the zoom, the time at the left edge, and the
+/// primary marker, all in the waveform's time units.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct View {
+    pub zoom: f64,
+    pub start: u64,
+    pub marker: Option<u64>,
+}
+
+/// How many typical timestamp gaps a view around a failure spans, about 40
+/// clock cycles for a clocked design.
+const STEPS_AROUND_FAILURE: u64 = 80;
+
+/// The view for a run `end` long: the whole run, or, when it failed at
+/// `failure`, a window around the failure with the failure about two thirds
+/// of the way across, so what led up to it shows too. The window is
+/// STEPS_AROUND_FAILURE typical steps wide, or a tenth of the run when the
+/// step isn't known, and never wider than the run.
+pub fn view(end: u64, step: Option<u64>, failure: Option<u64>) -> View {
+    let end = end.max(failure.unwrap_or(0)).max(1);
+    let Some(failure) = failure else {
+        return View {
+            zoom: fit_zoom(end),
+            start: 0,
+            marker: None,
+        };
+    };
+    let width = step
+        .map(|s| s.saturating_mul(STEPS_AROUND_FAILURE))
+        .unwrap_or(end / 10)
+        .clamp(1, end);
+    View {
+        zoom: fit_zoom(width),
+        start: failure.saturating_sub(width * 2 / 3),
+        marker: Some(failure),
+    }
+}
+
+/// The default layout for a testbench: a header with the marker, the view,
+/// then the top-level signals.
 ///
-/// GTKWave reads "*<zoom> <marker>" as the zoom and the primary marker's
-/// time, in the waveform's time units; -1 means no marker. The zoom fits
-/// the whole run, `end_ticks` long, so the view is right even when GTKWave's
-/// own zoom-to-fit at startup doesn't apply. The marker is at the first
-/// failure, when there is one.
-pub fn default_layout(
-    testbench: &str,
-    signals: &[String],
-    end_ticks: Option<u64>,
-    failure_ticks: Option<u64>,
-) -> String {
+/// GTKWave reads "[timestart] N" as the time at the left edge and
+/// "*<zoom> <marker>" as the zoom and the primary marker's time, in the
+/// waveform's time units; -1 means no marker. GTKWave is started without
+/// its zoom-to-fit for a default layout, so this view is what it shows.
+pub fn default_layout(testbench: &str, signals: &[String], view: Option<View>) -> String {
     let mut text = format!(
         "[*] GTKWave layout for the testbench {testbench}\n\
          [*] {MARKER}.\n\
@@ -132,13 +189,15 @@ pub fn default_layout(
          [*] layout from GTKWave, which is then kept.\n\
          [*]\n"
     );
-    if failure_ticks.is_some() {
-        text.push_str("[*] The marker is at the first failure.\n");
-    }
-    if end_ticks.is_some() || failure_ticks.is_some() {
-        let zoom = fit_zoom(end_ticks.unwrap_or(0).max(failure_ticks.unwrap_or(0)));
-        let marker = failure_ticks.map_or("-1".to_string(), |t| t.to_string());
-        text.push_str(&format!("*{zoom:.6} {marker}\n"));
+    if let Some(v) = view {
+        if v.marker.is_some() {
+            text.push_str("[*] The view is around the first failure, at the marker.\n");
+        }
+        let marker = v.marker.map_or("-1".to_string(), |t| t.to_string());
+        text.push_str(&format!(
+            "[timestart] {}\n*{:.6} {marker}\n",
+            v.start, v.zoom
+        ));
     }
     for s in signals {
         text.push_str(s);
@@ -168,7 +227,11 @@ pub fn write_default_if_needed(
     let signals = top_level_signals(BufReader::new(file));
     fs::write(
         layout,
-        default_layout(testbench, &signals, vcd_end_ticks(vcd), failure_ticks),
+        default_layout(
+            testbench,
+            &signals,
+            vcd_end_ticks(vcd).map(|end| view(end, vcd_typical_step(vcd), failure_ticks)),
+        ),
     )
     .map_err(|e| {
         ToolError::setup(format!(
@@ -184,14 +247,17 @@ pub fn write_default_if_needed(
     Ok(true)
 }
 
-/// GTKWave's arguments, as Apio gives them: zoom to fit, the waveform and
-/// the layout.
-pub fn gtkwave_args(vcd: &Path, layout: &Path) -> Vec<OsString> {
-    vec![
-        "--rcvar=do_initial_zoom_fit 1".into(),
-        vcd.into(),
-        layout.into(),
-    ]
+/// GTKWave's arguments: the waveform and the layout. For a layout the user
+/// saved, zoom to fit first, as Apio does; a default layout sets its own
+/// view, which zoom to fit would replace.
+pub fn gtkwave_args(vcd: &Path, layout: &Path, zoom_to_fit: bool) -> Vec<OsString> {
+    let mut args: Vec<OsString> = Vec::new();
+    if zoom_to_fit {
+        args.push("--rcvar=do_initial_zoom_fit 1".into());
+    }
+    args.push(vcd.into());
+    args.push(layout.into());
+    args
 }
 
 /// Deletes the layout at `path` if it is still a generated default, so
@@ -440,18 +506,52 @@ $end
     }
 
     #[test]
-    fn default_layouts_fit_the_run_and_mark_the_first_failure() {
-        let signals = vec!["main_tb.clk".to_string()];
-        let text = default_layout("main_tb.v", &signals, Some(3_196_000), Some(6000));
-        // 3196 ns in ps over 900 px: -log2(3196000 / 900 * 200) = -19.44.
-        assert!(text.contains("\n*-19.437"), "{text}");
-        assert!(text.ends_with(" 6000\nmain_tb.clk\n"), "{text}");
-        let text = default_layout("main_tb.v", &signals, Some(3_196_000), None);
-        assert!(text.contains(" -1\nmain_tb.clk\n"), "no marker: {text}");
-        assert!(!default_layout("main_tb.v", &signals, None, None).contains("\n*"));
+    fn views_show_the_whole_run_or_the_failure() {
+        // A passing run: all of it, no marker.
+        let v = view(3_196_000, Some(5000), None);
+        assert_eq!((v.start, v.marker), (0, None));
+        assert!((v.zoom - fit_zoom(3_196_000)).abs() < 1e-9);
+        // A failure: 80 steps wide, the failure two thirds across.
+        let v = view(3_196_000, Some(5000), Some(1_000_000));
+        assert_eq!(v.marker, Some(1_000_000));
+        assert!((v.zoom - fit_zoom(400_000)).abs() < 1e-9);
+        assert_eq!(v.start, 1_000_000 - 266_666);
+        // Near the start, the window starts at 0.
+        assert_eq!(view(3_196_000, Some(5000), Some(6000)).start, 0);
+        // Without a known step, a tenth of the run; never wider than the run.
+        assert!((view(1000, None, Some(500)).zoom - fit_zoom(100)).abs() < 1e-9);
+        assert!((view(1000, Some(500), Some(500)).zoom - fit_zoom(1000)).abs() < 1e-9);
         // Matches a layout GTKWave saved for a 6.5 us run in ps, about -20.4.
         assert!((fit_zoom(6_500_000) + 20.5).abs() < 0.2);
         assert_eq!(fit_zoom(1), 0.0);
+    }
+
+    #[test]
+    fn default_layout_lines() {
+        let signals = vec!["main_tb.clk".to_string()];
+        let v = View {
+            zoom: -12.5,
+            start: 100,
+            marker: Some(6000),
+        };
+        let text = default_layout("main_tb.v", &signals, Some(v));
+        assert!(
+            text.ends_with("[timestart] 100\n*-12.500000 6000\nmain_tb.clk\n"),
+            "{text}"
+        );
+        let v = View {
+            zoom: -12.5,
+            start: 0,
+            marker: None,
+        };
+        assert!(default_layout("main_tb.v", &signals, Some(v)).contains("*-12.500000 -1\n"));
+        assert!(!default_layout("main_tb.v", &signals, None).contains("timestart"));
+        let args = gtkwave_args(Path::new("a.vcd"), Path::new("a.gtkw"), false);
+        assert_eq!(args.len(), 2);
+        assert_eq!(
+            gtkwave_args(Path::new("a.vcd"), Path::new("a.gtkw"), true).len(),
+            3
+        );
     }
 
     #[test]
@@ -460,6 +560,8 @@ $end
         let vcd = tmp.path().join("a.vcd");
         fs::write(&vcd, format!("{VCD}#5000\n1#\n#101500\nb0 !\n")).unwrap();
         assert_eq!(vcd_end_ticks(&vcd), Some(101500));
+        fs::write(&vcd, format!("{VCD}#5\n#10\n#11\n#15\n#20\n#25\n")).unwrap();
+        assert_eq!(vcd_typical_step(&vcd), Some(5));
         assert_eq!(vcd_end_ticks(&tmp.path().join("none.vcd")), None);
     }
 }

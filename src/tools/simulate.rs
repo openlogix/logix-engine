@@ -248,7 +248,7 @@ pub async fn run(
 
     if input.open_viewer {
         let program = bin.join("gtkwave");
-        let args = gtkwave::gtkwave_args(&vcd, &layout);
+        let args = gtkwave::gtkwave_args(&vcd, &layout, !layout_created);
         call.output
             .command("gtkwave", &command_line(&program, &args));
         call.commands

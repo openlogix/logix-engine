@@ -321,11 +321,11 @@ Output:
 
 ## simulate tool
 
-Simulates one testbench and opens its waveform in GTKWave, like `apio sim --detach`. It compiles and runs the testbench as the [test tool](#test-tool) does, with the same commands, testbench rules and build folder files, except that `APIO_SIM` is defined as `1` and the testbench always runs to the end, so the whole waveform is there to look at. Then it makes sure there is a layout file and starts GTKWave fully detached, with `--rcvar=do_initial_zoom_fit 1`, the waveform and the layout, and returns without waiting for it. GTKWave keeps running after the operation and after the engine exits.
+Simulates one testbench and opens its waveform in GTKWave, like `apio sim --detach`. It compiles and runs the testbench as the [test tool](#test-tool) does, with the same commands, testbench rules and build folder files, except that `APIO_SIM` is defined as `1` and the testbench always runs to the end, so the whole waveform is there to look at. Then it makes sure there is a layout file and starts GTKWave fully detached with the waveform and the layout, and returns without waiting for it. For a layout the user saved, it adds `--rcvar=do_initial_zoom_fit 1` first, as Apio does; a default layout sets its own view, which that would replace. GTKWave keeps running after the operation and after the engine exits.
 
 **Layout files.** A GTKWave layout (`.gtkw`) holds the signals shown and how. It is a project file the user changes by saving from GTKWave, which reads and saves the same path, so the host names it in `layout_file`, usually next to the testbench, such as `main_tb.gtkw`.
 
-- **Missing or default:** when the file doesn't exist, or is a default one the engine or Apio generated (it has their marker line), the engine writes a default layout there with the testbench's top-level signals, so GTKWave doesn't open empty. The default layout also sets a zoom that shows the whole run, computed as GTKWave's own zoom-to-fit does, since that doesn't always apply at startup, and when the testbench failed, it puts GTKWave's marker at the first failure that has a time. A default is replaced on each simulation, so it follows design changes.
+- **Missing or default:** when the file doesn't exist, or is a default one the engine or Apio generated (it has their marker line), the engine writes a default layout there with the testbench's top-level signals, so GTKWave doesn't open empty. The default layout also sets the view: the whole run when the testbench passed, or, when it failed, a window around the first failure that has a time, with GTKWave's marker on the failure about two thirds of the way across, so what led up to it shows too. The window is about 80 times the waveform's typical step between changes, roughly 40 cycles of a clock, and never wider than the run. A default is replaced on each simulation, so it follows design changes.
 - **Saved by the user:** a layout without the marker is the user's and is never changed. GTKWave opens it, and saving from GTKWave updates it.
 - **Unsaved defaults are cleaned up:** when GTKWave exits, the engine deletes the layout if it still has the marker, so default layouts the user never saved don't pile up in the project or end up in version control. This is best-effort: if the engine exits before GTKWave, the default stays until a later simulation replaces or deletes it.
 - **No layout file:** when `layout_file` is omitted, the layout goes into the build folder as `<testbench>.gtkw`, where a saved layout is lost when the folder is cleaned.
@@ -406,7 +406,7 @@ The same testbench serves two purposes: `test` is a batch check that should fail
 | --- | --- | --- |
 | At the first failure | Stops the testbench, unless `stop_at_first_failure` is false | Lets it run to the end |
 | Waveform | Kept, up to the failure | Complete |
-| Finding the failure | Each failure's file, line and simulation time (`time_ns`) | The same, and a default layout puts GTKWave's marker at the first failure |
+| Finding the failure | Each failure's file, line and simulation time (`time_ns`) | The same, and a default layout opens GTKWave zoomed in around the first failure, with its marker on it |
 | Limits | `timeout_seconds` (default 600) and `max_sim_time_ns` | The same, with no default |
 | `passed` | False after any failure, or when stopped by a limit | The same |
 
