@@ -39,7 +39,7 @@ The Type columns in this document use these logical types. Each maps to a JSON t
 | enum | string | One of the values listed in the field's description |
 | list of X | array | Items of type X |
 | map of X | object | Keys are catalog IDs or names, and values are of type X |
-| error, diagnostic, action, device, resource | object | See error fields in [Table 3](#results-and-errors), diagnostic fields in [Table 4](#results-and-errors), action codes in [Table 5](#results-and-errors), device fields in [Table 13](#list_devices-tool), and resource fields in [Table 7](#build-tool) |
+| error, diagnostic, action, device, resource, testbench result | object | See error fields in [Table 3](#results-and-errors), diagnostic fields in [Table 4](#results-and-errors), action codes in [Table 5](#results-and-errors), device fields in [Table 13](#list_devices-tool), resource fields in [Table 7](#build-tool), and testbench result fields in [Table 27](#test-tool) |
 
 ### Folders
 
@@ -114,7 +114,7 @@ A host that wants to show the tools' output as it happens, such as in a console,
 
 Lines that the engine reads into diagnostics still come in the tool result too. The live lines are for showing, not for parsing.
 
-**Verbose.** Tools that run other tools take an optional boolean `verbose`, like Apio's `--verbose`. It asks those tools to print more detail, which shows in the live output and the logs, and never changes the result. Each tool maps it to what its tools offer: `build` runs yosys and nextpnr without `-q`, `lint` runs Verilator without `--quiet`, and `program_board` adds openFPGALoader's `--verbose` or iceprog's `-v`. A build that is up to date runs nothing, so it prints nothing extra.
+**Verbose.** Tools that run other tools take an optional boolean `verbose`, like Apio's `--verbose`. It asks those tools to print more detail, which shows in the live output and the logs, and never changes the result. Each tool maps it to what its tools offer: `build` runs yosys and nextpnr without `-q`, `lint` runs Verilator without `--quiet`, `test` runs iverilog with `-v`, and `program_board` adds openFPGALoader's `--verbose` or iceprog's `-v`. A build that is up to date runs nothing, so it prints nothing extra.
 
 ### Progress
 
@@ -200,6 +200,84 @@ Output:
       "file": "main.v", "line": 6, "column": 9, "severity": "warning",
       "text": "Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's VARREF 'cnt' generates 8 bits. (WIDTHTRUNC)",
       "tool": "verilator"
+    }
+  ]
+}
+```
+
+## test tool
+
+Runs testbenches with Icarus Verilog, like `apio test`. For each testbench in order, iverilog compiles the design files, the FPGA's primitive models and the testbench into the build folder, then vvp runs it and writes its waveform there. Every testbench runs, even after one fails.
+
+It uses Apio's commands: `iverilog -g2012 -o <build folder>/<testbench>.out`, the request's macros, `APIO_SIM=0`, the FPGA's primitive models, the design files and the testbench, then `vvp <testbench>.out -dumpfile=<build folder>/<testbench>.vcd`. Both run in the source folder, so a testbench reads data files, such as with `$readmemh`, relative to it, as in Apio. `SYNTHESIZE` isn't defined, so designs can tell simulation from synthesis.
+
+**Testbench rules,** as in Apio:
+
+- A testbench fails by calling `$fatal`, or `$error`, which Apio doesn't count but the engine does. It passes when it reaches `$finish` without either. One that never stops runs until the host cancels the operation.
+- It must not call `$dumpfile`, since the engine sets where the waveform goes. A testbench that does is a design error at that line. It calls `$dumpvars` to write a waveform.
+- File names don't need to end in `_tb`, since the request lists the testbenches, but hosts that follow Apio's naming find them that way.
+
+**Failures are the result.** A failing testbench is returned in `testbenches` with `passed` set to false, not as an error. Compile errors are a design error, since nothing could run.
+
+**Table 25.** test tool inputs
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `board` | board specification | Yes | The target board. It selects the FPGA's primitive models |
+| `source_folder`, `source_files`, `build_folder` | See folder fields in [Table 2](#folders) | Yes | The design files, without testbenches |
+| `testbench_files` | list of relative paths | Yes | The testbenches to run, in order, relative to the source folder. At least one. A file may be listed only once in `source_files` and `testbench_files` together |
+| `defines` | map of text | No | Macro definitions, as in the [build tool](#build-tool). `APIO_SIM` is always defined as `0` |
+| `verbose` | boolean | No | Run iverilog with `-v`. Defaults to false |
+
+**Table 26.** test tool outputs
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `passed` | boolean | True when every testbench passed |
+| `testbenches` | list of testbench results | Each testbench's result, in the order given. See Table 27 |
+
+**Table 27.** Testbench result fields
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `file` | relative path | The testbench, relative to the source folder |
+| `passed` | boolean | True when it reached `$finish` without `$fatal` or `$error` |
+| `diagnostics` | list of diagnostics | Compile warnings, and the testbench's `$fatal`, `$error` and `$warning` messages at file and line. Lines like `*** ASSERTION FAILED at main_tb.v:52: ...`, printed by the check macro in Apio's examples, are errors too |
+| `output` | multiline text | What the testbench printed, such as with `$display` |
+| `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder, when the testbench wrote one with `$dumpvars` |
+
+**Errors:** design errors for compile errors and `$dumpfile`. Setup errors with `install_packages`. Request errors, such as an unknown board, a missing file or a build folder that breaks the keyword rules. Tool failures, engine errors and cancellation.
+
+**Build folder files.** For a testbench `rtl/uart_tb.v`, the build folder gets `rtl/uart_tb.out` (the compiled simulation) and `rtl/uart_tb.vcd` (the waveform): the testbench's path without its extension, as in Apio. Each run replaces them. Like a build, the first run writes the `.logix-build` marker, so `clean_build` can delete the folder.
+
+**Example**
+
+Input:
+
+```json
+{
+  "board": "alhambra-ii",
+  "source_folder": "/home/u/proj",
+  "source_files": ["main.v"],
+  "testbench_files": ["main_tb.v"],
+  "build_folder": "/home/u/proj/_build/default"
+}
+```
+
+Output:
+
+```json
+{
+  "passed": false,
+  "testbenches": [
+    {
+      "file": "main_tb.v",
+      "passed": false,
+      "diagnostics": [
+        { "file": "main_tb.v", "line": 10, "severity": "error", "text": "q is  3, expected 9", "tool": "vvp" }
+      ],
+      "output": "FATAL: main_tb.v:10: q is  3, expected 9\n       Time: 95000  Scope: main_tb",
+      "waveform_file": "main_tb.vcd"
     }
   ]
 }

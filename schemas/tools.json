@@ -760,6 +760,350 @@
     }
   },
   {
+    "name": "test",
+    "description": "Runs testbenches with Icarus Verilog, like apio test: compiles the design files with each testbench, runs it, and reports whether it passed. A testbench fails by calling $fatal or $error; it must end with $finish, and must not call $dumpfile, since the engine sets where its waveform goes (call $dumpvars to write one). Every listed testbench runs, even after one fails. A failing testbench is the result, not an error: passed is false, and each testbench's diagnostics and output say why. Compile errors are a design error with diagnostics at file and line. The first call may install the toolchain package first, which takes a few minutes. To look at a testbench's signals in a waveform viewer, use simulate.",
+    "inputSchema": {
+      "$defs": {
+        "Architecture": {
+          "description": "FPGA families. Milestone 1 supports iCE40 only.",
+          "oneOf": [
+            {
+              "const": "ice40",
+              "description": "Lattice iCE40.",
+              "type": "string"
+            }
+          ]
+        },
+        "BoardInputDefinition": {
+          "additionalProperties": false,
+          "description": "A board definition in a request. Like a catalog entry, except that the\nFPGA can be given either as fpga_id or as a full fpga definition.",
+          "properties": {
+            "default_variant": {
+              "description": "The name of the programming variant used by default.",
+              "type": "string"
+            },
+            "description": {
+              "description": "The board's name for people.",
+              "type": "string"
+            },
+            "fpga": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FpgaDefinition"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The board's FPGA as a full definition. Give either fpga_id or fpga."
+            },
+            "fpga_id": {
+              "description": "The board's FPGA as a catalog ID, such as ice40hx4k-tq144-8k. Give\neither fpga_id or fpga.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "variants": {
+              "additionalProperties": {
+                "$ref": "#/$defs/ProgrammingVariant"
+              },
+              "description": "The ways to program the board, by variant name.",
+              "type": "object"
+            }
+          },
+          "required": [
+            "description",
+            "default_variant",
+            "variants"
+          ],
+          "type": "object"
+        },
+        "BoardSpec": {
+          "anyOf": [
+            {
+              "description": "A board's catalog ID, such as alhambra-ii. get_catalog lists them.",
+              "pattern": "^[a-z0-9-]+$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/BoardInputDefinition",
+              "description": "A full board definition, for boards that aren't in the catalog."
+            }
+          ],
+          "description": "A board: a catalog ID, or a full definition."
+        },
+        "FpgaDefinition": {
+          "additionalProperties": false,
+          "description": "An FPGA: its architecture, part and toolchain parameters.",
+          "properties": {
+            "architecture": {
+              "$ref": "#/$defs/Architecture",
+              "description": "The FPGA family: ice40."
+            },
+            "nextpnr_device": {
+              "description": "The device type nextpnr uses, such as hx8k.",
+              "type": "string"
+            },
+            "nextpnr_package": {
+              "description": "The package nextpnr uses, such as tq144:4k.",
+              "type": "string"
+            },
+            "part_number": {
+              "description": "The vendor's part number, such as ICE40HX4K-TQ144.",
+              "type": "string"
+            },
+            "size": {
+              "description": "The device size, such as 8k.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "architecture",
+            "part_number",
+            "size",
+            "nextpnr_device",
+            "nextpnr_package"
+          ],
+          "type": "object"
+        },
+        "ProgrammingVariant": {
+          "additionalProperties": false,
+          "description": "One way to program a board, such as to flash with a particular cable.",
+          "properties": {
+            "args": {
+              "description": "The programmer's arguments, as a template. The engine replaces\n${VID}, ${PID}, ${BUS} and ${DEV} with the device's USB vendor ID,\nproduct ID, bus and device number, ${SERIAL} with its serial number,\nand ${BITSTREAM} with the bitstream path.",
+              "type": "string"
+            },
+            "programmer": {
+              "description": "The programmer to run: openfpgaloader or iceprog.",
+              "type": "string"
+            },
+            "usb": {
+              "$ref": "#/$defs/UsbFilter",
+              "description": "The USB filter that finds the board's device."
+            }
+          },
+          "required": [
+            "programmer",
+            "args",
+            "usb"
+          ],
+          "type": "object"
+        },
+        "UsbFilter": {
+          "additionalProperties": false,
+          "description": "Which USB devices are this board.",
+          "properties": {
+            "pid": {
+              "description": "USB product ID, four lowercase hex digits, such as 6010.",
+              "pattern": "^[0-9a-f]{4}$",
+              "type": "string"
+            },
+            "product_regex": {
+              "description": "A regular expression the device's product name must match, when\nseveral boards share the same USB IDs. Omitted means any product name.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "vid": {
+              "description": "USB vendor ID, four lowercase hex digits, such as 0403.",
+              "pattern": "^[0-9a-f]{4}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "vid",
+            "pid"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Which testbenches to run.",
+      "properties": {
+        "board": {
+          "$ref": "#/$defs/BoardSpec",
+          "description": "The target board: a catalog ID such as alhambra-ii (get_catalog lists\nthem), or a full board definition. It selects the FPGA's primitive\nmodels, such as SB_IO for iCE40."
+        },
+        "build_folder": {
+          "description": "Where the compiled testbenches and their waveforms go, as an absolute\npath. One of its last two folder names must contain \"build\", such as\n/home/u/proj/_build/default. It is created if needed.",
+          "type": "string"
+        },
+        "defines": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Verilog macro definitions, from name to value, such as\n{\"WIDTH\": \"8\"}. An empty value defines the macro with no text, for\n`ifdef. APIO_SIM is always defined as 0.",
+          "type": "object"
+        },
+        "source_files": {
+          "description": "The design files (.v or .sv), relative to the source folder, with / as\nthe separator, such as [\"main.v\", \"rtl/uart.v\"]. Don't list\ntestbenches or included files.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "source_folder": {
+          "description": "The folder with the design files, as an absolute path. The testbenches\nrun in it, so they read data files, such as with $readmemh, relative\nto it.",
+          "type": "string"
+        },
+        "testbench_files": {
+          "description": "The testbenches to run, in order, relative to the source folder, such\nas [\"main_tb.v\", \"rtl/uart_tb.v\"]. Each is compiled with the design\nfiles and run on its own.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "verbose": {
+          "default": false,
+          "description": "Let iverilog print more detail, shown in the live output and the\nlogs. It doesn't change the result. Defaults to false.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "board",
+        "source_folder",
+        "source_files",
+        "testbench_files",
+        "build_folder"
+      ],
+      "title": "TestInput",
+      "type": "object"
+    },
+    "outputSchema": {
+      "$defs": {
+        "Diagnostic": {
+          "description": "A problem reported by a tool, at a file and line when known.",
+          "properties": {
+            "column": {
+              "description": "Column number, starting at 1, when known.",
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "file": {
+              "description": "File, relative to the source folder, when known.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "line": {
+              "description": "Line number, starting at 1, when known.",
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "severity": {
+              "$ref": "#/$defs/Severity"
+            },
+            "text": {
+              "description": "The problem, in words.",
+              "type": "string"
+            },
+            "tool": {
+              "description": "Name of the tool that reported it, when known.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "severity",
+            "text"
+          ],
+          "type": "object"
+        },
+        "Severity": {
+          "description": "How serious a diagnostic is.",
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ],
+          "type": "string"
+        },
+        "TestbenchResult": {
+          "additionalProperties": false,
+          "description": "One testbench's result.",
+          "properties": {
+            "diagnostics": {
+              "description": "Compile warnings and the testbench's $fatal, $error and $warning\nmessages, at file and line.",
+              "items": {
+                "$ref": "#/$defs/Diagnostic"
+              },
+              "type": "array"
+            },
+            "file": {
+              "description": "The testbench, relative to the source folder.",
+              "type": "string"
+            },
+            "output": {
+              "description": "What the testbench printed, such as with $display. May span several\nlines.",
+              "type": "string"
+            },
+            "passed": {
+              "description": "True when it ran to the end without $fatal or $error.",
+              "type": "boolean"
+            },
+            "waveform_file": {
+              "description": "The waveform (.vcd), relative to the build folder, when the testbench\nwrote one with $dumpvars.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "file",
+            "passed",
+            "diagnostics",
+            "output"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "The test results.",
+      "properties": {
+        "passed": {
+          "description": "True when every testbench passed.",
+          "type": "boolean"
+        },
+        "testbenches": {
+          "description": "Each testbench's result, in the order given.",
+          "items": {
+            "$ref": "#/$defs/TestbenchResult"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "passed",
+        "testbenches"
+      ],
+      "title": "TestOutput",
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
     "name": "build",
     "description": "Builds an FPGA design into a bitstream: synthesizes the Verilog or SystemVerilog sources, places and routes them on the board's FPGA using the constraint file (.pcf, which maps top-level ports to pins), and packs the bitstream into the build folder. Give the source files explicitly; the engine doesn't search for them, though `include files are found next to the including file or in the source folder. A build with no changes since the last one returns at once with up_to_date set. The first build may install the toolchain package first, which takes a few minutes. Design problems come back as a design error with diagnostics at file and line. After a successful build, program_board programs the bitstream into the board.",
     "inputSchema": {

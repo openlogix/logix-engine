@@ -10,6 +10,7 @@
 
 pub mod lint;
 pub mod parse;
+pub mod testbench;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;

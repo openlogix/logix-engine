@@ -86,6 +86,116 @@ pub fn parse_verilator(output: &str, source_folder: &str) -> Vec<Diagnostic> {
     out
 }
 
+fn iverilog_located() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r"^(?P<file>[^\s:][^:]*):(?P<line>\d+):\s*(?:(?P<kind>error|warning|sorry):\s*)?(?P<text>[^:\s].*)$",
+        )
+        .unwrap()
+    })
+}
+
+fn iverilog_unlocated() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"^(?P<kind>error|warning|sorry): (?P<text>.*)$").unwrap())
+}
+
+/// Parses iverilog's compile output. Tagged lines are errors, warnings or
+/// "sorry" (an unsupported feature, an error). Untagged lines with a
+/// location, such as "main.v:3: syntax error", are errors. Notes that
+/// continue a message ("main.v:2:        : Padding ...") and summaries are
+/// left out.
+pub fn parse_iverilog(output: &str, source_folder: &str) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for line in output.lines() {
+        let line = line.trim_end();
+        let (caps, located) = match iverilog_located().captures(line) {
+            Some(c) => (c, true),
+            None => match iverilog_unlocated().captures(line) {
+                Some(c) => (c, false),
+                None => continue,
+            },
+        };
+        let severity = match caps.name("kind").map(|k| k.as_str()) {
+            Some("warning") => Severity::Warning,
+            _ => Severity::Error,
+        };
+        let mut d = Diagnostic {
+            file: None,
+            line: None,
+            column: None,
+            severity,
+            text: to_text(&caps["text"]),
+            tool: Some("iverilog".into()),
+        };
+        if located {
+            locate(
+                &mut d,
+                caps.name("file").map(|m| m.as_str()),
+                caps.name("line").map(|m| m.as_str()),
+                None,
+                source_folder,
+            );
+        }
+        out.push(d);
+    }
+    out
+}
+
+fn vvp_line() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r"^(?:(?P<kind>FATAL|ERROR|WARNING): |\*+\s*ASSERTION FAILED at )(?P<file>[^\s:][^:]*):(?P<line>\d+):\s*(?P<text>.*)$",
+        )
+        .unwrap()
+    })
+}
+
+/// Parses a testbench run's output from vvp: the messages of $fatal, $error
+/// and $warning, and the "*** ASSERTION FAILED at file:line:" lines that
+/// Apio's example testbenches print. Lines without a location, such as a
+/// testbench's own $display text, are left out.
+pub fn parse_vvp(output: &str, source_folder: &str) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for line in output.lines() {
+        let Some(c) = vvp_line().captures(line.trim_end()) else {
+            continue;
+        };
+        let kind = c.name("kind").map(|k| k.as_str());
+        let severity = if kind == Some("WARNING") {
+            Severity::Warning
+        } else {
+            Severity::Error
+        };
+        let mut text = to_text(&c["text"]);
+        match kind {
+            None => text = format!("Assertion failed: {text}"),
+            Some("FATAL") if text.is_empty() => text = "The testbench stopped with $fatal.".into(),
+            Some("ERROR") if text.is_empty() => text = "The testbench reported an error.".into(),
+            _ => {}
+        }
+        let mut d = Diagnostic {
+            file: None,
+            line: None,
+            column: None,
+            severity,
+            text,
+            tool: Some("vvp".into()),
+        };
+        locate(
+            &mut d,
+            c.name("file").map(|m| m.as_str()),
+            c.name("line").map(|m| m.as_str()),
+            None,
+            source_folder,
+        );
+        out.push(d);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,5 +250,69 @@ mod tests {
             d[0].text
                 .starts_with("/pkg/share/yosys/ice40/cells_sim.v:10: Cell has missing pin")
         );
+    }
+
+    // Real output from Icarus Verilog 14.0 (oss-cad-suite 2026-10-22).
+    #[test]
+    fn iverilog_compile_errors_and_warnings() {
+        let out = "bad.v:3: syntax error
+bad.v:2: error: Syntax error in continuous assignment
+rtl/sub.v:2: Include file local.vh not found
+Preprocessor failed with 1 error(s).
+p.v:2: error: port ``zz'' is not a port of u.
+p.v:2: warning: Port 1 (a) of module p expects 4 bit(s), given 2.
+p.v:2:        : Padding 2 high bits of the port.
+2 error(s) during elaboration.
+*** These modules were missing:
+        foo referenced 1 times.
+***
+nothere.v: No such file or directory
+error: Unable to find the root module";
+        let d = parse_iverilog(out, "/src");
+        let texts: Vec<_> = d.iter().map(|d| d.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            [
+                "syntax error",
+                "Syntax error in continuous assignment",
+                "Include file local.vh not found",
+                "port ``zz'' is not a port of u.",
+                "Port 1 (a) of module p expects 4 bit(s), given 2.",
+                "Unable to find the root module",
+            ]
+        );
+        assert_eq!(d[0].file.as_deref(), Some("bad.v"));
+        assert_eq!(d[0].line, Some(3));
+        assert_eq!(d[0].severity, Severity::Error);
+        assert_eq!(d[2].file.as_deref(), Some("rtl/sub.v"));
+        assert_eq!(d[4].severity, Severity::Warning);
+        assert_eq!(d[5].file, None);
+        assert_eq!(d[5].tool.as_deref(), Some("iverilog"));
+    }
+
+    // Real output from vvp (oss-cad-suite 2026-10-22).
+    #[test]
+    fn vvp_testbench_messages() {
+        let out = "VCD info: dumpfile out/z.vcd opened for output.
+WARNING: z_tb.v:1: careful
+         Time: 0  Scope: z_tb
+ERROR: z_tb.v:1: bad thing
+       Time: 0  Scope: z_tb
+ERROR: just text from $display
+*** ASSERTION FAILED at z_tb.v:7: expected 1
+FATAL: tb/z_tb.v:9: 
+       Time: 0  Scope: z_tb
+z_tb.v:1: $finish called at 0 (1s)";
+        let d = parse_vvp(out, "/src");
+        assert_eq!(d.len(), 4, "{d:#?}");
+        assert_eq!(d[0].severity, Severity::Warning);
+        assert_eq!(d[0].text, "careful");
+        assert_eq!(d[1].severity, Severity::Error);
+        assert_eq!(d[1].text, "bad thing");
+        assert_eq!(d[2].text, "Assertion failed: expected 1");
+        assert_eq!(d[2].line, Some(7));
+        assert_eq!(d[3].text, "The testbench stopped with $fatal.");
+        assert_eq!(d[3].file.as_deref(), Some("tb/z_tb.v"));
+        assert_eq!(d[3].tool.as_deref(), Some("vvp"));
     }
 }

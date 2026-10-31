@@ -12,7 +12,7 @@ use logix_engine::packages::PackageManager;
 use logix_engine::packages::manifest;
 use logix_engine::progress::{NoProgress, OutputLevel, OutputSink, Phases};
 use logix_engine::state::{self, EngineState};
-use logix_engine::tools::{Call, lint};
+use logix_engine::tools::{Call, lint, test};
 use serde_json::{Value, json};
 use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
@@ -246,4 +246,163 @@ async fn lint_request_errors() {
         "{}",
         err.message
     );
+}
+
+fn test_input(src: &Path, extra: Value) -> test::TestInput {
+    let v = json!({
+        "board": "alhambra-ii",
+        "source_folder": src,
+        "source_files": ["main.v", "rtl/counter.v"],
+        "testbench_files": ["main_tb.v"],
+        "build_folder": src.join("_build/default"),
+    });
+    serde_json::from_value(with(v, extra)).expect("a valid test input")
+}
+
+/// A testbench in a subfolder that reads a data file relative to the source
+/// folder, checks APIO_SIM, and fails with $fatal when `fail` is set.
+fn sub_tb(fail: bool) -> String {
+    let expected = if fail { "8'h99" } else { "8'h5a" };
+    format!(
+        r#"module sub_tb;
+  reg [7:0] mem [0:0];
+  initial begin
+    $readmemh("data/mem.hex", mem);
+`ifndef APIO_SIM
+    $fatal(1, "APIO_SIM isn't defined");
+`endif
+    if (`APIO_SIM != 0) $fatal(1, "APIO_SIM isn't 0");
+    $display("mem is %h", mem[0]);
+    if (mem[0] !== {expected}) $fatal(1, "mem is %h", mem[0]);
+    $finish;
+  end
+endmodule
+"#
+    )
+}
+
+#[tokio::test]
+async fn test_runs_a_passing_testbench_and_writes_its_waveform() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    let out = test::run(&state, test_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    assert!(out.passed, "{out:#?}");
+    let tb = &out.testbenches[0];
+    assert_eq!(tb.file, "main_tb.v");
+    assert!(tb.passed);
+    assert!(tb.output.contains("main_tb passed"), "{}", tb.output);
+    assert!(!tb.output.contains("VCD info"), "{}", tb.output);
+    assert_eq!(tb.waveform_file.as_deref(), Some("main_tb.vcd"));
+    let build = src.join("_build/default");
+    assert!(build.join("main_tb.vcd").is_file());
+    assert!(build.join("main_tb.out").is_file());
+    assert!(build.join(".logix-build").is_file());
+}
+
+#[tokio::test]
+async fn test_runs_every_testbench_and_reports_failures_as_results() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    std::fs::create_dir_all(src.join("tb")).unwrap();
+    std::fs::create_dir_all(src.join("data")).unwrap();
+    std::fs::write(src.join("data/mem.hex"), "5a\n").unwrap();
+    std::fs::write(src.join("tb/sub_tb.v"), sub_tb(true)).unwrap();
+    std::fs::write(
+        src.join("tb/ok_tb.v"),
+        sub_tb(false).replace("sub_tb", "ok_tb"),
+    )
+    .unwrap();
+    let input = test_input(
+        &src,
+        json!({"testbench_files": ["tb/sub_tb.v", "main_tb.v", "tb/ok_tb.v"]}),
+    );
+    let out = test::run(&state, input, &call()).await.unwrap();
+    assert!(!out.passed);
+    let passed: Vec<_> = out.testbenches.iter().map(|t| t.passed).collect();
+    assert_eq!(passed, [false, true, true], "{out:#?}");
+    let failed = &out.testbenches[0];
+    assert!(failed.output.contains("mem is 5a"), "{}", failed.output);
+    let d = &failed.diagnostics[0];
+    assert_eq!(d.severity, Severity::Error);
+    assert_eq!(d.file.as_deref(), Some("tb/sub_tb.v"));
+    assert_eq!(d.line, Some(10));
+    assert_eq!(d.text, "mem is 5a");
+    // No $dumpvars, so no waveform.
+    assert_eq!(failed.waveform_file, None);
+    assert!(src.join("_build/default/tb/sub_tb.out").is_file());
+}
+
+#[tokio::test]
+async fn test_compile_errors_are_design_errors() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    std::fs::write(
+        src.join("rtl/counter.v"),
+        COUNTER.replace("cnt + 1'b1;", "cnt +;"),
+    )
+    .unwrap();
+    let err = test::run(&state, test_input(&src, json!({})), &call())
+        .await
+        .unwrap_err();
+    assert_eq!(err.category, Category::Design, "{err:#?}");
+    assert_eq!(err.diagnostics[0].file.as_deref(), Some("rtl/counter.v"));
+    assert_eq!(err.diagnostics[0].line, Some(4));
+    assert_eq!(err.diagnostics[0].tool.as_deref(), Some("iverilog"));
+}
+
+#[tokio::test]
+async fn test_refuses_dumpfile_and_bad_requests() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    std::fs::write(
+        src.join("main_tb.v"),
+        MAIN_TB.replace(
+            "$dumpvars(0, main_tb);",
+            "$dumpfile(\"x.vcd\");\n    $dumpvars(0, main_tb);",
+        ),
+    )
+    .unwrap();
+    let err = test::run(&state, test_input(&src, json!({})), &call())
+        .await
+        .unwrap_err();
+    assert_eq!(err.category, Category::Design);
+    assert_eq!(err.diagnostics[0].line, Some(8));
+
+    for (extra, needle) in [
+        (json!({"testbench_files": []}), "testbench_files is empty"),
+        (json!({"build_folder": src.join("out")}), "build_folder"),
+    ] {
+        let err = test::run(&state, test_input(&src, extra.clone()), &call())
+            .await
+            .unwrap_err();
+        assert_eq!(err.category, Category::Request, "{extra}");
+        assert!(err.message.contains(needle), "{extra}: {}", err.message);
+    }
+}
+
+#[tokio::test]
+async fn test_can_be_cancelled() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    // A testbench that never calls $finish.
+    std::fs::write(src.join("main_tb.v"), MAIN_TB.replace("$finish;", "")).unwrap();
+    let c = call();
+    let cancel = c.cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        cancel.cancel();
+    });
+    let start = std::time::Instant::now();
+    let err = test::run(&state, test_input(&src, json!({})), &c)
+        .await
+        .unwrap_err();
+    assert_eq!(err.category, Category::Cancelled);
+    assert!(
+        err.message.contains("test was cancelled"),
+        "{}",
+        err.message
+    );
+    assert!(start.elapsed() < std::time::Duration::from_secs(10));
 }
