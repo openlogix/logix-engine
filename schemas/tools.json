@@ -626,7 +626,7 @@
             "type": "string"
           },
           "default": {},
-          "description": "Verilog macro definitions, from name to value, such as\n{\"WIDTH\": \"8\"}. An empty value defines the macro with no text, for\n`ifdef. SYNTHESIZE is always defined, and APIO_SIM is defined as 0.",
+          "description": "Verilog macro definitions, from name to value, such as\n{\"WIDTH\": \"8\"}. An empty value defines the macro with no text, for\n`ifdef. SYNTHESIZE is defined unless synthesize is false, and\nAPIO_SIM is defined as 0.",
           "type": "object"
         },
         "source_files": {
@@ -640,6 +640,11 @@
         "source_folder": {
           "description": "The folder with the design files, as an absolute path.",
           "type": "string"
+        },
+        "synthesize": {
+          "default": true,
+          "description": "Define SYNTHESIZE, so `ifdef SYNTHESIZE picks the code for synthesis,\nas in build. False leaves it undefined, to check the simulation code\ninstead, like apio lint --nosynth. Defaults to true.",
+          "type": "boolean"
         },
         "testbench_files": {
           "default": [],
@@ -1105,7 +1110,7 @@
   },
   {
     "name": "simulate",
-    "description": "Simulates one testbench with Icarus Verilog and opens its waveform in GTKWave, like apio sim: compiles the design files with the testbench, runs it to write the waveform (.vcd) into the build folder, then starts GTKWave detached and returns without waiting for it. The testbench must call $dumpvars and $finish, and must not call $dumpfile. GTKWave opens the layout file (.gtkw), which holds the signals shown; when it is missing, or is still a default one, the engine writes a default with the testbench's top-level signals, and a layout the user saved from GTKWave is kept. Set open_viewer to false to only write the waveform, such as when no one is at the screen. A failing testbench is still simulated and shown, with passed false. Compile errors are a design error with diagnostics at file and line. To just check whether testbenches pass, use test.",
+    "description": "Simulates one testbench with Icarus Verilog and opens its waveform in GTKWave, like apio sim: compiles the design files with the testbench, runs it to write the waveform (.vcd) into the build folder, then starts GTKWave detached and returns without waiting for it. The testbench must call $dumpvars and $finish, and must not call $dumpfile. GTKWave opens the layout file (.gtkw), which holds the signals shown; when it is missing, or is still a default one, the engine writes a default with the testbench's top-level signals, deleted again when GTKWave exits unless the user saved it; a layout the user saved is kept. Set open_viewer to false to only write the waveform, such as when no one is at the screen. A failing testbench is still simulated and shown, with passed false. Compile errors are a design error with diagnostics at file and line. To just check whether testbenches pass, use test.",
     "inputSchema": {
       "$defs": {
         "Architecture": {

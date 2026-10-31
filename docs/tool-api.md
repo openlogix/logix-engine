@@ -150,7 +150,7 @@ A package is unpacked into a temporary folder and renamed into place only when i
 
 Checks the design and, optionally, its testbenches with Verilator in lint-only mode, like `apio lint`. It is much faster than a build and finds likely mistakes that synthesis accepts, such as width mismatches. It writes nothing and needs no build folder.
 
-It runs Verilator with Apio's options, so it reports the same problems: `--lint-only --quiet --bbox-unsup --timing -Wno-TIMESCALEMOD -Wno-MULTITOP`, the macros `SYNTHESIZE` and `APIO_SIM=0`, the top module when given, the request's macros, and the FPGA's primitive models, such as `cells_sim.v` with `NO_ICE40_DEFAULT_ASSIGNMENTS` for iCE40, so designs that use primitives such as `SB_IO` lint cleanly. Verilator treats warnings as failures, as in Apio, so `passed` is false when there are warnings too.
+It runs Verilator with Apio's options, so it reports the same problems: `--lint-only --quiet --bbox-unsup --timing -Wno-TIMESCALEMOD -Wno-MULTITOP`, the macros `SYNTHESIZE` (unless `synthesize` is false) and `APIO_SIM=0`, the top module when given, the request's macros, and the FPGA's primitive models, such as `cells_sim.v` with `NO_ICE40_DEFAULT_ASSIGNMENTS` for iCE40, so designs that use primitives such as `SB_IO` lint cleanly. Verilator treats warnings as failures, as in Apio, so `passed` is false when there are warnings too.
 
 **Problems are the result.** Lint's job is to find problems, so problems in the design are returned in `diagnostics` with `passed` set to false, not as a design error. The other errors in the list below still apply.
 
@@ -162,7 +162,8 @@ It runs Verilator with Apio's options, so it reports the same problems: `--lint-
 | `top_module` | text | No | Name of the top-level module. When omitted, Verilator checks every module that no other module uses |
 | `source_folder`, `source_files` | See folder fields in [Table 2](#folders) | Yes | The design files |
 | `testbench_files` | list of relative paths | No | Testbenches to check too, relative to the source folder. Defaults to none. A file may be listed only once in `source_files` and `testbench_files` together |
-| `defines` | map of text | No | Macro definitions, as in the [build tool](#build-tool). `SYNTHESIZE` is always defined, and `APIO_SIM` is defined as `0` |
+| `defines` | map of text | No | Macro definitions, as in the [build tool](#build-tool). `SYNTHESIZE` is defined unless `synthesize` is false, and `APIO_SIM` is defined as `0` |
+| `synthesize` | boolean | No | Define `SYNTHESIZE`, so `` `ifdef SYNTHESIZE `` picks the code for synthesis, as in a build. False leaves it undefined, to check the simulation code instead, like `apio lint --nosynth`. Defaults to true |
 | `verbose` | boolean | No | Run Verilator without `--quiet`. Defaults to false |
 
 **Table 24.** lint tool outputs
@@ -291,9 +292,10 @@ Simulates one testbench and opens its waveform in GTKWave, like `apio sim --deta
 
 - **Missing or default:** when the file doesn't exist, or is a default one the engine or Apio generated (it has their marker line), the engine writes a default layout there with the testbench's top-level signals, so GTKWave doesn't open empty. A default is replaced on each simulation, so it follows design changes.
 - **Saved by the user:** a layout without the marker is the user's and is never changed. GTKWave opens it, and saving from GTKWave updates it.
+- **Unsaved defaults are cleaned up:** when GTKWave exits, the engine deletes the layout if it still has the marker, so default layouts the user never saved don't pile up in the project or end up in version control. This is best-effort: if the engine exits before GTKWave, the default stays until a later simulation replaces or deletes it.
 - **No layout file:** when `layout_file` is omitted, the layout goes into the build folder as `<testbench>.gtkw`, where a saved layout is lost when the folder is cleaned.
 
-This is the one case where the engine creates a file in the source folder. See [Safe file changes](requirements.md).
+This is the one case where the engine creates or deletes a file in the source folder. See [Safe file changes](requirements.md).
 
 **A failing testbench** is still simulated and shown, since its waveform is how the user finds the problem. `passed` is false. A testbench that writes no waveform, because it doesn't call `$dumpvars`, is a design error.
 

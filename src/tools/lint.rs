@@ -57,13 +57,23 @@ pub struct LintInput {
     pub testbench_files: Vec<String>,
     /// Verilog macro definitions, from name to value, such as
     /// {"WIDTH": "8"}. An empty value defines the macro with no text, for
-    /// `ifdef. SYNTHESIZE is always defined, and APIO_SIM is defined as 0.
+    /// `ifdef. SYNTHESIZE is defined unless synthesize is false, and
+    /// APIO_SIM is defined as 0.
     #[serde(default)]
     pub defines: BTreeMap<String, String>,
+    /// Define SYNTHESIZE, so `ifdef SYNTHESIZE picks the code for synthesis,
+    /// as in build. False leaves it undefined, to check the simulation code
+    /// instead, like apio lint --nosynth. Defaults to true.
+    #[serde(default = "default_true")]
+    pub synthesize: bool,
     /// Let Verilator print more detail, shown in the live output and the
     /// logs. It doesn't change the result. Defaults to false.
     #[serde(default)]
     pub verbose: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// What lint found.
@@ -132,6 +142,7 @@ pub fn check(input: LintInput) -> Result<LintRequest, ToolError> {
             input.verbose,
         )?,
         top_module: input.top_module,
+        synthesize: input.synthesize,
     })
 }
 
@@ -213,9 +224,12 @@ mod tests {
         let mut verbose = req.clone();
         verbose.sources.verbose = true;
         verbose.top_module = None;
+        verbose.synthesize = false;
         let args: Vec<OsString> = lint::verilator_args(&verbose, &lib, &[]);
         assert!(!args.contains(&"--quiet".into()));
         assert!(!args.contains(&"--top-module".into()));
+        assert!(!args.contains(&"-DSYNTHESIZE".into()));
+        assert!(args.contains(&"-DAPIO_SIM=0".into()));
     }
 
     #[test]

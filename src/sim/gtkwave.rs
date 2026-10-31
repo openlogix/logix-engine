@@ -137,15 +137,29 @@ pub fn gtkwave_args(vcd: &Path, layout: &Path) -> Vec<OsString> {
     ]
 }
 
+/// Deletes the layout at `path` if it is still a generated default, so
+/// layouts the user never saved don't pile up in the project. A layout the
+/// user saved has no marker and is kept.
+pub fn delete_if_generated(path: &Path) {
+    if is_generated(path) {
+        match fs::remove_file(path) {
+            Ok(()) => log::info!("Deleted the unsaved default layout {}", path.display()),
+            Err(e) => log::info!("Can't delete the default layout {}: {e}", path.display()),
+        }
+    }
+}
+
 /// Starts `program` fully detached and returns at once: its own session, no
 /// input or output, and not stopped when the operation is cancelled or the
 /// engine exits. The environment is the same minimal one the tools get, plus
-/// what a window needs on Linux.
+/// what a window needs on Linux. `on_exit` runs when the program exits, if
+/// the engine is still running then.
 pub fn launch_detached(
     program: &Path,
     args: &[OsString],
     cwd: &Path,
     bin_dir: &Path,
+    on_exit: impl FnOnce() + Send + 'static,
 ) -> Result<(), ToolError> {
     let mut path = OsString::from(bin_dir);
     path.push(":/usr/bin:/bin");
@@ -205,6 +219,7 @@ pub fn launch_detached(
     // Reap it when it exits, so it doesn't linger as a zombie.
     std::thread::spawn(move || {
         let _ = child.wait();
+        on_exit();
     });
     Ok(())
 }
@@ -302,6 +317,7 @@ $end
             &args,
             tmp.path(),
             Path::new("/pkg/bin"),
+            || {},
         )
         .unwrap();
         assert!(
@@ -317,8 +333,48 @@ $end
         let path = fs::read_to_string(&marker).unwrap();
         assert!(path.starts_with("/pkg/bin:"), "{path}");
 
-        let err = launch_detached(Path::new("/no/such/gtkwave"), &[], tmp.path(), tmp.path())
-            .unwrap_err();
+        let err = launch_detached(
+            Path::new("/no/such/gtkwave"),
+            &[],
+            tmp.path(),
+            tmp.path(),
+            || {},
+        )
+        .unwrap_err();
         assert_eq!(err.category, Category::Tool);
+    }
+
+    #[test]
+    fn unsaved_default_layouts_are_deleted_when_the_viewer_exits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vcd = tmp.path().join("main_tb.vcd");
+        fs::write(&vcd, VCD).unwrap();
+        let default = tmp.path().join("default.gtkw");
+        let saved = tmp.path().join("saved.gtkw");
+        write_default_if_needed(&default, &vcd, "main_tb.v").unwrap();
+        write_default_if_needed(&saved, &vcd, "main_tb.v").unwrap();
+        // The user saves one of them from GTKWave, which drops the marker.
+        fs::write(&saved, "[*] saved by the user\n").unwrap();
+
+        // A viewer that exits after a moment.
+        let (tx, rx) = std::sync::mpsc::channel();
+        let paths = [default.clone(), saved.clone()];
+        let args: Vec<OsString> = vec!["-c".into(), "sleep 0.3".into()];
+        launch_detached(
+            Path::new("/bin/sh"),
+            &args,
+            tmp.path(),
+            tmp.path(),
+            move || {
+                paths.iter().for_each(|p| delete_if_generated(p));
+                tx.send(()).unwrap();
+            },
+        )
+        .unwrap();
+        assert!(default.exists(), "kept while the viewer runs");
+        rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        assert!(!default.exists());
+        assert!(saved.exists());
+        delete_if_generated(&tmp.path().join("missing.gtkw"));
     }
 }

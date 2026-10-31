@@ -225,6 +225,17 @@ async fn lint_defines_reach_the_sources() {
     .unwrap();
     assert!(!out.passed);
     assert_eq!(out.diagnostics[0].line, Some(2), "{:#?}", out.diagnostics);
+    // synthesize false lints the simulation side, like apio lint --nosynth.
+    let out = lint::run(
+        &state,
+        lint_input(&src, json!({"synthesize": false})),
+        &call(),
+    )
+    .await
+    .unwrap();
+    assert!(!out.passed);
+    // Verilator reports the broken line 5 at the next token, on line 7.
+    assert_eq!(out.diagnostics[0].line, Some(7), "{:#?}", out.diagnostics);
 }
 
 #[tokio::test]

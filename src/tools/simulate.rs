@@ -28,8 +28,8 @@ impl EngineTool for Simulate {
         detached and returns without waiting for it. The testbench must call $dumpvars and \
         $finish, and must not call $dumpfile. GTKWave opens the layout file (.gtkw), which \
         holds the signals shown; when it is missing, or is still a default one, the engine \
-        writes a default with the testbench's top-level signals, and a layout the user saved \
-        from GTKWave is kept. Set open_viewer to false to only write the waveform, such as \
+        writes a default with the testbench's top-level signals, deleted again when GTKWave \
+        exits unless the user saved it; a layout the user saved is kept. Set open_viewer to false to only write the waveform, such as \
         when no one is at the screen. A failing testbench is still simulated and shown, with \
         passed false. Compile errors are a design error with diagnostics at file and line. To \
         just check whether testbenches pass, use test.";
@@ -215,7 +215,10 @@ pub async fn run(
         let args = gtkwave::gtkwave_args(&vcd, &layout);
         call.output
             .command("gtkwave", &command_line(&program, &args));
-        gtkwave::launch_detached(&program, &args, &src, &bin)?;
+        let delete = layout.clone();
+        gtkwave::launch_detached(&program, &args, &src, &bin, move || {
+            gtkwave::delete_if_generated(&delete)
+        })?;
     }
     Ok(SimulateOutput {
         passed: r.passed,

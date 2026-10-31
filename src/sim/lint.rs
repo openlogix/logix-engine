@@ -16,6 +16,9 @@ pub struct LintRequest {
     pub sources: Sources,
     /// The top-level module, when known.
     pub top_module: Option<String>,
+    /// Define SYNTHESIZE, so `ifdef SYNTHESIZE picks the synthesis code.
+    /// False lints the simulation code instead, like apio lint --nosynth.
+    pub synthesize: bool,
 }
 
 /// What lint found.
@@ -38,11 +41,13 @@ pub fn verilator_args(req: &LintRequest, lib: &SimLibrary, includes: &[OsString]
         "--timing",
         "-Wno-TIMESCALEMOD",
         "-Wno-MULTITOP",
-        "-DSYNTHESIZE",
-        "-DAPIO_SIM=0",
     ] {
         args.push(a.into());
     }
+    if req.synthesize {
+        args.push("-DSYNTHESIZE".into());
+    }
+    args.push("-DAPIO_SIM=0".into());
     if let Some(top) = &req.top_module {
         args.push("--top-module".into());
         args.push(top.into());
