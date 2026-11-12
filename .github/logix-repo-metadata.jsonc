@@ -4,5 +4,7 @@
   "$schema": "https://www.openlogix.org/schemas/logix-repo-metadata-v1.json",
   // People install it for AI agents; Logix IDE also downloads it as a
   // dependency, and a repo that is both is installable.
-  "type": "installable"
+  "type": "installable",
+  // Problems and ideas are reported here (one of the two repos that take issues).
+  "issues": "here"
 }

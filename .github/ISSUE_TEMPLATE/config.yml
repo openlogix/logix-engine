@@ -1,0 +1,7 @@
+# Blank issues stay allowed: Logix IDE's Help > Report a Problem opens one
+# with its text filled in.
+blank_issues_enabled: true
+contact_links:
+  - name: A security problem
+    url: https://github.com/openlogix/.github/blob/main/SECURITY.md
+    about: Report it privately, never as a public issue.

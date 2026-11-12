@@ -1,0 +1,32 @@
+# A problem or an idea, for any part of Open Logix. Logix IDE and Logix
+# Engine are the only repos that take issues (the website repo's CLAUDE.md,
+# Contact and GitHub features): the Part says where it belongs.
+name: Problem or idea
+description: Something that doesn't work as it should, or an idea, for any part of Open Logix.
+body:
+  - type: dropdown
+    id: part
+    attributes:
+      label: Part
+      description: Where you saw it. Not sure? Pick the closest; we'll move it if needed.
+      options:
+        - Logix IDE
+        - Logix Engine
+        - A board or FPGA (Logix Catalog)
+        - The FPGA tools (logix-core)
+        - The website or the docs
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: The steps that show it, if you can. For an idea, what you'd like and why.
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: "Logix IDE: Help > System Info (Copy), and the log (Help > Show Log Folder, logix.log, attached). Logix Engine: get_engine_info's report. Your board, if it's about one."
