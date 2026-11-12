@@ -1,0 +1,8 @@
+// This repo's Open Logix metadata, read by repos-janitor (the website repo's
+// CLAUDE.md, Repo types, owns the policy). Change it only by pull request.
+{
+  "$schema": "https://www.openlogix.org/schemas/logix-repo-metadata-v1.json",
+  // People install it for AI agents; Logix IDE also downloads it as a
+  // dependency, and a repo that is both is installable.
+  "type": "installable"
+}

@@ -45,7 +45,7 @@ Milestone 1 (iCE40, seven tools, tested on an Alhambra II) is done. Milestone 2 
 
 ## CI and releases
 
-**Repo type: installable** (topic `openlogix-installable`; the website repo's `CLAUDE.md`, Repo types, owns the policy): people install the engine for AI agents, and Logix IDE also downloads it as a dependency; a repo that's both is installable.
+**Repo type: installable** (`.github/logix-repo-metadata.jsonc`; the website repo's `CLAUDE.md`, Repo types, owns the policy): people install the engine for AI agents, and Logix IDE also downloads it as a dependency; a repo that's both is installable.
 
 Same conventions as logix-ide, using the shared actions from `openlogix/.github` (`openlogix/.github/actions/<name>@main`; that repo documents and tests them).
 
