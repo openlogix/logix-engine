@@ -49,10 +49,22 @@ jobs:
       - name: Checkout this repo
         uses: actions/checkout@v7
 
+      # The remote config version this release reads, recorded in
+      # BUILD-INFO.json: repos-janitor finds the releases a Latest release
+      # uses by it (Repo types, in the website repo's CLAUDE.md).
+      - name: Read the config version
+        id: config
+        run: |
+          set -euo pipefail
+          v="$(sed -n 's/^pub const CONFIG_VERSION: &str = "\([0-9]\{3\}\)";$/\1/p' src/packages/remote_config.rs)"
+          [[ "$v" =~ ^[0-9]{3}$ ]] || { echo "::error::no CONFIG_VERSION in src/packages/remote_config.rs"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
       - name: Start the pre-release
         uses: openlogix/.github/actions/start-pre-release@main
         with:
           package-name: logix-engine
+          extra-fields: '{"config-version": "${{ steps.config.outputs.version }}"}'
           description: One open engine to build and test FPGA designs and program boards, for any IDE or AI agent.
 
   # ----- Per-platform builds, each on its own runner.
