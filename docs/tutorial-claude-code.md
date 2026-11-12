@@ -54,8 +54,9 @@ Type the prompts as they are, or in your own words or language.
 ## 1. Install the engine
 
 Open the engine's [Releases](https://github.com/openlogix/logix-engine/releases)
-page and download the newest `logix-engine-darwin-arm64-<date>.tgz` to your
-**Downloads** folder.
+page, find the release marked **Latest** (not necessarily the newest one:
+newer pre-releases are development builds) and download its
+`logix-engine-darwin-arm64-<date>.tgz` to your **Downloads** folder.
 
 Clear the download flag and unpack it:
 
