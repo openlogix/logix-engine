@@ -1,9 +1,9 @@
-// What Logix Engine on config 001 uses (Remote updates, in the website
-// repo's CLAUDE.md). Every engine on this config reads this file from main,
-// so a change here reaches them without an engine release. Change it only by
-// pull request, saying why in a comment; the tests run with what it names.
-// During development it may name pre-releases: repin them before they
-// expire (about 5 days).
+// What Logix Engine on config 001 uses on the dev channel (Remote updates, in
+// the website repo's CLAUDE.md): every engine release that isn't promoted, and
+// local builds. Every such engine reads this file from main, so a change here
+// reaches them without an engine release, and never reaches prod. Change it
+// only by pull request, saying why in a comment; the tests run with what it
+// names. It may name pre-releases: a release a config names is kept.
 {
   "$schema": "https://www.openlogix.org/schemas/logix-remote-config-v1.json",
 

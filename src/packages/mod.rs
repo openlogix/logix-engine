@@ -134,6 +134,8 @@ struct Remote {
     network: bool,
     /// When the config in use was read (seconds since 1970), if it was.
     fetched: Arc<RwLock<Option<u64>>>,
+    /// The channel and config file it was read with.
+    channel: Arc<RwLock<Option<remote_config::Channel>>>,
     /// One refresh at a time.
     lock: Arc<tokio::sync::Mutex<()>>,
 }
@@ -144,6 +146,7 @@ pub struct RemoteInfo {
     pub location: String,
     pub is_override: bool,
     pub fetched: Option<u64>,
+    pub channel: Option<remote_config::Channel>,
 }
 
 /// Downloads, repairs and finds the packages of a package set in an engine
@@ -197,6 +200,7 @@ impl PackageManager {
     ) -> Self {
         let cached = remote_config::load_cache(engine_folder).filter(|c| c.matches(&source));
         let fetched = cached.as_ref().map(|c| c.fetched);
+        let channel = cached.as_ref().map(|c| c.channel.clone());
         let set = cached.map(|c| c.set).unwrap_or_default();
         PackageManager {
             engine_folder: engine_folder.to_path_buf(),
@@ -205,6 +209,7 @@ impl PackageManager {
                 source,
                 network,
                 fetched: Arc::new(RwLock::new(fetched)),
+                channel: Arc::new(RwLock::new(channel)),
                 lock: Arc::new(tokio::sync::Mutex::new(())),
             }),
             platform: platform.to_string(),
@@ -240,6 +245,7 @@ impl PackageManager {
             location: r.source.location.clone(),
             is_override: r.source.is_override,
             fetched: *r.fetched.read().unwrap_or_else(|e| e.into_inner()),
+            channel: r.channel.read().unwrap_or_else(|e| e.into_inner()).clone(),
         })
     }
 
@@ -289,13 +295,16 @@ impl PackageManager {
         }
         let read = async {
             let client = remote_config::client()?;
-            let text = remote_config::read(&remote.source, &client).await?;
-            let entries = remote_config::parse(&text)
-                .map_err(|e| format!("{}: {e}", remote.source.location))?;
-            remote_config::resolve(&entries, &self.platform, &self.download_base, &client).await
+            let read = remote_config::read(&remote.source, &client).await?;
+            let entries = remote_config::parse(&read.text)
+                .map_err(|e| format!("{} {}: {e}", remote.source.location, read.channel.file))?;
+            let set =
+                remote_config::resolve(&entries, &self.platform, &self.download_base, &client)
+                    .await?;
+            Ok::<_, String>((set, read.channel))
         };
-        let new = match read.await {
-            Ok(set) => set,
+        let (new, channel) = match read.await {
+            Ok(read) => read,
             Err(e) if have && !remote.source.is_override => {
                 log::warn!("Can't read the remote config, keeping the one in use: {e}");
                 return Ok(vec![]);
@@ -319,9 +328,17 @@ impl PackageManager {
         let cached = remote_config::Cached {
             source: remote.source.location.clone(),
             config_version: remote_config::CONFIG_VERSION.to_string(),
+            channel: channel.clone(),
             fetched: now,
             set: new.clone(),
         };
+        log::info!(
+            "Remote config: channel {} ({}), {}",
+            channel.name,
+            channel.how,
+            channel.file
+        );
+        *remote.channel.write().unwrap_or_else(|e| e.into_inner()) = Some(channel);
         if let Err(e) = remote_config::save_cache(&self.engine_folder, &cached) {
             log::warn!("Can't save the remote config: {e}");
         }

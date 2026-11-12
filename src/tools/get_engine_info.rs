@@ -80,11 +80,25 @@ pub struct GetEngineInfoOutput {
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RemoteConfigInfo {
-    /// The config version this engine reads, such as 001
-    /// (remote-config/logix-engine/config-001.jsonc in the engine's repo).
+    /// The config version this engine reads, such as 001 (the version
+    /// folder remote-config/logix-engine/001/ in the engine's repo).
     pub config_version: String,
-    /// Where it's read: a URL, or a local file for the diagnostic override.
+    /// Where the version folder is read: a URL, or a local folder for the
+    /// diagnostic override.
     pub source: String,
+    /// The release channel the engine reads, such as prod or dev; omitted
+    /// before the config has been read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
+    /// Why it's on that channel: listed (channels.jsonc lists this release),
+    /// default (it doesn't: dev), local build (always dev) or
+    /// LOGIX_ENGINE_CHANNEL (a diagnostic setting).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_reason: Option<String>,
+    /// The config file read, such as dev.jsonc, or prod.jsonc when the
+    /// channel has none of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_file: Option<String>,
     /// True when the source is LOGIX_ENGINE_DEV_REMOTE_CONFIG (a diagnostic
     /// setting); omitted otherwise.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -243,8 +257,19 @@ fn report(info: &GetEngineInfoOutput) -> String {
         }
     ));
     let r = &info.remote_config;
+    let channel = match (&r.channel, &r.channel_reason, &r.config_file) {
+        (Some(c), Some(why), Some(file)) => {
+            let fallback = if *file != format!("{c}.jsonc") {
+                format!(", using {file}")
+            } else {
+                String::new()
+            };
+            format!(", channel {c} ({why}{fallback})")
+        }
+        _ => String::new(),
+    };
     lines.push(format!(
-        "Remote config: {} from {}{}, {}",
+        "Remote config: {} from {}{}{channel}, {}",
         r.config_version,
         r.source,
         if r.is_override {
@@ -270,6 +295,18 @@ pub fn remote_config_info(packages: &PackageManager) -> RemoteConfigInfo {
             .as_ref()
             .map_or_else(remote_config::default_url, |r| r.location.clone()),
         is_override: r.as_ref().is_some_and(|r| r.is_override),
+        channel: r
+            .as_ref()
+            .and_then(|r| r.channel.as_ref())
+            .map(|c| c.name.clone()),
+        channel_reason: r
+            .as_ref()
+            .and_then(|r| r.channel.as_ref())
+            .map(|c| c.how.clone()),
+        config_file: r
+            .as_ref()
+            .and_then(|r| r.channel.as_ref())
+            .map(|c| c.file.clone()),
         read_at: r.and_then(|r| r.fetched).map(remote_config::utc_time),
     }
 }
@@ -346,8 +383,11 @@ mod tests {
             ],
             remote_config: RemoteConfigInfo {
                 config_version: "001".into(),
-                source: "https://raw.githubusercontent.com/openlogix/logix-engine/main/remote-config/logix-engine/config-001.jsonc".into(),
+                source: "https://raw.githubusercontent.com/openlogix/logix-engine/main/remote-config/logix-engine/001/".into(),
                 is_override: false,
+                channel: Some("dev".into()),
+                channel_reason: Some("default".into()),
+                config_file: Some("prod.jsonc".into()),
                 read_at: Some("2026-11-08T09:30:00Z".into()),
             },
             boards_schema: crate::catalog::BOARDS_SCHEMA.into(),
@@ -370,7 +410,7 @@ Packages:
   logix-catalog  2026.11.08  ready
   logix-core     2026.11.10  missing
 Board catalog: Logix Catalog 2026.11.08
-Remote config: 001 from https://raw.githubusercontent.com/openlogix/logix-engine/main/remote-config/logix-engine/config-001.jsonc, read 2026-11-08T09:30:00Z
+Remote config: 001 from https://raw.githubusercontent.com/openlogix/logix-engine/main/remote-config/logix-engine/001/, channel dev (default, using prod.jsonc), read 2026-11-08T09:30:00Z
 Boards schema: https://www.openlogix.org/schemas/logix-board-v1.json"
         );
     }

@@ -86,13 +86,23 @@ fn main() -> ExitCode {
         .join(log_path.file_name().unwrap_or_default());
 
     // The packages come from the engine's remote config, or from the
-    // diagnostic override: a URL, or a local file that must exist.
+    // diagnostic override: a version folder's URL, or a local folder that
+    // must exist. The channel override must be a channel name.
+    if let Err(e) = remote_config::channel_variable() {
+        return fail(&e);
+    }
+    if let Ok(Some(channel)) = remote_config::channel_variable() {
+        log::warn!(
+            "Using the channel {channel} ({})",
+            remote_config::CHANNEL_VAR
+        );
+    }
     let source = match remote_config::ConfigSource::from_env() {
         Some(o) => {
             let is_url = o.location.starts_with("https://") || o.location.starts_with("http://");
-            if !is_url && !Path::new(&o.location).is_file() {
+            if !is_url && !Path::new(&o.location).is_dir() {
                 return fail(&format!(
-                    "{}: no such file: {}",
+                    "{}: no such folder: {}",
                     remote_config::DEV_REMOTE_CONFIG_VAR,
                     o.location
                 ));

@@ -31,7 +31,8 @@ Environment variables the engine reads at startup, for Open Logix developers and
 
 | Variable | Description |
 | --- | --- |
-| `LOGIX_ENGINE_DEV_REMOTE_CONFIG` | A remote config to read instead of the engine's own: an `https://` URL, such as a pull request's `config-001.jsonc` on its branch or a fork, or a local file. `get_engine_info` reports it in `remote_config` |
+| `LOGIX_ENGINE_DEV_REMOTE_CONFIG` | A remote config version folder to read instead of the engine's own: an `https://` URL, such as a pull request's `remote-config/logix-engine/001/` on its branch or a fork, or a local folder. `get_engine_info` reports it in `remote_config` |
+| `LOGIX_ENGINE_CHANNEL` | The release channel to read, such as `prod` or `dev`, instead of the one `channels.jsonc` gives this release. A name that isn't a channel name stops the engine; a channel the folder doesn't have is a setup error. `get_engine_info` reports it in `remote_config` (`channel_reason`) |
 | `LOGIX_ENGINE_DEV_CATALOG_FOLDER` | A catalog folder, such as a logix-catalog clone, to read instead of the `logix-catalog` package. `get_engine_info` reports it in `catalog` |
 
 ## Logs

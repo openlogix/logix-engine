@@ -169,12 +169,33 @@
           "type": "object",
           "properties": {
             "config_version": {
-              "description": "The config version this engine reads, such as 001\n(remote-config/logix-engine/config-001.jsonc in the engine's repo).",
+              "description": "The config version this engine reads, such as 001 (the version\nfolder remote-config/logix-engine/001/ in the engine's repo).",
               "type": "string"
             },
             "source": {
-              "description": "Where it's read: a URL, or a local file for the diagnostic override.",
+              "description": "Where the version folder is read: a URL, or a local folder for the\ndiagnostic override.",
               "type": "string"
+            },
+            "channel": {
+              "description": "The release channel the engine reads, such as prod or dev; omitted\nbefore the config has been read.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "channel_reason": {
+              "description": "Why it's on that channel: listed (channels.jsonc lists this release),\ndefault (it doesn't: dev), local build (always dev) or\nLOGIX_ENGINE_CHANNEL (a diagnostic setting).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "config_file": {
+              "description": "The config file read, such as dev.jsonc, or prod.jsonc when the\nchannel has none of its own.",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "is_override": {
               "description": "True when the source is LOGIX_ENGINE_DEV_REMOTE_CONFIG (a diagnostic\nsetting); omitted otherwise.",
@@ -512,12 +533,33 @@
           "type": "object",
           "properties": {
             "config_version": {
-              "description": "The config version this engine reads, such as 001\n(remote-config/logix-engine/config-001.jsonc in the engine's repo).",
+              "description": "The config version this engine reads, such as 001 (the version\nfolder remote-config/logix-engine/001/ in the engine's repo).",
               "type": "string"
             },
             "source": {
-              "description": "Where it's read: a URL, or a local file for the diagnostic override.",
+              "description": "Where the version folder is read: a URL, or a local folder for the\ndiagnostic override.",
               "type": "string"
+            },
+            "channel": {
+              "description": "The release channel the engine reads, such as prod or dev; omitted\nbefore the config has been read.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "channel_reason": {
+              "description": "Why it's on that channel: listed (channels.jsonc lists this release),\ndefault (it doesn't: dev), local build (always dev) or\nLOGIX_ENGINE_CHANNEL (a diagnostic setting).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "config_file": {
+              "description": "The config file read, such as dev.jsonc, or prod.jsonc when the\nchannel has none of its own.",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "is_override": {
               "description": "True when the source is LOGIX_ENGINE_DEV_REMOTE_CONFIG (a diagnostic\nsetting); omitted otherwise.",

@@ -692,7 +692,8 @@ struct RemoteSetup {
 }
 
 /// A server with core 2026-01-02, catalogs 2026-01-02 and 2026-01-03, and a
-/// config naming catalog 2026-01-02, at /config.jsonc.
+/// version folder at /001/ (channels.jsonc, and dev.jsonc naming catalog
+/// 2026-01-02).
 fn remote_setup() -> RemoteSetup {
     let tmp = tempfile::tempdir().unwrap();
     let engine = tmp.path().canonicalize().unwrap().join("engine");
@@ -719,7 +720,13 @@ fn remote_setup() -> RemoteSetup {
         "catalog-20260103.tgz",
         &good_package(),
     );
-    server.put("/config.jsonc", config_text("2026-01-02").as_bytes());
+    server.put("/001/dev.jsonc", config_text("2026-01-02").as_bytes());
+    // The version folder's channel lists: nothing promoted, so the tests (a
+    // local build) read dev.jsonc.
+    server.put(
+        "/001/channels.jsonc",
+        br#"{"$schema": "https://www.openlogix.org/schemas/logix-channels-v1.json"}"#,
+    );
     RemoteSetup {
         _tmp: tmp,
         engine,
@@ -732,7 +739,7 @@ impl RemoteSetup {
         PackageManager::with_remote_config(
             &self.engine,
             remote_config::ConfigSource {
-                location: format!("{}/config.jsonc", self.server.base),
+                location: format!("{}/001/", self.server.base),
                 is_override,
             },
             network,
@@ -790,8 +797,34 @@ async fn reads_the_remote_config_then_downloads_what_it_names() {
         )
     );
     assert_eq!(record["size"], good_package().len());
-    // The config, the two SHA256SUMS and the two packages.
-    assert_eq!(r.server.count(), 5);
+    // channels.jsonc, the config, the two SHA256SUMS and the two packages.
+    assert_eq!(r.server.count(), 6);
+    let channel = pm.remote_info().unwrap().channel.unwrap();
+    // A local build is on dev; CI's dev pass also sets LOGIX_ENGINE_CHANNEL.
+    assert_eq!(
+        (channel.name.as_str(), channel.file.as_str()),
+        ("dev", "dev.jsonc")
+    );
+    assert!(
+        ["local build", remote_config::CHANNEL_VAR].contains(&channel.how.as_str()),
+        "{}",
+        channel.how
+    );
+}
+
+#[tokio::test]
+async fn without_its_own_file_dev_reads_the_prod_config() {
+    let r = remote_setup();
+    r.server.remove("/001/dev.jsonc");
+    r.server
+        .put("/001/prod.jsonc", config_text("2026-01-02").as_bytes());
+    let pm = r.pm(true, false);
+    assert_eq!(download_all(&pm).await.len(), 2);
+    let channel = pm.remote_info().unwrap().channel.unwrap();
+    assert_eq!(
+        (channel.name.as_str(), channel.file.as_str()),
+        ("dev", "prod.jsonc")
+    );
 }
 
 #[tokio::test]
@@ -812,7 +845,7 @@ async fn a_new_config_switches_releases_and_deletes_the_old_ones() {
     let pm = r.pm(true, false);
     download_all(&pm).await;
     r.server
-        .put("/config.jsonc", config_text("2026-01-03").as_bytes());
+        .put("/001/dev.jsonc", config_text("2026-01-03").as_bytes());
     let updates = pm.refresh(true, false).await.unwrap();
     assert_eq!(updates.len(), 1);
     assert_eq!(updates[0].name, "logix-catalog");
@@ -853,11 +886,11 @@ async fn the_config_in_use_stays_when_a_new_one_cant_be_read() {
     let r = remote_setup();
     let pm = r.pm(true, false);
     download_all(&pm).await;
-    r.server.remove("/config.jsonc");
+    r.server.remove("/001/dev.jsonc");
     assert!(pm.refresh(true, false).await.unwrap().is_empty());
     assert!(pm.needing_download(&BOTH).await.unwrap().is_empty());
     // A bad config is refused the same way.
-    r.server.put("/config.jsonc", b"{ \"nope\": 1 }");
+    r.server.put("/001/dev.jsonc", b"{ \"nope\": 1 }");
     assert!(pm.refresh(true, false).await.unwrap().is_empty());
     assert_eq!(pm.spec("logix-catalog").unwrap().version, "2026-01-02");
 }
@@ -865,7 +898,7 @@ async fn the_config_in_use_stays_when_a_new_one_cant_be_read() {
 #[tokio::test]
 async fn without_a_config_to_use_it_is_a_setup_error() {
     let r = remote_setup();
-    r.server.remove("/config.jsonc");
+    r.server.remove("/001/dev.jsonc");
     let err = r.pm(true, false).needing_download(&BOTH).await.unwrap_err();
     assert_eq!(err.category, Category::Setup);
     assert!(
@@ -874,7 +907,12 @@ async fn without_a_config_to_use_it_is_a_setup_error() {
         "{}",
         err.message
     );
-    assert!(err.message.contains("404"), "{}", err.message);
+    assert!(
+        err.message
+            .contains("there's neither dev.jsonc nor prod.jsonc"),
+        "{}",
+        err.message
+    );
 }
 
 #[tokio::test]
@@ -897,7 +935,7 @@ async fn the_override_never_falls_back() {
     let r = remote_setup();
     let pm = r.pm(true, true);
     download_all(&pm).await;
-    r.server.remove("/config.jsonc");
+    r.server.remove("/001/dev.jsonc");
     let err = pm.refresh(true, false).await.unwrap_err();
     assert!(
         err.message.contains(remote_config::DEV_REMOTE_CONFIG_VAR),

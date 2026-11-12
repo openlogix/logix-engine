@@ -280,7 +280,7 @@ Every operation that can take more than a second or two reports progress by phas
 
 ### Packages
 
-**Which releases.** The Logix Engine reads which release of each package to use from its remote config, `remote-config/logix-engine/config-NNN.jsonc` in its repo (`NNN` is the config version this engine reads, `001` today), from GitHub. It reads it before an operation that needs packages when it last read it more than 24 hours ago, and when a host calls `check_updates`, and keeps a copy in the engine folder, which it uses offline. When the config names a newer release, the next operation downloads it and the old one is deleted. So a newer catalog or set of tools reaches an engine without a new engine release. A config that can't be read leaves the one in use; with none to use yet (a first start offline), a tool that needs packages returns a setup error. The diagnostic setting `LOGIX_ENGINE_DEV_REMOTE_CONFIG` names another config to read instead, a URL or a local file, such as a pull request's version (see [Command line](command-line.md)).
+**Which releases.** The Logix Engine reads which release of each package to use from its remote config, the version folder `remote-config/logix-engine/<NNN>/` in its repo (`NNN` is the config version this engine reads, `001` today), from GitHub: `channels.jsonc` says which engine releases are on which channel, and the engine reads its channel's config file there, such as `prod.jsonc` or `dev.jsonc` (`prod.jsonc` when its channel has none of its own). Its channel is `prod` when `channels.jsonc` lists this release under it, and `dev` otherwise; a locally built engine is always on `dev`. It reads the folder before an operation that needs packages when it last read it more than 24 hours ago, and when a host calls `check_updates`, and keeps a copy in the engine folder, which it uses offline. When the config names a newer release, the next operation downloads it and the old one is deleted. So a newer catalog or set of tools reaches an engine without a new engine release. A config that can't be read leaves the one in use; with none to use yet (a first start offline), a tool that needs packages returns a setup error. Two diagnostic settings change this on one computer only: `LOGIX_ENGINE_CHANNEL` picks the channel, and `LOGIX_ENGINE_DEV_REMOTE_CONFIG` names another version folder to read instead, a URL or a local folder, such as a pull request's version (see [Command line](command-line.md)).
 
 Before running, each tool checks that the packages it needs are downloaded and intact. It downloads missing packages and repairs broken ones itself. A package is broken when its receipt is missing or doesn't match the release the remote config names (its URL, platform and SHA-256), or when one of its tools fails to start. Download progress is sent as the operation's progress notifications, and cancelling the operation cancels the download. Two Logix Engine instances never download the same package at the same time.
 
@@ -1105,7 +1105,7 @@ Returns the Logix Engine's version, platform and package status. A host calls it
 | `log_file` | absolute path | The log file this engine process writes, in the `logs` subfolder of the engine folder |
 | `packages` | list of packages | Every package the engine uses, from its remote config (empty until it has read one): `logix-catalog` (the board catalog) and `logix-core` (the FPGA tools). Each has a text `name`, a `version` (its release date as `yyyy.mm.dd`), a `status`: `ready`, `missing` or `broken`, and, for a ready `logix-core`, `components`: its tools, each with a `name` (`oss-cad-suite`, `openxc7`, `verible` and `elkjs`), a `description` and `bin_folder`, the absolute path of the folder with its programs, for hosts that run one directly, such as Verible's language server `verible-verilog-ls` from the `verible` component |
 | `boards_schema` | text | The address of the board schema this engine reads, Logix Catalog's JSON Schema of a board file, in the catalog and in custom boards folders, such as `https://www.openlogix.org/schemas/logix-board-v1.json` (see Board specification) |
-| `remote_config` | object | The remote config: `config_version` (such as `001`), `source` (the URL it's read from, or a local file), `is_override` (true only for `LOGIX_ENGINE_DEV_REMOTE_CONFIG`) and `read_at`, when the one in use was read (UTC, `yyyy-mm-ddThh:mm:ssZ`; omitted before the first read) |
+| `remote_config` | object | The remote config: `config_version` (such as `001`), `source` (the version folder's URL, or a local folder), `is_override` (true only for `LOGIX_ENGINE_DEV_REMOTE_CONFIG`), `channel` (such as `prod` or `dev`), `channel_reason` (`listed`: `channels.jsonc` lists this release; `default`: it doesn't, so `dev`; `local build`: always `dev`; or `LOGIX_ENGINE_CHANNEL`), `config_file` (the file read, such as `dev.jsonc`, or `prod.jsonc` when the channel has none) and `read_at`, when the one in use was read (UTC, `yyyy-mm-ddThh:mm:ssZ`). The channel fields and `read_at` are omitted before the first read |
 | `catalog` | object | The board catalog: `version`, the date of the `logix-catalog` release in use, as `yyyy.mm.dd`, and `local`, true only when the engine reads a local catalog folder (`LOGIX_ENGINE_DEV_CATALOG_FOLDER`, a diagnostic setting), whose `version` is then `local` |
 | `report` | multiline text | The facts above as lines for people, the engine's part of a frontend's system info (see Show system info under Recipes): the version, platform, engine folder, log file, automatic download, command line, each package with its version and status, the board catalog's version and the board schema. Show it as is; its wording can change in any version, so programs read the fields above |
 
@@ -1132,7 +1132,10 @@ Output:
   ],
   "remote_config": {
     "config_version": "001",
-    "source": "https://raw.githubusercontent.com/openlogix/logix-engine/main/remote-config/logix-engine/config-001.jsonc",
+    "source": "https://raw.githubusercontent.com/openlogix/logix-engine/main/remote-config/logix-engine/001/",
+    "channel": "prod",
+    "channel_reason": "listed",
+    "config_file": "prod.jsonc",
     "read_at": "2026-12-01T09:30:00Z"
   },
   "boards_schema": "https://www.openlogix.org/schemas/logix-board-v1.json",
@@ -1216,7 +1219,10 @@ Output:
   ],
   "remote_config": {
     "config_version": "001",
-    "source": "https://raw.githubusercontent.com/openlogix/logix-engine/main/remote-config/logix-engine/config-001.jsonc",
+    "source": "https://raw.githubusercontent.com/openlogix/logix-engine/main/remote-config/logix-engine/001/",
+    "channel": "prod",
+    "channel_reason": "listed",
+    "config_file": "prod.jsonc",
     "read_at": "2026-12-01T09:30:00Z"
   }
 }

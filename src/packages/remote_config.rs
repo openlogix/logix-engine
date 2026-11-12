@@ -1,8 +1,13 @@
 //! The engine's remote config (Remote updates, in the website repo's
-//! `CLAUDE.md`): which release of each package the engine uses. It's
-//! `remote-config/logix-engine/config-NNN.jsonc` in this repo, read from
-//! GitHub by the config version this engine hard-codes, and cached in the
-//! engine folder. There's no built-in list: the repo's file is the pin list.
+//! `CLAUDE.md`): which release of each package the engine uses. It's the
+//! version folder `remote-config/logix-engine/<NNN>/` in this repo, by the
+//! config version this engine hard-codes, read from GitHub and cached in the
+//! engine folder: `channels.jsonc` says which releases are on which channel,
+//! and the engine reads its channel's config file, `<channel>.jsonc`
+//! (`prod.jsonc` when its channel has none). Its channel: `LOGIX_ENGINE_CHANNEL`
+//! when set; else, for a release build, the channel `channels.jsonc` lists
+//! its own release under (dev when unlisted); a local build is always dev.
+//! There's no built-in list: the repo's files are the pin lists.
 //!
 //! A config names, per package, a GitHub repo, a release tag and a file
 //! template (`${PLATFORM}`, `${YYYYMMDD}`). Resolving it for this platform
@@ -22,16 +27,25 @@ use super::manifest::{self, Manifest, PackageFile, PackageSpec};
 
 /// The repo whose `remote-config/` holds the engine's config.
 pub const CONFIG_REPO: &str = "openlogix/logix-engine";
-/// The engine's config version: which `config-NNN.jsonc` it reads. Raise it
-/// only when a new engine can't share the current file (a package added or
-/// dropped, or a package release older engines can't use).
+/// The engine's config version: which version folder `remote-config/
+/// logix-engine/<NNN>/` it reads. Raise it only when a new engine can't share
+/// the current folder (a package added or dropped, a file's format changed,
+/// or a package release older engines can't use).
 pub const CONFIG_VERSION: &str = "001";
 /// The product folder in `remote-config/`.
 const PRODUCT: &str = "logix-engine";
+/// Each version folder's channel lists.
+pub const CHANNELS_FILE: &str = "channels.jsonc";
+/// The local override of the channel (a runtime setting, no `DEV_`, since
+/// `dev` is a channel name).
+pub const CHANNEL_VAR: &str = "LOGIX_ENGINE_CHANNEL";
+/// Whether this is a release build (build.rs): a local build is always dev.
+pub const IS_RELEASE_BUILD: bool = env!("LOGIX_ENGINE_BUILD_RELEASE").len() == 4; // "true"
 /// Where raw repo files are read from.
 pub const RAW_BASE: &str = "https://raw.githubusercontent.com";
-/// The diagnostic override: a URL, or a local file, read instead of the
-/// regular config (as Apio's). A bad value is an error, never a fallback.
+/// The diagnostic override: the URL of a version folder, or a local folder,
+/// read instead of the regular one (as Apio's). A bad value is an error,
+/// never a fallback.
 pub const DEV_REMOTE_CONFIG_VAR: &str = "LOGIX_ENGINE_DEV_REMOTE_CONFIG";
 /// How long a fetched config is used before it's fetched again.
 pub const MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
@@ -40,18 +54,20 @@ pub const SCHEMA: &str = "https://www.openlogix.org/schemas/logix-remote-config-
 /// The packages every config of this config version must name, and no others.
 pub const PACKAGES: [&str; 2] = [super::CATALOG, super::CORE];
 
-/// The config's path in the repo.
+/// The version folder's path in the repo.
 pub fn repo_path() -> String {
-    format!("remote-config/{PRODUCT}/config-{CONFIG_VERSION}.jsonc")
+    format!("remote-config/{PRODUCT}/{CONFIG_VERSION}")
 }
 
-/// The regular config's address: the raw file on `main`.
+/// The regular version folder's address: its raw files on `main`.
 pub fn default_url() -> String {
-    format!("{RAW_BASE}/{CONFIG_REPO}/main/{}", repo_path())
+    format!("{RAW_BASE}/{CONFIG_REPO}/main/{}/", repo_path())
 }
 
-/// The repo's own config file, as an override source: what the tests use,
-/// so they run with the releases the repo names.
+/// The repo's own version folder, as an override source: what the tests
+/// use, so they run with the releases the repo names (the file of the
+/// tests' channel: dev, or LOGIX_ENGINE_CHANNEL, once per config file CI
+/// tests).
 #[doc(hidden)]
 pub fn repo_file_source() -> ConfigSource {
     ConfigSource {
@@ -63,11 +79,22 @@ pub fn repo_file_source() -> ConfigSource {
     }
 }
 
-/// The release the repo's config file names for a package (for tests).
+/// The release the repo's config file names for a package (for tests): the
+/// file the tests' channel reads.
 #[doc(hidden)]
 pub fn repo_release(name: &str) -> String {
-    let text = std::fs::read_to_string(repo_file_source().location).expect("the repo's config");
-    parse(&text).expect("a valid config")[name].release.clone()
+    let folder = PathBuf::from(repo_file_source().location);
+    let channels =
+        parse_channels(&std::fs::read_to_string(folder.join(CHANNELS_FILE)).unwrap()).unwrap();
+    let channel = choose_channel(&channels, channel_variable().unwrap().as_deref()).unwrap();
+    let file = [channel.name.clone(), "prod".into()]
+        .iter()
+        .map(|c| folder.join(format!("{c}.jsonc")))
+        .find(|f| f.is_file())
+        .expect("the channel's config file, or prod.jsonc");
+    parse(&std::fs::read_to_string(file).unwrap()).expect("a valid config")[name]
+        .release
+        .clone()
 }
 
 /// Where the engine reads its remote config.
@@ -101,6 +128,105 @@ impl ConfigSource {
     fn is_url(&self) -> bool {
         self.location.starts_with("https://") || self.location.starts_with("http://")
     }
+
+    /// A file of the version folder: a URL, or a local path.
+    fn file(&self, name: &str) -> String {
+        if self.is_url() {
+            format!("{}/{name}", self.location.trim_end_matches('/'))
+        } else {
+            Path::new(&self.location).join(name).display().to_string()
+        }
+    }
+}
+
+/// The channel the engine reads, and why.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Channel {
+    /// Such as prod or dev.
+    pub name: String,
+    /// Why: "listed" (channels.jsonc lists this release), "default" (it
+    /// doesn't: dev), "local build" (always dev) or "LOGIX_ENGINE_CHANNEL".
+    pub how: String,
+    /// The config file read: `<channel>.jsonc`, or `prod.jsonc` when the
+    /// channel has none.
+    pub file: String,
+}
+
+/// A valid channel name: lowercase letters, digits and dashes, a letter first.
+pub fn is_channel_name(s: &str) -> bool {
+    s.bytes().next().is_some_and(|c| c.is_ascii_lowercase())
+        && s.bytes()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
+}
+
+/// The channel override from `LOGIX_ENGINE_CHANNEL`, if set; a value that
+/// isn't a channel name is an error.
+pub fn channel_variable() -> Result<Option<String>, String> {
+    match std::env::var(CHANNEL_VAR) {
+        Ok(v) if !v.is_empty() => {
+            if is_channel_name(&v) {
+                Ok(Some(v))
+            } else {
+                Err(format!(
+                    "{CHANNEL_VAR} must be a channel name, such as prod or dev, not {v:?}"
+                ))
+            }
+        }
+        _ => Ok(None),
+    }
+}
+
+/// channels.jsonc: channel name to its release tags.
+pub fn parse_channels(text: &str) -> Result<BTreeMap<String, Vec<String>>, String> {
+    let json: serde_json::Value = serde_json::from_str(&strip_comments(text)?)
+        .map_err(|e| format!("{CHANNELS_FILE} isn't valid JSONC: {e}"))?;
+    let obj = json
+        .as_object()
+        .ok_or(format!("{CHANNELS_FILE} isn't a JSON object"))?;
+    let mut out = BTreeMap::new();
+    for (name, tags) in obj.iter().filter(|(k, _)| *k != "$schema") {
+        let tags = tags
+            .as_array()
+            .ok_or(format!("{CHANNELS_FILE}: {name} isn't a list"))?
+            .iter()
+            .map(|t| t.as_str().map(str::to_string))
+            .collect::<Option<Vec<_>>>()
+            .ok_or(format!(
+                "{CHANNELS_FILE}: {name} lists something that isn't a release tag"
+            ))?;
+        out.insert(name.clone(), tags);
+    }
+    Ok(out)
+}
+
+/// The engine's channel, by the rules in the module's comment (`file` is
+/// the channel's own; reading falls back to prod.jsonc).
+pub fn choose_channel(
+    channels: &BTreeMap<String, Vec<String>>,
+    variable: Option<&str>,
+) -> Result<Channel, String> {
+    let (name, how) = if let Some(v) = variable {
+        if v != "prod" && v != "dev" && !channels.contains_key(v) {
+            return Err(format!(
+                "{CHANNEL_VAR}: {v} isn't a channel (prod, dev or one in {CHANNELS_FILE})"
+            ));
+        }
+        (v.to_string(), CHANNEL_VAR)
+    } else if !IS_RELEASE_BUILD {
+        ("dev".to_string(), "local build")
+    } else {
+        let tag = crate::state::ENGINE_VERSION.replace('.', "-");
+        match channels.iter().find(|(_, tags)| tags.contains(&tag)) {
+            Some((name, _)) => (name.clone(), "listed"),
+            None => ("dev".to_string(), "default"),
+        }
+    };
+    Ok(Channel {
+        file: format!("{name}.jsonc"),
+        name,
+        how: how.to_string(),
+    })
 }
 
 /// One dependency in a config.
@@ -249,25 +375,82 @@ pub fn client() -> Result<reqwest::Client, String> {
 }
 
 async fn get_text(client: &reqwest::Client, url: &str) -> Result<String, String> {
+    get_optional(client, url)
+        .await?
+        .ok_or_else(|| format!("{url}: HTTP 404 Not Found"))
+}
+
+/// A URL's text; None for a 404 (a file that isn't there).
+async fn get_optional(client: &reqwest::Client, url: &str) -> Result<Option<String>, String> {
     let response = client
         .get(url)
         .send()
         .await
         .map_err(|e| format!("{url}: {e}"))?;
     let status = response.status();
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
     if !status.is_success() {
         return Err(format!("{url}: HTTP {status}"));
     }
-    response.text().await.map_err(|e| format!("{url}: {e}"))
+    response
+        .text()
+        .await
+        .map(Some)
+        .map_err(|e| format!("{url}: {e}"))
 }
 
-/// Reads a config's text from its source.
-pub async fn read(source: &ConfigSource, client: &reqwest::Client) -> Result<String, String> {
+/// A version folder's file; None when it isn't there.
+async fn read_file(
+    source: &ConfigSource,
+    name: &str,
+    client: &reqwest::Client,
+) -> Result<Option<String>, String> {
+    let at = source.file(name);
     if source.is_url() {
-        get_text(client, &source.location).await
+        get_optional(client, &at).await
+    } else if !Path::new(&at).exists() {
+        Ok(None)
     } else {
-        std::fs::read_to_string(&source.location).map_err(|e| format!("{}: {e}", source.location))
+        std::fs::read_to_string(&at)
+            .map(Some)
+            .map_err(|e| format!("{at}: {e}"))
     }
+}
+
+/// What reading a version folder gives: the channel and its config file.
+pub struct Read {
+    pub channel: Channel,
+    pub text: String,
+}
+
+/// Reads a version folder: `channels.jsonc`, then the channel's config file,
+/// or `prod.jsonc` when the channel has none (a rule, not an error: dev uses
+/// what users get when it needs nothing else).
+pub async fn read(source: &ConfigSource, client: &reqwest::Client) -> Result<Read, String> {
+    let channels_text = read_file(source, CHANNELS_FILE, client)
+        .await?
+        .ok_or_else(|| format!("{}: there's no {CHANNELS_FILE}", source.location))?;
+    let channels =
+        parse_channels(&channels_text).map_err(|e| format!("{}: {e}", source.location))?;
+    let mut channel = choose_channel(&channels, channel_variable()?.as_deref())?;
+    let text = match read_file(source, &channel.file, client).await? {
+        Some(t) => t,
+        None if channel.name != "prod" => {
+            channel.file = "prod.jsonc".into();
+            read_file(source, "prod.jsonc", client)
+                .await?
+                .ok_or_else(|| {
+                    format!(
+                        "{}: there's neither {}.jsonc nor prod.jsonc",
+                        source.location, channel.name
+                    )
+                })?
+        }
+        None => return Err(format!("{}: there's no prod.jsonc", source.location)),
+    };
+    Ok(Read { channel, text })
 }
 
 /// Resolves a config for a platform: each package's file, with its SHA-256
@@ -336,6 +519,8 @@ pub struct Cached {
     /// Where it was read: a URL or a local file.
     pub source: String,
     pub config_version: String,
+    /// The channel and the config file read.
+    pub channel: Channel,
     /// When it was read, in seconds since 1970 (UTC).
     pub fetched: u64,
     pub set: Manifest,
@@ -349,9 +534,14 @@ pub fn now() -> u64 {
 }
 
 impl Cached {
-    /// Whether it's from this source and config version.
+    /// Whether it's from this source and config version, read with the same
+    /// channel override (none, or the same LOGIX_ENGINE_CHANNEL).
     pub fn matches(&self, source: &ConfigSource) -> bool {
-        self.source == source.location && self.config_version == CONFIG_VERSION
+        let variable = channel_variable().ok().flatten();
+        let cached_variable = (self.channel.how == CHANNEL_VAR).then(|| self.channel.name.clone());
+        self.source == source.location
+            && self.config_version == CONFIG_VERSION
+            && variable == cached_variable
     }
 
     /// Whether it's older than MAX_AGE.
@@ -466,12 +656,48 @@ mod tests {
 
     #[test]
     fn the_repo_config_is_valid() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(repo_path());
-        parse(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join(repo_path());
+        parse_channels(&std::fs::read_to_string(folder.join(CHANNELS_FILE)).unwrap()).unwrap();
+        // Every config file there is valid: prod.jsonc, dev.jsonc, others.
+        let mut files = 0;
+        for f in std::fs::read_dir(&folder).unwrap().flatten() {
+            let name = f.file_name().to_string_lossy().into_owned();
+            if name != CHANNELS_FILE && name.ends_with(".jsonc") {
+                parse(&std::fs::read_to_string(f.path()).unwrap()).unwrap();
+                files += 1;
+            }
+        }
+        assert!(files > 0, "no config file in {}", folder.display());
         assert_eq!(
             default_url(),
-            "https://raw.githubusercontent.com/openlogix/logix-engine/main/remote-config/logix-engine/config-001.jsonc"
+            "https://raw.githubusercontent.com/openlogix/logix-engine/main/remote-config/logix-engine/001/"
         );
+    }
+
+    #[test]
+    fn the_channel_follows_the_rules() {
+        let channels = parse_channels(
+            r#"{"$schema": "x", /* promoted */ "prod": ["2026-11-20"], "beta": []}"#,
+        )
+        .unwrap();
+        assert_eq!(channels["prod"], ["2026-11-20"]);
+        // Tests are local builds: dev, unless the variable says otherwise.
+        let c = choose_channel(&channels, None).unwrap();
+        assert_eq!(
+            (c.name.as_str(), c.how.as_str(), c.file.as_str()),
+            ("dev", "local build", "dev.jsonc")
+        );
+        let c = choose_channel(&channels, Some("beta")).unwrap();
+        assert_eq!((c.name.as_str(), c.how.as_str()), ("beta", CHANNEL_VAR));
+        assert!(choose_channel(&channels, Some("prod")).is_ok());
+        assert!(
+            choose_channel(&channels, Some("nightly"))
+                .unwrap_err()
+                .contains("isn't a channel")
+        );
+        assert!(is_channel_name("prod") && is_channel_name("beta-2"));
+        assert!(!is_channel_name("Prod") && !is_channel_name("2x") && !is_channel_name(""));
+        assert!(parse_channels(r#"{"prod": "2026-11-20"}"#).is_err());
     }
 
     #[test]

@@ -1,22 +1,27 @@
 // Sets LOGIX_ENGINE_BUILD_VERSION, the engine version reported by get_engine_info
 // and --version, as people see it: yyyy.mm.dd (the Open Logix versioning rule).
 // Release builds pass the release tag (yyyy-mm-dd) in the LOGIX_ENGINE_BUILD_VERSION
-// env var. Other builds use today's UTC date.
+// env var. Other builds use today's UTC date, and are local builds
+// (LOGIX_ENGINE_BUILD_RELEASE=false).
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
     println!("cargo:rerun-if-env-changed=LOGIX_ENGINE_BUILD_VERSION");
-    let version = match std::env::var("LOGIX_ENGINE_BUILD_VERSION") {
+    let (version, release) = match std::env::var("LOGIX_ENGINE_BUILD_VERSION") {
         Ok(v) if !v.is_empty() => {
             if !is_release_tag(&v) {
                 panic!("LOGIX_ENGINE_BUILD_VERSION must be a release tag, yyyy-mm-dd, got {v:?}");
             }
-            v.replace('-', ".")
+            (v.replace('-', "."), true)
         }
-        _ => today_utc(),
+        _ => (today_utc(), false),
     };
     println!("cargo:rustc-env=LOGIX_ENGINE_BUILD_VERSION={version}");
+    // Whether this is a release build (the release workflow passes the tag):
+    // a local build is always on the dev channel, since its version (today's
+    // date) could match a prod release's tag.
+    println!("cargo:rustc-env=LOGIX_ENGINE_BUILD_RELEASE={release}");
 }
 
 fn is_release_tag(v: &str) -> bool {
