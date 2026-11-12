@@ -9,9 +9,9 @@
 
 <img src="https://www.openlogix.org/brand/readme/macos.svg" height="40" alt="macOS (Apple Silicon)" title="macOS (Apple Silicon)">
 
-[![test](https://img.shields.io/github/actions/workflow/status/openlogix/logix-engine/test.yaml?label=test)](https://github.com/openlogix/logix-engine/actions/workflows/test.yaml)
-[![build](https://img.shields.io/github/actions/workflow/status/openlogix/logix-engine/build-pre-release.yaml?label=build)](https://github.com/openlogix/logix-engine/actions/workflows/build-pre-release.yaml)
-[![docs](https://img.shields.io/github/actions/workflow/status/openlogix/logix-engine/publish-docs.yaml?label=docs)](https://github.com/openlogix/logix-engine/actions/workflows/publish-docs.yaml)
+[![test](https://img.shields.io/github/actions/workflow/status/openlogix/logix-engine/test.yaml?branch=main&label=test)](https://github.com/openlogix/logix-engine/actions/workflows/test.yaml)
+[![build](https://img.shields.io/github/actions/workflow/status/openlogix/logix-engine/build-pre-release.yaml?branch=main&label=build)](https://github.com/openlogix/logix-engine/actions/workflows/build-pre-release.yaml)
+[![docs](https://img.shields.io/github/actions/workflow/status/openlogix/logix-engine/publish-docs.yaml?branch=main&label=docs)](https://github.com/openlogix/logix-engine/actions/workflows/publish-docs.yaml)
 
 **[Main page](https://www.openlogix.org/engine/)** · [Docs](https://www.openlogix.org/logix-engine/) · GitHub (here)
 
