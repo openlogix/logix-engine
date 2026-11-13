@@ -253,7 +253,8 @@ mod tests {
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
         assert_eq!(
-            args.join(" "),
+            // The fake /pkg folder joins with \ on Windows.
+            args.join(" ").replace('\\', "/"),
             "--lint-only --quiet --bbox-unsup --timing -Wno-TIMESCALEMOD -Wno-MULTITOP \
              -DSYNTHESIZE -DLOGIX_SIM=0 --top-module main -DA= -DWIDTH=8 \
              -DNO_ICE40_DEFAULT_ASSIGNMENTS -Irtl -I/pkg/share/yosys/ice40 \
@@ -277,7 +278,8 @@ mod tests {
         let req = check(input(&src, json!({}))).unwrap();
         let lib = SimLibrary::for_board(&req.sources.board, Path::new("/pkg"));
         assert_eq!(
-            lib.verilator_config(),
+            // The fake /pkg folder joins with \ on Windows, escaped as \\.
+            lib.verilator_config().replace("\\\\", "/"),
             "`verilator_config\n\
              lint_off -file \"/pkg/share/yosys/ice40/*\"\n\
              lint_off -rule COMBDLY -file \"/pkg/share/yosys/ice40/*\"\n"

@@ -129,7 +129,7 @@ async fn get_engine_info_reports_the_launch_settings() {
     // yyyymmdd-<pid>.log, and has the startup line.
     let log_file = out["log_file"].as_str().unwrap();
     assert!(
-        log_file.starts_with(&format!("{folder}/logs/")),
+        std::path::Path::new(log_file).starts_with(std::path::Path::new(folder).join("logs")),
         "{log_file}"
     );
     assert!(log_file.ends_with(".log"));

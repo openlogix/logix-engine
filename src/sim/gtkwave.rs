@@ -442,6 +442,9 @@ $end
         );
     }
 
+    // Unix only for now: started through /bin/sh. Windows versions come
+    // with the Windows GTKWave checks (Milestone 3).
+    #[cfg(unix)]
     #[test]
     fn detached_programs_outlive_the_call() {
         let tmp = tempfile::tempdir().unwrap();
@@ -483,6 +486,9 @@ $end
         assert_eq!(err.category, Category::Tool);
     }
 
+    // Unix only for now: started through /bin/sh. Windows versions come
+    // with the Windows GTKWave checks (Milestone 3).
+    #[cfg(unix)]
     #[test]
     fn unsaved_default_layouts_are_deleted_when_the_viewer_exits() {
         let tmp = tempfile::tempdir().unwrap();

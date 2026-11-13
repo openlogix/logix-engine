@@ -110,6 +110,8 @@ fn the_home_folder_is_refused() {
     let out = Command::new(ENGINE)
         .args(["--engine-folder", home.to_str().unwrap()])
         .env("HOME", &home)
+        // Windows' home folder.
+        .env("USERPROFILE", &home)
         .output()
         .unwrap();
     assert_fails_on_stderr(out, "home folder");

@@ -118,6 +118,19 @@ pub fn home_folder() -> Option<PathBuf> {
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
+    #[test]
+    fn absolute_path_rules_on_windows() {
+        assert!(check_absolute_path(r"C:\a\b").is_ok());
+        assert!(check_absolute_path("C:/a/b").is_ok());
+        assert!(check_absolute_path(r"a\b").is_err());
+        assert!(check_absolute_path(r"C:\a\%USERPROFILE%\b").is_err());
+        assert!(check_absolute_path(r"C:\a\.\b").is_err());
+        assert!(check_absolute_path(r"C:\a\..\b").is_err());
+        assert!(check_absolute_path(r"C:\a\..b\c.d").is_ok());
+    }
+
+    #[cfg(unix)]
     #[test]
     fn absolute_path_rules() {
         assert!(check_absolute_path("/a/b").is_ok());

@@ -751,7 +751,7 @@ async fn a_custom_board_works() {
     assert_eq!(
         (d.file.as_deref(), d.line, d.column),
         (
-            Some(format!("{file}/my-alhambra.json").as_str()),
+            Some(format!("{file}{}my-alhambra.json", std::path::MAIN_SEPARATOR).as_str()),
             Some(4),
             Some(1)
         ),
@@ -1022,20 +1022,15 @@ async fn program_board_runs_the_command_with_the_device_and_bitstream() {
 
     // A fake programmer that records its arguments.
     let log = tmp.path().join("args.txt");
-    let script = tmp.path().join("fake-prog.sh");
-    std::fs::write(
-        &script,
-        format!(
-            "#!/bin/sh\necho \"$@\" > {}\necho 'Writing: 50.00%'\n",
+    let script = fake_program(
+        tmp.path(),
+        "fake-prog",
+        &format!("echo \"$@\" > {}\necho 'Writing: 50.00%'\n", log.display()),
+        &format!(
+            "@>\"{}\" echo %*\r\n@echo Writing: 50.00%%\r\n",
             log.display()
         ),
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+    );
     let cmd = format!(
         "{} --busdev ${{BUS}}:${{DEV}} ${{BITSTREAM}}",
         script.display()
@@ -1069,7 +1064,12 @@ async fn program_board_runs_the_command_with_the_device_and_bitstream() {
     );
 
     // A failing programmer is an error with its output.
-    std::fs::write(&script, "#!/bin/sh\necho 'segfault here' >&2\nexit 3\n").unwrap();
+    fake_program(
+        tmp.path(),
+        "fake-prog",
+        "echo 'segfault here' >&2\nexit 3\n",
+        "@echo segfault here 1>&2\r\n@exit /b 3\r\n",
+    );
     let err = program_board::run_with(
         &state,
         program_input(
@@ -1128,6 +1128,9 @@ async fn verbose_prints_more_but_gives_the_same_result() {
 
 /// A programmer's progress redrawn with carriage returns, as iceprog prints
 /// it: the live output marks each redraw, and leaves out the blank erasers.
+// Unix only: cmd can't print a bare carriage return. The runner's own
+// tests cover redraws on Windows.
+#[cfg(unix)]
 #[tokio::test]
 async fn live_output_marks_progress_redraws() {
     use logix_engine::progress::{OutputSink, ToolLine};
@@ -1203,21 +1206,20 @@ async fn program_board_refuses_a_board_with_another_fpga() {
     std::fs::create_dir(&bin).unwrap();
     let log = tmp.path().join("runs.txt");
     let detect = tmp.path().join("detect.txt");
-    let script = bin.join("openFPGALoader");
-    std::fs::write(
-        &script,
-        format!(
-            "#!/bin/sh\necho \"$@\" >> {log}\ncase \"$*\" in *--detect*) cat {detect};; esac\n",
+    fake_program(
+        &bin,
+        "openFPGALoader",
+        &format!(
+            "echo \"$@\" >> {log}\ncase \"$*\" in *--detect*) cat {detect};; esac\n",
             log = log.display(),
             detect = detect.display()
         ),
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+        &format!(
+            "@>>\"{log}\" echo %*\r\n@echo %* | findstr /C:\"--detect\" >nul && type \"{detect}\"\r\n",
+            log = log.display(),
+            detect = detect.display()
+        ),
+    );
     let arty = usb("Digilent USB Device", Some("210319AFEF8F"), 4);
     let program = |fpga: &str| {
         std::fs::write(&detect, fpga).unwrap();
@@ -1425,4 +1427,26 @@ async fn the_pinned_catalog_fits_the_pinned_core() {
     // The repo's catalog/ copy, the tests' data, too.
     let copy = catalog::read_folder(&catalog::test_copy_folder()).unwrap();
     assert_eq!(catalog::not_in_core(&copy, &core), Vec::<String>::new());
+}
+
+/// A fake program in `dir` named `name`, which runs `sh` (a /bin/sh script)
+/// on Unix and `cmd` (a .cmd script, which the engine runs through cmd.exe)
+/// on Windows. Writing it again replaces it.
+fn fake_program(dir: &std::path::Path, name: &str, sh: &str, cmd: &str) -> std::path::PathBuf {
+    #[cfg(unix)]
+    {
+        let _ = cmd;
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join(name);
+        std::fs::write(&path, format!("#!/bin/sh\n{sh}")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+    #[cfg(windows)]
+    {
+        let _ = sh;
+        let path = dir.join(format!("{name}.cmd"));
+        std::fs::write(&path, cmd).unwrap();
+        path
+    }
 }

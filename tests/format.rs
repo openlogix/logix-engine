@@ -135,7 +135,8 @@ async fn formats_each_file_and_reports_syntax_errors() {
     assert!(
         out.commands[0]
             .shell
-            .contains("verible-verilog-format --nofailsafe_success --inplace main.v"),
+            // verible-verilog-format.exe, by its full path, on Windows.
+            .contains("--nofailsafe_success --inplace main.v"),
         "{}",
         out.commands[0].shell
     );

@@ -131,7 +131,10 @@ impl Entry {
             (true, true) => ".".into(),
             (true, false) => rest.into(),
             (false, true) => self.as_.clone(),
-            (false, false) => format!("{}/{rest}", self.as_.trim_end_matches('/')),
+            (false, false) => {
+                let sep = separator_of(&self.as_);
+                format!("{}{sep}{rest}", self.as_.trim_end_matches(['/', sep]))
+            }
         }
     }
 }
@@ -238,7 +241,7 @@ impl Display {
     /// spellings, starting where no path goes on before it, and for a file
     /// ending where no path goes on after it.
     pub fn text(&self, text: &str) -> String {
-        if self.is_empty() || !text.contains('/') {
+        if self.is_empty() || !text.contains(['/', std::path::MAIN_SEPARATOR]) {
             return text.to_string();
         }
         let mut out = String::with_capacity(text.len());
@@ -246,10 +249,10 @@ impl Display {
         'scan: while i < text.len() {
             let rest = &text[i..];
             let starts = starts_here(&text[..i]);
-            if starts && rest.starts_with('/') {
+            if starts && path_start(rest) {
                 for e in &self.files {
                     for s in &e.spellings {
-                        if rest.starts_with(s.as_str())
+                        if same_path_prefix(rest, s)
                             && rest[s.len()..].chars().next().is_none_or(|c| !path_char(c))
                         {
                             out.push_str(&e.as_);
@@ -260,15 +263,16 @@ impl Display {
                 }
                 for e in &self.folders {
                     for s in &e.spellings {
-                        if !rest.starts_with(s.as_str()) {
+                        if !same_path_prefix(rest, s) {
                             continue;
                         }
                         match rest[s.len()..].chars().next() {
-                            Some('/') => {
+                            Some(c) if is_separator(c) => {
                                 // What follows is the part below the folder.
                                 if !e.as_.is_empty() {
-                                    out.push_str(e.as_.trim_end_matches('/'));
-                                    out.push('/');
+                                    let sep = separator_of(&e.as_);
+                                    out.push_str(e.as_.trim_end_matches(['/', sep]));
+                                    out.push(sep);
                                 }
                                 i += s.len() + 1;
                                 continue 'scan;
@@ -330,7 +334,49 @@ fn starts_here(before: &str) -> bool {
 /// A character that can go on a path, so a known path that it touches is
 /// part of a longer one.
 fn path_char(c: char) -> bool {
-    c.is_alphanumeric() || matches!(c, '/' | '.' | '_' | '-' | '~' | '+')
+    c.is_alphanumeric() || matches!(c, '/' | '.' | '_' | '-' | '~' | '+') || is_separator(c)
+}
+
+/// A path separator: `/`, and on Windows also `\`.
+fn is_separator(c: char) -> bool {
+    c == '/' || (cfg!(windows) && c == '\\')
+}
+
+/// Whether an absolute path can start at the start of `text`: `/` on macOS
+/// and Linux; on Windows a drive (`C:\` or `C:/`) or `\\`.
+fn path_start(text: &str) -> bool {
+    if !cfg!(windows) {
+        return text.starts_with('/');
+    }
+    let b = text.as_bytes();
+    (b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && is_separator(b[2] as char))
+        || text.starts_with("\\\\")
+}
+
+/// Whether `text` starts with the path `spelling`. On Windows, `\` and `/`
+/// are the same and letter case doesn't matter, as for Windows itself.
+fn same_path_prefix(text: &str, spelling: &str) -> bool {
+    if !cfg!(windows) {
+        return text.starts_with(spelling);
+    }
+    text.len() >= spelling.len()
+        && text.is_char_boundary(spelling.len())
+        && text[..spelling.len()]
+            .chars()
+            .zip(spelling.chars())
+            .all(|(a, b)| a.eq_ignore_ascii_case(&b) || (is_separator(a) && is_separator(b)))
+}
+
+/// The separator to join a display name and what's below it with: the one
+/// the name uses, else the platform's (`\` on Windows).
+fn separator_of(name: &str) -> char {
+    if cfg!(windows) && name.contains('\\') {
+        '\\'
+    } else if name.contains('/') {
+        '/'
+    } else {
+        std::path::MAIN_SEPARATOR
+    }
 }
 
 /// A live output sink that names paths in tool and engine lines as the
@@ -372,6 +418,7 @@ mod tests {
         Display::new(&serde_json::from_value(given).unwrap(), src, None).unwrap()
     }
 
+    #[cfg(unix)]
     #[test]
     fn files_first_then_folders_and_the_first_match_wins() {
         let d = display(
@@ -403,6 +450,7 @@ mod tests {
         assert_eq!(d.file("/elsewhere/x.v"), "/elsewhere/x.v");
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_folder_named_by_any_text() {
         let d = display(
@@ -414,6 +462,7 @@ mod tests {
         assert_eq!(d.text("see /s/ex/a b.v:3"), "see <example>/a b.v:3");
     }
 
+    #[cfg(unix)]
     #[test]
     fn paths_in_text() {
         let d = display(
@@ -488,6 +537,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn json_names_paths_people_read_only() {
         let d = display(
@@ -514,6 +564,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn the_requests_own_paths_read_as_it_gave_them() {
         // No display paths: source files relative to the source folder, as
@@ -546,6 +597,7 @@ mod tests {
         assert_eq!(d.file("main.v"), "B/main.v");
     }
 
+    #[cfg(unix)]
     #[test]
     fn live_output_names_paths_but_not_command_lines() {
         use crate::progress::{OutputLevel, OutputSink, ToolLine};
@@ -613,5 +665,34 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    /// Windows: paths start with a drive, `\` and `/` are the same, and
+    /// letter case doesn't matter.
+    #[cfg(windows)]
+    #[test]
+    fn windows_paths_in_text_and_files() {
+        let d = display(
+            json!({
+                "files": [{"path": r"C:\s\7\boards.json", "as": r"C:\Users\you\blinky\boards.json"}],
+                "folders": [{"path": r"C:\s\7", "as": ""}, {"path": r"C:\s\lib", "as": "LIB"}]
+            }),
+            None,
+        );
+        assert_eq!(d.file(r"C:\s\7\src\main.v"), r"src\main.v");
+        assert_eq!(d.file(r"C:\s\lib\uart.v"), r"LIB\uart.v");
+        assert_eq!(
+            d.file(r"C:\s\7\boards.json"),
+            r"C:\Users\you\blinky\boards.json"
+        );
+        assert_eq!(d.text(r"C:\s\7\main.v:5: ERROR: x"), "main.v:5: ERROR: x");
+        assert_eq!(d.text("c:/s/7/main.v:5: ERROR"), "main.v:5: ERROR");
+        assert_eq!(d.text(r"see C:\s\lib\uart.v:3"), r"see LIB\uart.v:3");
+        assert_eq!(
+            d.text(r"C:\s\7\boards.json:2:1: bad"),
+            r"C:\Users\you\blinky\boards.json:2:1: bad"
+        );
+        // By whole parts: C:\s\7 isn't a folder of C:\s\70.
+        assert_eq!(d.text(r"C:\s\70\main.v"), r"C:\s\70\main.v");
     }
 }

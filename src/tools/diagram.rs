@@ -251,7 +251,13 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let src = dunce::canonicalize(tmp.path()).unwrap();
         std::fs::create_dir_all(src.join("rtl")).unwrap();
-        for f in ["main.v", "rtl/uart.sv", "q\"uote.v"] {
+        // Windows doesn't allow a double quote in a file name.
+        let quote = if cfg!(windows) {
+            None
+        } else {
+            Some("q\"uote.v")
+        };
+        for f in ["main.v", "rtl/uart.sv"].into_iter().chain(quote) {
             std::fs::write(src.join(f), "").unwrap();
         }
         (tmp, src)
@@ -279,7 +285,15 @@ mod tests {
             (json!({"source_files": []}), "source_files is empty"),
             (json!({"source_files": ["nope.v"]}), "can't be found"),
             (json!({"source_files": ["../x.v"]}), "source_files"),
-            (json!({"source_files": ["q\"uote.v"]}), "double quote"),
+            // On Windows such a file can't exist, so it can't be found.
+            (
+                json!({"source_files": ["q\"uote.v"]}),
+                if cfg!(windows) {
+                    "can't be found"
+                } else {
+                    "double quote"
+                },
+            ),
             (
                 json!({"source_files": ["main.v", "main.v"]}),
                 "listed more than once",

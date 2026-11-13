@@ -833,7 +833,14 @@ mod tests {
         );
         assert_eq!(
             e.diagnostics[0].file.as_deref(),
-            Some(format!("{}/mine.json", dir.to_string_lossy()).as_str())
+            Some(
+                format!(
+                    "{}{}mine.json",
+                    dir.to_string_lossy(),
+                    std::path::MAIN_SEPARATOR
+                )
+                .as_str()
+            )
         );
         std::fs::write(dir.join("mine.json"), GOOD).unwrap();
         assert_eq!(

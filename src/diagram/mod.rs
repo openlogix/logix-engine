@@ -676,6 +676,11 @@ mod tests {
     #[test]
     fn standard_command() {
         let args = yosys_args(&req(), &["/pkg/share/yosys/ice40/cells_sim.v".into()]);
+        // The fake /p folder joins with \ on Windows.
+        let args: Vec<String> = args
+            .iter()
+            .map(|a| a.to_string_lossy().replace('\\', "/"))
+            .collect();
         assert_eq!(
             args,
             [

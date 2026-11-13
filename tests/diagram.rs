@@ -160,7 +160,9 @@ async fn diagram_draws_the_design() {
     assert!(script.starts_with("read_verilog -lib \""), "{script}");
     assert!(script.contains("read_verilog -sv \"main.v\";"), "{script}");
     assert!(
-        script.ends_with("/_build/diagram/netlist.json\""),
+        script
+            .replace('\\', "/")
+            .ends_with("/_build/diagram/netlist.json\""),
         "{script}"
     );
     std::fs::remove_file(src.join("_build/diagram/netlist.json")).unwrap();

@@ -512,7 +512,7 @@ mod tests {
         let bin = Path::new("/pkg/bin");
         let v = &c.boards["alhambra-ii"].variants[0];
         let (prog, args) = command(v, None, &d, Path::new("/b/hardware.bin"), bin, false).unwrap();
-        assert_eq!(prog, Path::new("/pkg/bin/openFPGALoader"));
+        assert_eq!(prog, crate::commands::program_in(bin, "openFPGALoader"));
         let args: Vec<String> = args.into_iter().map(|a| a.into_string().unwrap()).collect();
         assert_eq!(
             args.join(" "),
@@ -561,29 +561,41 @@ mod tests {
         );
     }
 
+    /// A program by absolute path, on each platform.
+    const ABS_PROG: &str = if cfg!(windows) {
+        r"C:\opt\x\prog"
+    } else {
+        "/opt/x/prog"
+    };
+
     #[test]
     fn custom_commands() {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("iceprog"), "").unwrap();
+        let name = if cfg!(windows) {
+            "iceprog.exe"
+        } else {
+            "iceprog"
+        };
+        std::fs::write(tmp.path().join(name), "").unwrap();
         let d = device("0403", "6010", None, None, 2);
         let v = &catalog::get().boards["alhambra-ii"].variants[0];
         let b = Path::new("/b/hardware.bin");
         let (p, a) = command(v, Some("iceprog -S ${BITSTREAM}"), &d, b, tmp.path(), false).unwrap();
-        assert_eq!(p, tmp.path().join("iceprog"));
+        assert_eq!(p, tmp.path().join(name));
         assert_eq!(
             a,
             vec![OsString::from("-S"), OsString::from("/b/hardware.bin")]
         );
         let (p, _) = command(
             v,
-            Some("/opt/x/prog ${BITSTREAM}"),
+            Some(&format!("{} ${{BITSTREAM}}", ABS_PROG)),
             &d,
             b,
             tmp.path(),
             false,
         )
         .unwrap();
-        assert_eq!(p, Path::new("/opt/x/prog"));
+        assert_eq!(p, Path::new(ABS_PROG));
         for bad in ["rm ${BITSTREAM}", "../iceprog ${BITSTREAM}", "iceprog"] {
             assert_eq!(
                 command(v, Some(bad), &d, b, tmp.path(), false)

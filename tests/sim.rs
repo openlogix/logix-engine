@@ -511,7 +511,7 @@ async fn simulate_writes_the_waveform_and_a_default_layout_then_keeps_the_users(
     // Without a layout file, the default goes into the build folder.
     let input = simulate_input(&src, json!({"layout_file": null}));
     let out = simulate::run(&state, input, &call()).await.unwrap();
-    let in_build = src.join("_build/main_tb.gtkw");
+    let in_build = src.join("_build").join("main_tb.gtkw");
     assert_eq!(out.layout_file, in_build.to_string_lossy());
     assert!(in_build.is_file());
 }
@@ -656,7 +656,7 @@ async fn test_stops_at_the_first_failure_unless_asked_not_to() {
     assert_eq!(tb.diagnostics.len(), 1, "{:#?}", tb.diagnostics);
     assert_eq!(tb.diagnostics[0].text, "first failure");
     assert_eq!(tb.diagnostics[0].line, Some(7));
-    assert_eq!(tb.diagnostics[0].time_ns, Some(10.0));
+    assert_eq!(tb.diagnostics[0].time_ns, Some(10.0), "{}", tb.output);
 
     let input = test_input(&src, json!({"stop_at_first_failure": false}));
     let start = std::time::Instant::now();
@@ -840,12 +840,21 @@ async fn results_list_commands_that_run_again_without_the_engine() {
     assert_eq!(cmd.tool, "verilator_bin");
     assert!(cmd.package.as_deref().unwrap().ends_with("(oss-cad-suite)"));
     // The shell line reproduces the result: clean, then a warning.
+    // A shell line on macOS and Linux, a cmd line on Windows.
     let rerun = |shell: &str| {
-        std::process::Command::new("/bin/sh")
+        #[cfg(unix)]
+        let out = std::process::Command::new("/bin/sh")
             .arg("-c")
             .arg(shell)
-            .output()
-            .unwrap()
+            .output();
+        #[cfg(windows)]
+        let out = {
+            use std::os::windows::process::CommandExt;
+            std::process::Command::new("cmd")
+                .raw_arg(format!("/S /C \"{shell}\""))
+                .output()
+        };
+        out.unwrap()
     };
     assert!(rerun(&cmd.shell).status.success());
     std::fs::write(src.join("main.v"), MAIN.replace(".I3(q[3])", ".I3(q)")).unwrap();

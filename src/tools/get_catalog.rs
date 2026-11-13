@@ -326,6 +326,7 @@ mod tests {
                 .file
                 .as_deref()
                 .unwrap()
+                .replace('\\', "/")
                 .ends_with("/boards/x.json")
         );
     }
