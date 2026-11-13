@@ -1,0 +1,26 @@
+// What Logix Engine on config 001 uses on the prod channel (Remote updates, in
+// the website repo's CLAUDE.md): the engine releases channels.jsonc lists under
+// prod, and every other channel without a file of its own here (dev, while
+// there's no dev.jsonc). Every such engine reads this file from main, so a
+// change here reaches users without an engine release. Change it only by pull
+// request, saying why in a comment; the tests run with what it names. It names
+// only stable releases (prod ones), which are never deleted.
+{
+  "$schema": "https://www.openlogix.org/schemas/logix-remote-config-v1.json",
+
+  // The FPGA tools: the YosysHQ OSS CAD Suite, openXC7, Verible and elkjs.
+  // Pinned at the first promotion, 2026-11-13.
+  "logix-core": {
+    "repo": "openlogix/logix-core",
+    "release": "2026-11-11",
+    "file": "logix-core-${PLATFORM}-${YYYYMMDD}.tgz"
+  },
+
+  // The boards and FPGAs.
+  // Pinned at the first promotion, 2026-11-13.
+  "logix-catalog": {
+    "repo": "openlogix/logix-catalog",
+    "release": "2026-11-11",
+    "file": "logix-catalog-${YYYYMMDD}.tgz"
+  }
+}

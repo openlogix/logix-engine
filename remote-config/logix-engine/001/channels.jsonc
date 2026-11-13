@@ -4,5 +4,8 @@
 // dev, the default, and local builds always are. Change it only by pull
 // request: adding a release under prod promotes it (it must be stable first).
 {
-  "$schema": "https://www.openlogix.org/schemas/logix-channels-v1.json"
+  "$schema": "https://www.openlogix.org/schemas/logix-channels-v1.json",
+
+  // The first promotion, 2026-11-13.
+  "prod": ["2026-11-12"]
 }
