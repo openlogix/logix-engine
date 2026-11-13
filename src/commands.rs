@@ -132,6 +132,21 @@ pub fn program_in(bin_dir: &Path, name: &str) -> PathBuf {
     bin_dir.join(name)
 }
 
+/// Quotes a word for a Windows command line when it needs it: in double
+/// quotes, with a double quote inside as \" (the usual argument rules).
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn cmd_quote(word: &str) -> String {
+    let plain = !word.is_empty()
+        && word
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_./:=+,@\\".contains(c));
+    if plain {
+        word.to_string()
+    } else {
+        format!("\"{}\"", word.replace('"', "\\\""))
+    }
+}
+
 /// Quotes a word for a POSIX shell when it needs it.
 pub fn shell_quote(word: &str) -> String {
     let plain = !word.is_empty()
@@ -193,10 +208,32 @@ pub fn record(program: &Path, args: &[OsString], cwd: &Path, bin_dir: &Path) -> 
     let mut all = vec![program.to_string_lossy().into_owned()];
     all.extend(args.iter().map(|a| a.to_string_lossy().into_owned()));
     let path = tool_path(bin_dir).to_string_lossy().into_owned();
+    #[cfg(windows)]
+    let shell = {
+        // A cmd line (every Windows has cmd): it can't clear the rest of the
+        // environment, as env -i does, so it sets what the engine sets.
+        let mut line = format!(
+            "cd /d {} && set \"PATH={path}\"",
+            cmd_quote(&cwd.to_string_lossy())
+        );
+        for (k, v) in tool_env(bin_dir) {
+            line.push_str(&format!(" && set \"{k}={}\"", v.display()));
+        }
+        line.push_str(" && ");
+        line.push_str(
+            &all.iter()
+                .map(|w| cmd_quote(w))
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
+        line
+    };
+    #[cfg(not(windows))]
     let extra: String = tool_env(bin_dir)
         .iter()
         .map(|(k, v)| format!("{k}={} ", shell_quote(&v.to_string_lossy())))
         .collect();
+    #[cfg(not(windows))]
     let shell = format!(
         "cd {} && env -i PATH={} {extra}HOME=\"$HOME\" TMPDIR=\"$TMPDIR\" {}",
         shell_quote(&cwd.to_string_lossy()),
@@ -234,6 +271,7 @@ impl CommandLog {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn records_runnable_commands_with_their_package() {
         let bin = Path::new("/eng/packages/logix-core/2026-11-10/oss-cad-suite/bin");
@@ -273,6 +311,7 @@ mod tests {
         assert_eq!(r.package, None);
     }
 
+    #[cfg(unix)]
     #[test]
     fn the_shell_line_runs_the_command_again() {
         let tmp = tempfile::tempdir().unwrap();
@@ -295,5 +334,35 @@ mod tests {
         assert!(lines[0].ends_with("/a dir"), "{out}");
         assert_eq!(lines[1], "/pkg/bin:/usr/bin:/bin");
         assert_eq!(lines[2], "x 'y'");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn records_runnable_commands_with_their_package_on_windows() {
+        let bin = Path::new(r"C:\eng\packages\logix-core\2026-11-10\oss-cad-suite\bin");
+        let args: Vec<OsString> = vec![
+            "-p".into(),
+            "synth_ice40 -top main".into(),
+            "it\"s.v".into(),
+        ];
+        let r = record(
+            &bin.join("yosys.exe"),
+            &args,
+            Path::new(r"C:\Users\me\my proj"),
+            bin,
+        );
+        assert_eq!(r.tool, "yosys");
+        assert_eq!(
+            r.package.as_deref(),
+            Some("logix-core 2026.11.10 (oss-cad-suite)")
+        );
+        assert_eq!(
+            r.shell,
+            format!(
+                r#"cd /d "C:\Users\me\my proj" && set "PATH={}" && {}\yosys.exe -p "synth_ice40 -top main" "it\"s.v""#,
+                tool_path(bin).to_string_lossy(),
+                bin.display()
+            )
+        );
     }
 }
