@@ -20,7 +20,7 @@ use tokio_util::sync::CancellationToken;
 fn engine() -> EngineState {
     let folder = Path::new(env!("CARGO_TARGET_TMPDIR")).join("test-engine");
     std::fs::create_dir_all(&folder).unwrap();
-    let folder = folder.canonicalize().unwrap();
+    let folder = dunce::canonicalize(folder).unwrap();
     let packages = PackageManager::with_remote_config(
         &folder,
         remote_config::repo_file_source(),
@@ -61,7 +61,7 @@ const BROKEN: &str = "module main;\n  wire = ;\n  initial begin\n end end\nendmo
 
 fn project() -> (tempfile::TempDir, PathBuf) {
     let tmp = tempfile::tempdir().unwrap();
-    let src = tmp.path().canonicalize().unwrap();
+    let src = dunce::canonicalize(tmp.path()).unwrap();
     std::fs::create_dir_all(src.join("rtl")).unwrap();
     std::fs::write(src.join("main.v"), MESSY).unwrap();
     std::fs::write(src.join("rtl/tidy.v"), TIDY).unwrap();

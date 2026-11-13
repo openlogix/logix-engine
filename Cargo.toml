@@ -11,6 +11,8 @@ publish = false
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+# Canonical paths without Windows' \\?\ prefix, which tools can't use.
+dunce = "1"
 flate2 = "1"
 hex = "0.4"
 libc = "0.2"

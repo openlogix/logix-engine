@@ -40,7 +40,7 @@ pub fn resolve(path: &Path) -> std::io::Result<PathBuf> {
     let mut existing = path.to_path_buf();
     let mut rest = Vec::new();
     loop {
-        match existing.canonicalize() {
+        match dunce::canonicalize(&existing) {
             Ok(real) => {
                 let mut out = real;
                 for name in rest.iter().rev() {
@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn resolve_handles_missing_tails() {
         let tmp = tempfile::tempdir().unwrap();
-        let real = tmp.path().canonicalize().unwrap();
+        let real = dunce::canonicalize(tmp.path()).unwrap();
         assert_eq!(
             resolve(&tmp.path().join("a/b")).unwrap(),
             real.join("a").join("b")
@@ -203,8 +203,7 @@ pub fn check_relative_path(s: &str) -> Result<(), String> {
 /// exist.
 pub fn resolve_inside(base: &Path, rel: &str) -> Result<PathBuf, String> {
     let joined = base.join(rel);
-    let real = joined
-        .canonicalize()
+    let real = dunce::canonicalize(&joined)
         .map_err(|e| format!("{rel:?} can't be found in {:?}: {e}", base.display()))?;
     if !real.starts_with(base) {
         return Err(format!(
@@ -274,7 +273,7 @@ mod build_folder_tests {
     #[test]
     fn build_folder_keyword_in_the_last_two_names() {
         let tmp = tempfile::tempdir().unwrap();
-        let base = tmp.path().canonicalize().unwrap();
+        let base = dunce::canonicalize(tmp.path()).unwrap();
         let b = base.to_str().unwrap();
         assert!(check_build_folder(&format!("{b}/p/_build"), None, None).is_ok());
         assert!(check_build_folder(&format!("{b}/p/_build/alhambra-ii"), None, None).is_ok());
@@ -289,7 +288,7 @@ mod build_folder_tests {
     #[test]
     fn resolve_inside_refuses_links_out() {
         let tmp = tempfile::tempdir().unwrap();
-        let base = tmp.path().canonicalize().unwrap().join("src");
+        let base = dunce::canonicalize(tmp.path()).unwrap().join("src");
         std::fs::create_dir(&base).unwrap();
         std::fs::write(base.join("a.v"), "").unwrap();
         std::fs::write(tmp.path().join("outside.v"), "").unwrap();

@@ -27,7 +27,7 @@ async fn engine() -> EngineState {
     static READY: OnceCell<()> = OnceCell::const_new();
     let folder = engine_folder();
     std::fs::create_dir_all(&folder).unwrap();
-    let folder = folder.canonicalize().unwrap();
+    let folder = dunce::canonicalize(folder).unwrap();
     let packages = PackageManager::with_remote_config(
         &folder,
         remote_config::repo_file_source(),
@@ -112,7 +112,7 @@ endmodule
 /// A project with a counter design and a passing testbench.
 fn project() -> (tempfile::TempDir, PathBuf) {
     let tmp = tempfile::tempdir().unwrap();
-    let src = tmp.path().canonicalize().unwrap().join("proj");
+    let src = dunce::canonicalize(tmp.path()).unwrap().join("proj");
     std::fs::create_dir_all(src.join("rtl")).unwrap();
     std::fs::write(src.join("main.v"), MAIN).unwrap();
     std::fs::write(src.join("rtl/counter.v"), COUNTER).unwrap();

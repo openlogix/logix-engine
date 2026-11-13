@@ -1201,6 +1201,7 @@ name = "logix-engine"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "dunce",
  "flate2",
  "hex",
  "indexmap",

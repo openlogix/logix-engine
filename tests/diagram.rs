@@ -22,7 +22,7 @@ async fn engine() -> EngineState {
     static READY: OnceCell<()> = OnceCell::const_new();
     let folder = Path::new(env!("CARGO_TARGET_TMPDIR")).join("test-engine");
     std::fs::create_dir_all(&folder).unwrap();
-    let folder = folder.canonicalize().unwrap();
+    let folder = dunce::canonicalize(folder).unwrap();
     let packages = PackageManager::with_remote_config(
         &folder,
         remote_config::repo_file_source(),
@@ -61,7 +61,7 @@ fn call() -> Call {
 /// originals are never changed.
 fn design(design: &str, name: &str) -> (tempfile::TempDir, PathBuf) {
     let tmp = tempfile::tempdir().unwrap();
-    let src = tmp.path().canonicalize().unwrap().join(name);
+    let src = dunce::canonicalize(tmp.path()).unwrap().join(name);
     std::fs::create_dir_all(&src).unwrap();
     let from = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/designs")
@@ -199,7 +199,7 @@ endmodule
 async fn diagram_draws_every_module_with_the_prototype_rules() {
     let state = engine().await;
     let tmp = tempfile::tempdir().unwrap();
-    let src = tmp.path().canonicalize().unwrap();
+    let src = dunce::canonicalize(tmp.path()).unwrap();
     std::fs::write(src.join("main.v"), HIERARCHY).unwrap();
     std::fs::write(src.join("rom.hex"), "01\n02\n03\n04\n").unwrap();
     let out = diagram::run(&state, input(&src, json!({})), &call())
@@ -295,7 +295,7 @@ async fn diagram_names_fpga_blocks_for_every_family() {
     }
     // An FPGA primitive gets its plain name and its ports' directions.
     let tmp = tempfile::tempdir().unwrap();
-    let src = tmp.path().canonicalize().unwrap();
+    let src = dunce::canonicalize(tmp.path()).unwrap();
     std::fs::write(
         src.join("main.v"),
         "module main(input CLK, output LED0, output LED1);\n\
@@ -380,7 +380,7 @@ async fn layout_workers_fail_alone() {
 async fn diagram_draws_only_levels_below_the_top() {
     let state = engine().await;
     let tmp = tempfile::tempdir().unwrap();
-    let src = tmp.path().canonicalize().unwrap();
+    let src = dunce::canonicalize(tmp.path()).unwrap();
     std::fs::write(
         src.join("main.v"),
         "module leaf(input a, output y); assign y = ~a; endmodule\n\

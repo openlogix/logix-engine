@@ -186,7 +186,7 @@ pub fn check_source_folder(source_folder: &str) -> Result<PathBuf, ToolError> {
     let req = |m: String| ToolError::request(m);
     let src = paths::check_absolute_path(source_folder)
         .map_err(|e| req(format!("source_folder: {e}.")))?;
-    let src = src.canonicalize().map_err(|e| {
+    let src = dunce::canonicalize(&src).map_err(|e| {
         req(format!(
             "source_folder {source_folder:?} can't be found: {e}."
         ))

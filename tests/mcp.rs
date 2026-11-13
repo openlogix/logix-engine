@@ -444,7 +444,7 @@ async fn build_streams_tool_output_when_asked() {
     let engine = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("test-engine");
     std::fs::create_dir_all(&engine).unwrap();
     let tmp = tempfile::tempdir().unwrap();
-    let src = tmp.path().canonicalize().unwrap().join("proj");
+    let src = dunce::canonicalize(tmp.path()).unwrap().join("proj");
     std::fs::create_dir_all(&src).unwrap();
     std::fs::write(
         src.join("main.v"),

@@ -220,13 +220,7 @@ impl LineSplitter {
 /// A command line for people to read: the program's file name and its
 /// arguments, quoting arguments that have spaces or quotes.
 pub fn command_line(program: &Path, args: &[OsString]) -> String {
-    let mut words = vec![
-        program
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned(),
-    ];
+    let mut words = vec![crate::commands::tool_name(program)];
     for a in args {
         let a = a.to_string_lossy();
         if a.is_empty() || a.contains([' ', '"', '\'', '\t']) {

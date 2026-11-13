@@ -146,6 +146,25 @@ fn package_of(program: &Path, bin_dir: &Path) -> Option<String> {
     }
 }
 
+/// A program's name as people know it, the same on every platform: its file
+/// name without Windows' `.exe`, `.cmd` or `.bat`, such as `yosys`.
+pub fn tool_name(program: &Path) -> String {
+    let name = program.file_name().unwrap_or_default().to_string_lossy();
+    match program.extension().and_then(|e| e.to_str()) {
+        Some(e)
+            if cfg!(windows)
+                && ["exe", "cmd", "bat"].contains(&e.to_ascii_lowercase().as_str()) =>
+        {
+            program
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned()
+        }
+        _ => name.into_owned(),
+    }
+}
+
 /// Records a run of `program` with `args` in `cwd`, with the environment the
 /// runner gives it.
 pub fn record(program: &Path, args: &[OsString], cwd: &Path, bin_dir: &Path) -> CommandRecord {
@@ -162,11 +181,7 @@ pub fn record(program: &Path, args: &[OsString], cwd: &Path, bin_dir: &Path) -> 
             .join(" ")
     );
     CommandRecord {
-        tool: program
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned(),
+        tool: tool_name(program),
         package: package_of(program, bin_dir),
         cwd: cwd.to_string_lossy().into_owned(),
         args: all,

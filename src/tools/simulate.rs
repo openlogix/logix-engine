@@ -310,7 +310,7 @@ mod tests {
     #[test]
     fn layout_file_rules() {
         let tmp = tempfile::tempdir().unwrap();
-        let src = tmp.path().canonicalize().unwrap().join("src");
+        let src = dunce::canonicalize(tmp.path()).unwrap().join("src");
         std::fs::create_dir_all(src.join("tb")).unwrap();
         assert_eq!(
             check_layout_file(&src, "main_tb.gtkw").unwrap(),

@@ -461,7 +461,7 @@ mod tests {
     #[test]
     fn real_locations_match_any_spelling() {
         let tmp = tempfile::tempdir().unwrap();
-        let real = tmp.path().canonicalize().unwrap();
+        let real = dunce::canonicalize(tmp.path()).unwrap();
         std::fs::create_dir(real.join("proj")).unwrap();
         std::fs::write(real.join("proj/main.v"), "").unwrap();
         // A link to the folder, given as the entry; the tools print the real

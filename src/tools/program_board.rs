@@ -197,11 +197,7 @@ pub async fn run_with_programmers(
     // Progress: write, then verify, from the output rules. A custom
     // command's progress isn't read.
     let phase = std::sync::Mutex::new(None::<&str>);
-    let tool_name = program
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
+    let tool_name = crate::commands::tool_name(&program);
     let shown = ToolOutput::new(&tool_name, call.output.as_ref());
     let on_line = |line: &str, redraw: bool| {
         let progress = shown.line(line, redraw);
@@ -243,7 +239,7 @@ pub async fn run_with_programmers(
             })
         }
         Ok(r) => Err(program::failure(
-            &program.file_name().unwrap_or_default().to_string_lossy(),
+            &crate::commands::tool_name(&program),
             &board.name,
             &r.output,
             &r.status.to_string(),

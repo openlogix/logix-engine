@@ -51,14 +51,19 @@ pub fn load(folder: Option<&str>) -> Result<CustomBoards, ToolError> {
         .filter(|n| n.ends_with(".json"))
         .collect();
     names.sort();
-    let base = given.trim_end_matches('/');
+    // Each file as the request named its folder, with the platform's
+    // separator (\ on Windows).
+    let sep = std::path::MAIN_SEPARATOR;
+    let base = given.trim_end_matches(['/', sep]);
     let mut files = Vec::new();
     for n in &names {
         let text = std::fs::read_to_string(real.join(n)).map_err(|e| {
-            ToolError::request(format!("custom_boards_folder: can't read {base}/{n}: {e}."))
+            ToolError::request(format!(
+                "custom_boards_folder: can't read {base}{sep}{n}: {e}."
+            ))
         })?;
         files.push(BoardFile {
-            name: format!("{base}/{n}"),
+            name: format!("{base}{sep}{n}"),
             id: n.trim_end_matches(".json").to_string(),
             text,
         });

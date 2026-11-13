@@ -27,7 +27,7 @@ async fn engine() -> EngineState {
     static READY: OnceCell<()> = OnceCell::const_new();
     let folder = engine_folder();
     std::fs::create_dir_all(&folder).unwrap();
-    let folder = folder.canonicalize().unwrap();
+    let folder = dunce::canonicalize(folder).unwrap();
     let packages = PackageManager::with_remote_config(
         &folder,
         remote_config::repo_file_source(),
@@ -92,7 +92,7 @@ const PCF: &str = "set_io LED0 45\nset_io LED1 44\nset_io CLK 49\n";
 /// A project folder with a blink design for the Alhambra II.
 fn project() -> (tempfile::TempDir, PathBuf) {
     let tmp = tempfile::tempdir().unwrap();
-    let src = tmp.path().canonicalize().unwrap().join("proj");
+    let src = dunce::canonicalize(tmp.path()).unwrap().join("proj");
     std::fs::create_dir_all(src.join("inc")).unwrap();
     std::fs::write(src.join("main.v"), BLINK).unwrap();
     std::fs::write(src.join("defs.vh"), "`define LED1_VALUE 1'b1\n").unwrap();
@@ -243,7 +243,7 @@ async fn builds_then_is_up_to_date_until_an_input_changes() {
 async fn builds_an_ecp5_design() {
     let state = engine().await;
     let tmp = tempfile::tempdir().unwrap();
-    let src = tmp.path().canonicalize().unwrap();
+    let src = dunce::canonicalize(tmp.path()).unwrap();
     let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/designs/blinky-ecp5");
     for f in ["main.v", "main.lpf"] {
         std::fs::copy(from.join(f), src.join(f)).unwrap();
@@ -341,7 +341,7 @@ async fn builds_an_ecp5_design() {
 async fn builds_a_gowin_design() {
     let state = engine().await;
     let tmp = tempfile::tempdir().unwrap();
-    let src = tmp.path().canonicalize().unwrap();
+    let src = dunce::canonicalize(tmp.path()).unwrap();
     let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/designs/blinky-gowin");
     for f in ["main.v", "main.cst"] {
         std::fs::copy(from.join(f), src.join(f)).unwrap();
@@ -434,7 +434,7 @@ async fn builds_a_gowin_design() {
 async fn builds_a_xilinx_design() {
     let state = engine().await;
     let tmp = tempfile::tempdir().unwrap();
-    let src = tmp.path().canonicalize().unwrap();
+    let src = dunce::canonicalize(tmp.path()).unwrap();
     let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/designs/blinky-xilinx");
     for f in ["main.v", "main.xdc"] {
         std::fs::copy(from.join(f), src.join(f)).unwrap();
@@ -512,7 +512,7 @@ async fn builds_a_xilinx_design() {
 async fn an_empty_primitive_stub_keeps_the_primitive() {
     let state = engine().await;
     let tmp = tempfile::tempdir().unwrap();
-    let src = tmp.path().canonicalize().unwrap();
+    let src = dunce::canonicalize(tmp.path()).unwrap();
     std::fs::write(
         src.join("main.v"),
         "module SB_HFOSC (input CLKHFPU, input CLKHFEN, output CLKHF);\nendmodule\n\n\
@@ -562,7 +562,7 @@ async fn designs_without_logic_build() {
             ("module main (input sys_clk);\nendmodule\n", clock),
         ] {
             let tmp = tempfile::tempdir().unwrap();
-            let src = tmp.path().canonicalize().unwrap();
+            let src = dunce::canonicalize(tmp.path()).unwrap();
             std::fs::write(src.join("main.v"), main).unwrap();
             let pins = if file.ends_with(".cst") {
                 pins.replace('#', "//")
@@ -1188,7 +1188,7 @@ async fn live_output_marks_progress_redraws() {
 async fn program_board_refuses_a_board_with_another_fpga() {
     let state = engine().await;
     let tmp = tempfile::tempdir().unwrap();
-    let src = tmp.path().canonicalize().unwrap().join("proj");
+    let src = dunce::canonicalize(tmp.path()).unwrap().join("proj");
     std::fs::create_dir(&src).unwrap();
     let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/designs/blinky-xilinx");
     for f in ["main.v", "main.xdc"] {

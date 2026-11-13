@@ -184,7 +184,7 @@ struct Setup {
 
 fn setup(data: Vec<u8>, sha: Option<&str>, stall_after: Option<usize>) -> Setup {
     let tmp = tempfile::tempdir().unwrap();
-    let engine = tmp.path().canonicalize().unwrap().join("engine");
+    let engine = dunce::canonicalize(tmp.path()).unwrap().join("engine");
     std::fs::create_dir(&engine).unwrap();
     let (version, file) = ("2026-01-02", "pkg-test-20260102.tgz");
     let manifest = manifest_for("pkg", version, file, &data, sha);
@@ -603,7 +603,7 @@ async fn download_packages_tool_refuses_unknown_packages() {
 #[ignore]
 async fn real_core_download() {
     let tmp = tempfile::tempdir().unwrap();
-    let engine = tmp.path().canonicalize().unwrap().join("engine");
+    let engine = dunce::canonicalize(tmp.path()).unwrap().join("engine");
     std::fs::create_dir(&engine).unwrap();
     let pm = PackageManager::with_remote_config(
         &engine,
@@ -707,7 +707,7 @@ fn config_path() -> String {
 /// file naming catalog 2026-01-02).
 fn remote_setup() -> RemoteSetup {
     let tmp = tempfile::tempdir().unwrap();
-    let engine = tmp.path().canonicalize().unwrap().join("engine");
+    let engine = dunce::canonicalize(tmp.path()).unwrap().join("engine");
     std::fs::create_dir(&engine).unwrap();
     let server = serve(HashMap::new());
     put_release(

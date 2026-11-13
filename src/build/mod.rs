@@ -326,7 +326,7 @@ pub fn find_includes(
             let Some(hit) = candidates.iter().find(|p| source_folder.join(p).is_file()) else {
                 continue;
             };
-            let real = source_folder.join(hit).canonicalize().map_err(|e| {
+            let real = dunce::canonicalize(source_folder.join(hit)).map_err(|e| {
                 ToolError::request(format!("Can't read the included file {name:?}: {e}"))
             })?;
             let inside = real.strip_prefix(source_folder).map_err(|_| {
@@ -680,7 +680,7 @@ mod tests {
     #[test]
     fn includes_are_found_recursively_and_must_stay_inside() {
         let tmp = tempfile::tempdir().unwrap();
-        let src = tmp.path().canonicalize().unwrap().join("src");
+        let src = dunce::canonicalize(tmp.path()).unwrap().join("src");
         fs::create_dir_all(src.join("rtl")).unwrap();
         fs::write(
             src.join("main.v"),

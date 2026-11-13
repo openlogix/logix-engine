@@ -152,7 +152,7 @@ mod tests {
 
     fn project() -> (tempfile::TempDir, std::path::PathBuf) {
         let tmp = tempfile::tempdir().unwrap();
-        let src = tmp.path().canonicalize().unwrap();
+        let src = dunce::canonicalize(tmp.path()).unwrap();
         std::fs::create_dir_all(src.join("rtl")).unwrap();
         for f in [
             "main.v",
