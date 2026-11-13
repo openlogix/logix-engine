@@ -278,7 +278,7 @@ pub async fn run(
         gtkwave::write_default_if_needed(&layout, &vcd, &tb, r.first_failure_ticks)?;
 
     if input.open_viewer {
-        let program = bin.join("gtkwave");
+        let program = crate::commands::program_in(&bin, "gtkwave");
         let args = gtkwave::gtkwave_args(&vcd, &layout, !layout_created);
         call.output
             .command("gtkwave", &command_line(&program, &args));

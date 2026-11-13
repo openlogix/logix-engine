@@ -69,7 +69,7 @@ pub async fn run_tool_with(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    for var in ["HOME", "TMPDIR"] {
+    for var in crate::commands::KEPT_VARS {
         if let Some(v) = std::env::var_os(var) {
             cmd.env(var, v);
         }

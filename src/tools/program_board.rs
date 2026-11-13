@@ -296,7 +296,7 @@ async fn check_fpga(
     bin: &std::path::Path,
     call: &Call,
 ) -> Result<(), ToolError> {
-    let exe = bin.join("openFPGALoader");
+    let exe = crate::commands::program_in(bin, "openFPGALoader");
     let args = program::detect_args(&board.variant, device)?;
     call.output
         .command("openFPGALoader", &command_line(&exe, &args));

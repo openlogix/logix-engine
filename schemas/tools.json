@@ -2449,7 +2449,7 @@
               }
             },
             "shell": {
-              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, HOME and TMPDIR).",
+              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, the home and\ntemporary folders and, on Windows, the variables its programs need).",
               "type": "string"
             }
           },
@@ -2848,7 +2848,7 @@
               }
             },
             "shell": {
-              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, HOME and TMPDIR).",
+              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, the home and\ntemporary folders and, on Windows, the variables its programs need).",
               "type": "string"
             }
           },
@@ -3240,7 +3240,7 @@
               }
             },
             "shell": {
-              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, HOME and TMPDIR).",
+              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, the home and\ntemporary folders and, on Windows, the variables its programs need).",
               "type": "string"
             }
           },
@@ -3524,7 +3524,7 @@
               }
             },
             "shell": {
-              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, HOME and TMPDIR).",
+              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, the home and\ntemporary folders and, on Windows, the variables its programs need).",
               "type": "string"
             }
           },
@@ -3894,7 +3894,7 @@
               }
             },
             "shell": {
-              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, HOME and TMPDIR).",
+              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, the home and\ntemporary folders and, on Windows, the variables its programs need).",
               "type": "string"
             }
           },
@@ -4373,7 +4373,7 @@
               }
             },
             "shell": {
-              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, HOME and TMPDIR).",
+              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, the home and\ntemporary folders and, on Windows, the variables its programs need).",
               "type": "string"
             }
           },
@@ -5198,7 +5198,7 @@
               }
             },
             "shell": {
-              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, HOME and TMPDIR).",
+              "description": "One shell command line that runs it again the same way: in the same\nfolder, with the same minimal environment (PATH, the home and\ntemporary folders and, on Windows, the variables its programs need).",
               "type": "string"
             }
           },

@@ -75,6 +75,16 @@ pub struct CoreRun {
 pub type CoreFpgas =
     std::collections::BTreeMap<String, Vec<std::collections::BTreeMap<String, String>>>;
 
+/// The components a core folder's `logix-core.json` lists; None without a
+/// readable one.
+pub fn read_core_components(
+    core: &Path,
+) -> Option<std::collections::BTreeMap<String, CoreComponent>> {
+    let text = fs::read_to_string(core.join(CORE_METADATA)).ok()?;
+    let meta: CoreMetadata = serde_json::from_str(&text).ok()?;
+    Some(meta.components)
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct CoreMetadata {
     components: std::collections::BTreeMap<String, CoreComponent>,
@@ -397,9 +407,7 @@ impl PackageManager {
     /// downloaded and the file is readable.
     pub fn core_components(&self) -> Option<std::collections::BTreeMap<String, CoreComponent>> {
         let spec = self.manifest().get(CORE)?.clone();
-        let text = fs::read_to_string(self.package_dir(&spec).join(CORE_METADATA)).ok()?;
-        let meta: CoreMetadata = serde_json::from_str(&text).ok()?;
-        Some(meta.components)
+        read_core_components(&self.package_dir(&spec))
     }
 
     /// The FPGAs the downloaded core's tools can build, from its

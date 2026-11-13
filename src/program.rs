@@ -207,7 +207,7 @@ pub fn command(
                 args.push(OsString::from(flag));
             }
             args.extend(expand(&variant.args, device, bitstream)?);
-            Ok((bin_dir.join(exe), args))
+            Ok((crate::commands::program_in(bin_dir, exe), args))
         }
         Some(cmd) => {
             let mut words = expand(cmd, device, bitstream)?;
@@ -217,8 +217,10 @@ pub fn command(
             let first = PathBuf::from(words.remove(0));
             let program = if first.is_absolute() {
                 first
-            } else if first.components().count() == 1 && bin_dir.join(&first).is_file() {
-                bin_dir.join(&first)
+            } else if first.components().count() == 1
+                && crate::commands::program_in(bin_dir, &first.to_string_lossy()).is_file()
+            {
+                crate::commands::program_in(bin_dir, &first.to_string_lossy())
             } else {
                 return Err(ToolError::request(format!(
                     "programmer_command must start with a program from the toolchain package, such as openFPGALoader or iceprog, or an absolute path, not {:?}.",

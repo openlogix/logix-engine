@@ -296,17 +296,26 @@ pub fn launch_detached(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    for var in [
-        "HOME",
-        "TMPDIR",
+    // The tools' variables, and a desktop session's on Linux.
+    let display = [
         "DISPLAY",
         "WAYLAND_DISPLAY",
         "XDG_RUNTIME_DIR",
         "XAUTHORITY",
-    ] {
+    ];
+    for var in crate::commands::KEPT_VARS.iter().chain(display.iter()) {
         if let Some(v) = std::env::var_os(var) {
             cmd.env(var, v);
         }
+    }
+    // Windows: its own process group, with no console, so it outlives the
+    // call and Stop's Ctrl+Break never reaches it.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS);
     }
     #[cfg(unix)]
     {

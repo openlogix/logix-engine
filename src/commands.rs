@@ -3,7 +3,7 @@
 //! (docs/tool-api.md, "Commands").
 
 use std::ffi::OsString;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use schemars::JsonSchema;
@@ -26,16 +26,88 @@ pub struct CommandRecord {
     /// passed.
     pub args: Vec<String>,
     /// One shell command line that runs it again the same way: in the same
-    /// folder, with the same minimal environment (PATH, HOME and TMPDIR).
+    /// folder, with the same minimal environment (PATH, the home and
+    /// temporary folders and, on Windows, the variables its programs need).
     pub shell: String,
 }
 
-/// The PATH the engine gives the programs it runs: the package's bin folder,
-/// then the system's.
+/// The folders on the PATH the engine gives a program in `bin_dir`: when
+/// `bin_dir` is a core component's program folder, every PATH folder
+/// `logix-core.json` lists for that component (on Windows also its `lib`,
+/// with the DLLs its programs need), else `bin_dir` alone; then the
+/// system's (`/usr/bin` and `/bin`, or Windows' `System32` and its own
+/// folder).
+pub fn tool_path_dirs(bin_dir: &Path) -> Vec<PathBuf> {
+    let mut dirs = component_path(bin_dir).unwrap_or_else(|| vec![bin_dir.to_path_buf()]);
+    dirs.extend(system_path());
+    dirs
+}
+
+/// The PATH the engine gives a program in `bin_dir` (tool_path_dirs).
 pub fn tool_path(bin_dir: &Path) -> OsString {
-    let mut path = OsString::from(bin_dir);
-    path.push(":/usr/bin:/bin");
-    path
+    std::env::join_paths(tool_path_dirs(bin_dir)).unwrap_or_default()
+}
+
+/// The PATH folders of the core component whose program folder is
+/// `bin_dir`, from the core's `logix-core.json` (in a folder above it).
+fn component_path(bin_dir: &Path) -> Option<Vec<PathBuf>> {
+    let core = bin_dir
+        .ancestors()
+        .skip(1)
+        .find(|a| a.join(crate::packages::CORE_METADATA).is_file())?;
+    let components = crate::packages::read_core_components(core)?;
+    components
+        .values()
+        .find(|c| c.run.path.first().map(|p| core.join(p)).as_deref() == Some(bin_dir))
+        .map(|c| c.run.path.iter().map(|p| core.join(p)).collect())
+}
+
+#[cfg(windows)]
+fn system_path() -> Vec<PathBuf> {
+    let root =
+        PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into()));
+    vec![root.join("System32"), root]
+}
+
+#[cfg(not(windows))]
+fn system_path() -> Vec<PathBuf> {
+    vec!["/usr/bin".into(), "/bin".into()]
+}
+
+/// The environment variables the programs keep, besides PATH: the home and
+/// temporary folders, and on Windows what its programs need to run
+/// (`SystemRoot`, `COMSPEC` and `PATHEXT` for `.cmd` programs).
+#[cfg(windows)]
+pub const KEPT_VARS: &[&str] = &[
+    "SystemRoot",
+    "SystemDrive",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "COMSPEC",
+    "PATHEXT",
+];
+#[cfg(not(windows))]
+pub const KEPT_VARS: &[&str] = &["HOME", "TMPDIR"];
+
+/// A program named `name` in `bin_dir`: as named on macOS and Linux; on
+/// Windows the first of `name.exe`, `name.cmd` and `name.bat` that's there
+/// (openXC7's `fasm2frames` is a `.cmd`), else `name.exe`.
+pub fn program_in(bin_dir: &Path, name: &str) -> PathBuf {
+    if cfg!(windows) && Path::new(name).extension().is_none() {
+        for ext in ["exe", "cmd", "bat"] {
+            let p = bin_dir.join(format!("{name}.{ext}"));
+            if p.is_file() {
+                return p;
+            }
+        }
+        return bin_dir.join(format!("{name}.exe"));
+    }
+    bin_dir.join(name)
 }
 
 /// Quotes a word for a POSIX shell when it needs it.

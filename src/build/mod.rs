@@ -436,7 +436,7 @@ pub async fn run_watched(
     stop: &tokio_util::sync::CancellationToken,
     watch: &(dyn Fn(&str) + Send + Sync),
 ) -> Result<Option<crate::runner::ToolRun>, ToolError> {
-    let program = bin_dir.join(tool);
+    let program = crate::commands::program_in(bin_dir, tool);
     call.output.command(tool, &command_line(&program, args));
     call.commands
         .push(crate::commands::record(&program, args, cwd, bin_dir));
