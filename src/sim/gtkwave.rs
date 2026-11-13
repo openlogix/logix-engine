@@ -365,6 +365,7 @@ pub fn launch_detached(
 mod tests {
     use super::*;
     use std::io::Cursor;
+    #[cfg(unix)]
     use std::time::{Duration, Instant};
 
     // A real VCD header from iverilog (oss-cad-suite 2026-10-22).
