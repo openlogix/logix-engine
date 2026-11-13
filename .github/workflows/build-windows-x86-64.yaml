@@ -1,0 +1,119 @@
+# Builds the Logix Engine Windows (x64) package: a .tgz with logix-engine.exe
+# (Milestone 3). Called by build-pre-release.yaml, which passes
+# BUILD-INFO.json as the 'build-info' artifact. While the engine is being
+# ported (Milestone 3, phase 2), its tests may fail here without stopping
+# the package, and build-pre-release publishes the macOS package whether
+# this one builds or not; both become strict once the Windows tests pass.
+
+name: build-windows-x86-64
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 60
+
+    # Git's bash, as on macOS: the scripts are bash.
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      # Git's bash reports the OS as Msys.
+      - name: Check required platform
+        uses: openlogix/.github/actions/check-platform@main
+        with:
+          os: msys
+          arch: x86_64
+
+      - name: Read the build info
+        uses: openlogix/.github/actions/read-build-info@main
+        with:
+          platform: windows-x86-64
+
+      # Into a subdirectory, not to step on BUILD-INFO.json.
+      - name: Checkout the commit to build
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.REPO }}
+          ref: ${{ env.REPO_COMMIT }}
+          path: _repo
+
+      # Installs the Rust version pinned in rust-toolchain.toml.
+      - name: Set up Rust
+        working-directory: _repo
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
+
+      # The build tests download the toolchain package. Cached until the
+      # remote config changes.
+      - name: Cache the test toolchain
+        uses: actions/cache@v6
+        with:
+          path: _repo/target/tmp/test-engine/packages
+          key: test-engine-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('_repo/remote-config/**') }}
+
+      # Not yet required (see the top): remove continue-on-error once the
+      # Windows tests pass.
+      - name: Run checks and tests
+        working-directory: _repo
+        continue-on-error: true
+        run: scripts/test.sh
+
+      # Cargo needs a semver version: the release date without leading zeros
+      # (2026-05-07 is 2026.5.7), never shown (the Open Logix versioning rule).
+      - name: Write the semver version
+        working-directory: _repo
+        run: |
+          IFS=- read -r y m d <<< "$RELEASE_TAG"
+          semver="$((10#$y)).$((10#$m)).$((10#$d))"
+          export SEMVER="$semver"
+          perl -0pi -e 's/^version = "[^"]*"/version = "$ENV{SEMVER}"/m' Cargo.toml
+          perl -0pi -e 's/(name = "logix-engine"\nversion = )"[^"]*"/$1"$ENV{SEMVER}"/' Cargo.lock
+          grep -q "^version = \"$semver\"" Cargo.toml
+          grep -A1 '^name = "logix-engine"$' Cargo.lock | grep -q "^version = \"$semver\""
+
+      # The engine version is the release tag's date, shown as yyyy.mm.dd.
+      - name: Build the engine
+        working-directory: _repo
+        env:
+          LOGIX_ENGINE_BUILD_VERSION: ${{ env.RELEASE_TAG }}
+        run: scripts/build.sh
+
+      # The package has one top-level folder, logix-engine/, with the
+      # program and the licenses: a .tgz, as on every platform (Logix Engine
+      # and Logix IDE unpack one archive type).
+      - name: Make the package
+        run: |
+          mkdir -p _pkg/logix-engine
+          cp _repo/target/release/logix-engine.exe _pkg/logix-engine/
+          cp _repo/LICENSE-MIT _repo/LICENSE-APACHE _pkg/logix-engine/
+          tar -czf "logix-engine-windows-x86-64-${PACKAGE_TAG}.tgz" -C _pkg logix-engine
+          tar -tzvf "logix-engine-windows-x86-64-${PACKAGE_TAG}.tgz"
+
+      # Checks what users get: the program from the package runs and reports
+      # the release date as its version (yyyy.mm.dd).
+      - name: Verify the package
+        run: |
+          mkdir _check
+          tar -xzf "logix-engine-windows-x86-64-${PACKAGE_TAG}.tgz" -C _check
+          bin=_check/logix-engine/logix-engine.exe
+          test -f _check/logix-engine/LICENSE-MIT
+          test -f _check/logix-engine/LICENSE-APACHE
+          version="$("$bin" --version | tr -d '\r')"
+          echo "$version"
+          expected="logix-engine ${RELEASE_TAG//-/.}"
+          if [[ "$version" != "$expected" ]]; then
+            echo "Error: expected $expected, got: $version"
+            exit 1
+          fi
+
+      - name: Export the package as an artifact
+        uses: actions/upload-artifact@v7
+        with:
+          if-no-files-found: error
+          name: logix-engine-windows-x86-64
+          path: logix-engine-windows-x86-64-${{ env.PACKAGE_TAG }}.tgz

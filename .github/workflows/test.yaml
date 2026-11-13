@@ -34,7 +34,7 @@ jobs:
       - name: Check the remote config
         uses: openlogix/.github/actions/check-remote-config@main
         with:
-          platforms: darwin-arm64
+          platforms: darwin-arm64 windows-x86-64
 
   # The channels the tests run on: one per config file in the newest version
   # folder (the website repo's CLAUDE.md, Remote updates, Channels): prod
@@ -61,16 +61,26 @@ jobs:
     # macOS on Apple Silicon: the only platform implemented so far, on each
     # macOS version GitHub offers (all arm64), named explicitly: add a new
     # one when GitHub ships it (macos-latest isn't listed: it's one of these,
-    # so it tested the same image twice). Times each channel, so each config
-    # file's result shows on its own and one failing doesn't stop the other.
-    # Add Linux and Windows here when those platforms are implemented.
+    # so it tested the same image twice). Windows x64 (Milestone 3), named
+    # explicitly too. Times each channel, so each config file's result shows
+    # on its own and one failing doesn't stop the other. Add Linux with
+    # Milestone 4.
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-26]
+        os: [macos-15, macos-26, windows-2025]
         channel: ${{ fromJSON(needs.channels.outputs.channels) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    # While the engine is being ported to Windows (Milestone 3, phase 2), a
+    # Windows failure doesn't fail the run: its jobs show their results, but
+    # the badge and repos-janitor stay on macOS's. Remove this once the
+    # Windows tests pass.
+    continue-on-error: ${{ startsWith(matrix.os, 'windows') }}
+    # Git's bash on Windows, as on macOS: the scripts are bash.
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Check out the code

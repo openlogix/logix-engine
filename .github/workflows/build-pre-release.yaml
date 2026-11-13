@@ -10,8 +10,10 @@
 #
 # The shared parts are Open Logix actions in openlogix/.github (tested
 # there): start-pre-release, read-build-info and publish-pre-release, which
-# also writes the standard release text and applies the pre-release policy. Only macOS (Apple Silicon) for now; Linux and
-# Windows will be added as separate build-<platform>.yaml workflows.
+# also writes the standard release text and applies the pre-release policy. macOS (Apple Silicon), and Windows (x64) while
+# it's being ported (Milestone 3): the pre-release doesn't wait for a
+# Windows package, and includes it when it built. Linux comes as another
+# build-<platform>.yaml workflow (Milestone 4).
 
 name: build-pre-release
 
@@ -74,10 +76,18 @@ jobs:
     uses: ./.github/workflows/build-darwin-arm64.yaml
     secrets: inherit
 
+  build-windows-x86-64:
+    needs: prepare
+    uses: ./.github/workflows/build-windows-x86-64.yaml
+    secrets: inherit
+
   # ----- Create the pre-release with the generated files.
 
+  # While Windows is being ported (Milestone 3), only macOS must build;
+  # make it a plain needs list once the Windows build is required.
   pre-release:
-    needs: [prepare, build-darwin-arm64]
+    needs: [prepare, build-darwin-arm64, build-windows-x86-64]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.build-darwin-arm64.result == 'success' }}
 
     runs-on: ubuntu-latest
     permissions:
@@ -132,6 +142,12 @@ jobs:
           | :--- | :--- | :--- |
           | macOS | Apple Silicon | [logix-engine-darwin-arm64-${PACKAGE_TAG}.tgz](${url}/logix-engine-darwin-arm64-${PACKAGE_TAG}.tgz) |
           EOF
+          # Windows while it's being ported (Milestone 3): when it built.
+          win="logix-engine-windows-x86-64-${PACKAGE_TAG}.tgz"
+          if [[ -f "_artifacts/$win" ]]; then
+            echo "| Windows | x64 | [$win](${url}/$win) (being ported: for testing only) |" >> CONTENT.md
+            echo "FILES_WINDOWS=_artifacts/$win" >> "$GITHUB_ENV"
+          fi
           cat -n CONTENT.md
 
       - name: Publish the pre-release
@@ -143,3 +159,4 @@ jobs:
           about-bullets: The release tag is also the engine version.
           files: |
             _artifacts/logix-engine-darwin-arm64-${{ env.PACKAGE_TAG }}.tgz
+            ${{ env.FILES_WINDOWS }}
