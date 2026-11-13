@@ -77,6 +77,13 @@ pub async fn run_tool_with(
             cmd.env(var, v);
         }
     }
+    // Its own temporary folder, deleted when the run ends.
+    let run_temp = RunTemp::new();
+    if let Some(t) = &run_temp {
+        for var in TEMP_VARS {
+            cmd.env(var, &t.0);
+        }
+    }
     #[cfg(unix)]
     cmd.process_group(0);
 
@@ -245,6 +252,34 @@ pub fn command_line(program: &Path, args: &[OsString]) -> String {
         }
     }
     words.join(" ")
+}
+
+/// The variables that name the temporary folder.
+#[cfg(windows)]
+const TEMP_VARS: &[&str] = &["TEMP", "TMP"];
+#[cfg(not(windows))]
+const TEMP_VARS: &[&str] = &["TMPDIR"];
+
+/// A temporary folder for one tool run, in the system's, deleted when the
+/// run ends. Two runs never share one: yosys on Windows names its folders
+/// from a weak random seed, so two runs started together picked the same
+/// one and deleted each other's files (seen in CI, 2026-11-13).
+struct RunTemp(std::path::PathBuf);
+
+impl RunTemp {
+    fn new() -> Option<RunTemp> {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("logix-engine-{}-{n}", std::process::id()));
+        std::fs::create_dir_all(&dir).ok()?;
+        Some(RunTemp(dir))
+    }
+}
+
+impl Drop for RunTemp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 /// How long a stopped tool gets to exit before it is killed.
@@ -434,6 +469,29 @@ mod tests {
             vec![("a".into(), false), ("b".into(), true), ("c".into(), false)]
         );
         assert_eq!(split(b"x"), vec![("x".into(), false)]);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn each_run_has_its_own_temporary_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let args: Vec<OsString> = vec!["-c".into(), "echo \"$TMPDIR\"; test -d \"$TMPDIR\"".into()];
+        let run = || async {
+            let r = run_tool(
+                Path::new("/bin/sh"),
+                &args,
+                tmp.path(),
+                tmp.path(),
+                &CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+            assert!(r.status.success(), "the folder exists during the run");
+            std::path::PathBuf::from(r.output.trim())
+        };
+        let (a, b) = (run().await, run().await);
+        assert_ne!(a, b);
+        assert!(!a.exists() && !b.exists(), "deleted after the run");
     }
 
     #[cfg(unix)]

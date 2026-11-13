@@ -479,7 +479,11 @@ async fn builds_a_xilinx_design() {
         ]
     );
     let frames = &out.commands[2].args[1..];
-    assert!(frames[3].ends_with("share/nextpnr/external/prjxray-db/artix7"));
+    assert!(
+        frames[3]
+            .replace('\\', "/")
+            .ends_with("share/nextpnr/external/prjxray-db/artix7")
+    );
     assert_eq!(&frames[4..], ["hardware.fasm", "hardware.frames"]);
     assert!(out.commands[3].args[2].ends_with("prjxray-db/artix7/xc7a35tcsg324-1/part.yaml"));
     assert_eq!(out.bitstream, "hardware.bit");
@@ -1215,7 +1219,8 @@ async fn program_board_refuses_a_board_with_another_fpga() {
             detect = detect.display()
         ),
         &format!(
-            "@>>\"{log}\" echo %*\r\n@echo %* | findstr /C:\"--detect\" >nul && type \"{detect}\"\r\n",
+            // findstr's "no match" would be the script's exit code.
+            "@>>\"{log}\" echo %*\r\n@echo %* | findstr /C:\"--detect\" >nul && type \"{detect}\"\r\n@exit /b 0\r\n",
             log = log.display(),
             detect = detect.display()
         ),
