@@ -365,6 +365,7 @@ pub fn launch_detached(
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::path::PathBuf;
     #[cfg(unix)]
     use std::time::{Duration, Instant};
 
@@ -443,26 +444,42 @@ $end
         );
     }
 
-    // Unix only for now: started through /bin/sh. Windows versions come
-    // with the Windows GTKWave checks (Milestone 3).
-    #[cfg(unix)]
+    /// A shell running `script`: /bin/sh, or cmd.exe on Windows.
+    fn shell(script: &str) -> (PathBuf, Vec<OsString>) {
+        if cfg!(windows) {
+            let root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+            let cmd = PathBuf::from(root).join("System32").join("cmd.exe");
+            (cmd, vec!["/C".into(), script.into()])
+        } else {
+            ("/bin/sh".into(), vec!["-c".into(), script.into()])
+        }
+    }
+
+    /// A shell command that waits about `seconds` (Windows has no sleep
+    /// that works without a console; ping waits a second between tries).
+    fn pause(seconds: u32) -> String {
+        if cfg!(windows) {
+            format!("ping -n {} 127.0.0.1 >nul", seconds + 1)
+        } else {
+            format!("sleep {seconds}")
+        }
+    }
+
     #[test]
     fn detached_programs_outlive_the_call() {
         let tmp = tempfile::tempdir().unwrap();
         let marker = tmp.path().join("ran");
-        let args: Vec<OsString> = vec![
-            "-c".into(),
-            format!("sleep 1; echo \"$PATH\" > '{}'", marker.display()).into(),
-        ];
+        let bin = tmp.path().join("bin");
+        // The program writes its PATH after a pause, so after the call.
+        let script = if cfg!(windows) {
+            // No quotes: cmd /C keeps the rest of the line as it is.
+            format!("{} & echo %PATH%>{}", pause(1), marker.display())
+        } else {
+            format!("{}; echo \"$PATH\" > '{}'", pause(1), marker.display())
+        };
+        let (program, args) = shell(&script);
         let start = Instant::now();
-        launch_detached(
-            Path::new("/bin/sh"),
-            &args,
-            tmp.path(),
-            Path::new("/pkg/bin"),
-            || {},
-        )
-        .unwrap();
+        launch_detached(&program, &args, tmp.path(), &bin, || {}).unwrap();
         assert!(
             start.elapsed() < Duration::from_millis(500),
             "returns at once"
@@ -474,7 +491,11 @@ $end
         }
         std::thread::sleep(Duration::from_millis(100));
         let path = fs::read_to_string(&marker).unwrap();
-        assert!(path.starts_with("/pkg/bin:"), "{path}");
+        let sep = if cfg!(windows) { ';' } else { ':' };
+        assert!(
+            path.starts_with(&format!("{}{sep}", bin.display())),
+            "{path}"
+        );
 
         let err = launch_detached(
             Path::new("/no/such/gtkwave"),
@@ -487,9 +508,6 @@ $end
         assert_eq!(err.category, Category::Tool);
     }
 
-    // Unix only for now: started through /bin/sh. Windows versions come
-    // with the Windows GTKWave checks (Milestone 3).
-    #[cfg(unix)]
     #[test]
     fn unsaved_default_layouts_are_deleted_when_the_viewer_exits() {
         let tmp = tempfile::tempdir().unwrap();
@@ -505,17 +523,11 @@ $end
         // A viewer that exits after a moment.
         let (tx, rx) = std::sync::mpsc::channel();
         let paths = [default.clone(), saved.clone()];
-        let args: Vec<OsString> = vec!["-c".into(), "sleep 0.3".into()];
-        launch_detached(
-            Path::new("/bin/sh"),
-            &args,
-            tmp.path(),
-            tmp.path(),
-            move || {
-                paths.iter().for_each(|p| delete_if_generated(p));
-                tx.send(()).unwrap();
-            },
-        )
+        let (program, args) = shell(&pause(1));
+        launch_detached(&program, &args, tmp.path(), tmp.path(), move || {
+            paths.iter().for_each(|p| delete_if_generated(p));
+            tx.send(()).unwrap();
+        })
         .unwrap();
         assert!(default.exists(), "kept while the viewer runs");
         rx.recv_timeout(Duration::from_secs(10)).unwrap();
