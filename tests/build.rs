@@ -485,7 +485,11 @@ async fn builds_a_xilinx_design() {
             .ends_with("share/nextpnr/external/prjxray-db/artix7")
     );
     assert_eq!(&frames[4..], ["hardware.fasm", "hardware.frames"]);
-    assert!(out.commands[3].args[2].ends_with("prjxray-db/artix7/xc7a35tcsg324-1/part.yaml"));
+    assert!(
+        out.commands[3].args[2]
+            .replace('\\', "/")
+            .ends_with("prjxray-db/artix7/xc7a35tcsg324-1/part.yaml")
+    );
     assert_eq!(out.bitstream, "hardware.bit");
     let bit = std::fs::read(src.join("_build/hardware.bit")).unwrap();
     assert!(bit.len() > 100_000, "{}", bit.len());
