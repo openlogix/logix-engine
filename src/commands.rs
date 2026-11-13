@@ -38,9 +38,18 @@ pub struct CommandRecord {
 /// system's (`/usr/bin` and `/bin`, or Windows' `System32` and its own
 /// folder).
 pub fn tool_path_dirs(bin_dir: &Path) -> Vec<PathBuf> {
-    let mut dirs = component_path(bin_dir).unwrap_or_else(|| vec![bin_dir.to_path_buf()]);
+    let mut dirs = component_run(bin_dir)
+        .map(|r| r.path)
+        .unwrap_or_else(|| vec![bin_dir.to_path_buf()]);
     dirs.extend(system_path());
     dirs
+}
+
+/// The variables a program in `bin_dir` gets besides PATH and KEPT_VARS:
+/// its core component's `run.env` from `logix-core.json`, each a folder in
+/// the core.
+pub fn tool_env(bin_dir: &Path) -> Vec<(String, PathBuf)> {
+    component_run(bin_dir).map(|r| r.env).unwrap_or_default()
 }
 
 /// The PATH the engine gives a program in `bin_dir` (tool_path_dirs).
@@ -48,18 +57,31 @@ pub fn tool_path(bin_dir: &Path) -> OsString {
     std::env::join_paths(tool_path_dirs(bin_dir)).unwrap_or_default()
 }
 
-/// The PATH folders of the core component whose program folder is
+/// How to run the programs of the core component whose program folder is
 /// `bin_dir`, from the core's `logix-core.json` (in a folder above it).
-fn component_path(bin_dir: &Path) -> Option<Vec<PathBuf>> {
+struct ComponentRun {
+    path: Vec<PathBuf>,
+    env: Vec<(String, PathBuf)>,
+}
+
+fn component_run(bin_dir: &Path) -> Option<ComponentRun> {
     let core = bin_dir
         .ancestors()
         .skip(1)
         .find(|a| a.join(crate::packages::CORE_METADATA).is_file())?;
     let components = crate::packages::read_core_components(core)?;
-    components
+    let c = components
         .values()
-        .find(|c| c.run.path.first().map(|p| core.join(p)).as_deref() == Some(bin_dir))
-        .map(|c| c.run.path.iter().map(|p| core.join(p)).collect())
+        .find(|c| c.run.path.first().map(|p| core.join(p)).as_deref() == Some(bin_dir))?;
+    Some(ComponentRun {
+        path: c.run.path.iter().map(|p| core.join(p)).collect(),
+        env: c
+            .run
+            .env
+            .iter()
+            .map(|(k, v)| (k.clone(), core.join(v)))
+            .collect(),
+    })
 }
 
 #[cfg(windows)]
@@ -171,8 +193,12 @@ pub fn record(program: &Path, args: &[OsString], cwd: &Path, bin_dir: &Path) -> 
     let mut all = vec![program.to_string_lossy().into_owned()];
     all.extend(args.iter().map(|a| a.to_string_lossy().into_owned()));
     let path = tool_path(bin_dir).to_string_lossy().into_owned();
+    let extra: String = tool_env(bin_dir)
+        .iter()
+        .map(|(k, v)| format!("{k}={} ", shell_quote(&v.to_string_lossy())))
+        .collect();
     let shell = format!(
-        "cd {} && env -i PATH={} HOME=\"$HOME\" TMPDIR=\"$TMPDIR\" {}",
+        "cd {} && env -i PATH={} {extra}HOME=\"$HOME\" TMPDIR=\"$TMPDIR\" {}",
         shell_quote(&cwd.to_string_lossy()),
         shell_quote(&path),
         all.iter()

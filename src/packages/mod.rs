@@ -65,8 +65,13 @@ pub struct CoreComponent {
 #[derive(Debug, Clone, Deserialize)]
 pub struct CoreRun {
     /// The folders for PATH, relative to the core; the first holds the
-    /// programs.
+    /// programs. It may include another component's, as openXC7 includes
+    /// the YosysHQ suite's.
     pub path: Vec<String>,
+    /// Variables the programs need, each naming a folder relative to the
+    /// core, such as VERILATOR_ROOT on Windows.
+    #[serde(default)]
+    pub env: std::collections::BTreeMap<String, String>,
 }
 
 /// The FPGAs a core's tools can build, by toolchain (ice40, ecp5, gowin,

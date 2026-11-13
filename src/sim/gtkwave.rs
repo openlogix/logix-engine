@@ -296,6 +296,9 @@ pub fn launch_detached(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    for (var, value) in crate::commands::tool_env(bin_dir) {
+        cmd.env(var, value);
+    }
     // The tools' variables, and a desktop session's on Linux.
     let display = [
         "DISPLAY",
