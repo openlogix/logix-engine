@@ -70,13 +70,16 @@ jobs:
       matrix:
         os: [macos-15, macos-26, windows-2025]
         channel: ${{ fromJSON(needs.channels.outputs.channels) }}
+        # Windows is being ported (Milestone 3) and isn't offered on the
+        # prod channel yet: its prod config names a logix-core from before
+        # the port (no VERILATOR_ROOT on Windows). Tested on dev only until
+        # Windows' first promotion; remove this then (the website repo's
+        # CLAUDE.md, Strict CI).
+        exclude:
+          - os: windows-2025
+            channel: prod
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    # Strict (the website repo's CLAUDE.md, Strict CI), but for one
-    # temporary step: on the prod channel, Windows doesn't fail the run until
-    # prod names logix-core 2026-11-13 or later (VERILATOR_ROOT on Windows).
-    # Remove this with that promotion.
-    continue-on-error: ${{ startsWith(matrix.os, 'windows') && matrix.channel == 'prod' }}
     # Git's bash on Windows, as on macOS: the scripts are bash.
     defaults:
       run:
