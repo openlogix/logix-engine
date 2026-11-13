@@ -304,7 +304,7 @@ pub async fn compile_and_run(
     dumpfile.push(&vcd);
     // -i makes vvp send each line at once rather than when it exits, so a
     // failure is seen while the testbench still runs.
-    let args: Vec<OsString> = vec!["-i".into(), out_file.into(), dumpfile];
+    let args: Vec<OsString> = vec!["-i".into(), out_file.clone().into(), dumpfile];
     let stop = call.cancel.child_token();
     // Why the engine stopped the run, when it did.
     let reason: std::sync::Arc<Mutex<Option<Ending>>> = Default::default();
@@ -373,13 +373,20 @@ pub async fn compile_and_run(
         .iter()
         .any(|m| m.diagnostic.severity == Severity::Error);
     let waveform = vcd.is_file();
+    // From the waveform, else from the compiled testbench: a run stopped
+    // at once (Stop on Windows) may leave the waveform's header unwritten.
     let ns_per_tick = if waveform {
         fs::File::open(&vcd)
             .ok()
             .and_then(|f| parse::vcd_timescale_ns(std::io::BufReader::new(f)))
     } else {
         None
-    };
+    }
+    .or_else(|| {
+        fs::File::open(&out_file)
+            .ok()
+            .and_then(|f| parse::vvp_precision_ns(std::io::BufReader::new(f)))
+    });
     let first_failure_ticks = messages
         .iter()
         .find(|m| m.diagnostic.severity == Severity::Error)

@@ -930,8 +930,9 @@ async fn ecp5_lint_test_and_simulate_use_the_ecp5_models() {
     assert!(out.passed, "{:?}", out.diagnostics);
     let args = &out.commands[0].args;
     assert!(
-        args.iter()
-            .any(|a| a.ends_with("share/yosys/ecp5/cells_bb.v")),
+        args.iter().any(|a| a
+            .replace('\\', "/")
+            .ends_with("share/yosys/ecp5/cells_bb.v")),
         "{args:?}"
     );
     // Without a top module, warnings in the models are still off.
@@ -955,8 +956,9 @@ async fn ecp5_lint_test_and_simulate_use_the_ecp5_models() {
     let args = &out.commands[0].args;
     assert!(args.contains(&"-DNO_INCLUDES".to_string()), "{args:?}");
     assert!(
-        args.iter()
-            .any(|a| a.ends_with("share/yosys/ecp5/cells_sim.v")),
+        args.iter().any(|a| a
+            .replace('\\', "/")
+            .ends_with("share/yosys/ecp5/cells_sim.v")),
         "{args:?}"
     );
 }
@@ -1014,12 +1016,10 @@ async fn gowin_lint_test_and_simulate_use_the_gowin_models() {
     .await
     .unwrap();
     assert!(out.passed, "{:?}", out.diagnostics);
-    assert!(
-        out.commands[0]
-            .args
-            .iter()
-            .any(|a| a.ends_with("share/yosys/gowin/cells_xtra_gw2a.v"))
-    );
+    assert!(out.commands[0].args.iter().any(|a| {
+        a.replace('\\', "/")
+            .ends_with("share/yosys/gowin/cells_xtra_gw2a.v")
+    }));
 
     let out = test::run(&state, test_input(&src, board), &call())
         .await
@@ -1027,8 +1027,9 @@ async fn gowin_lint_test_and_simulate_use_the_gowin_models() {
     assert!(out.passed, "{:?}", out.testbenches);
     let args = &out.commands[0].args;
     assert!(
-        args.iter()
-            .any(|a| a.ends_with("share/yosys/gowin/cells_sim.v")),
+        args.iter().any(|a| a
+            .replace('\\', "/")
+            .ends_with("share/yosys/gowin/cells_sim.v")),
         "{args:?}"
     );
 }
@@ -1086,8 +1087,9 @@ async fn xilinx_lint_test_and_simulate_use_the_xilinx_models() {
     assert!(out.passed, "{:?}", out.testbenches);
     let args = &out.commands[0].args;
     assert!(
-        args.iter()
-            .any(|a| a.ends_with("share/yosys/xilinx/cells_sim.v")),
+        args.iter().any(|a| a
+            .replace('\\', "/")
+            .ends_with("share/yosys/xilinx/cells_sim.v")),
         "{args:?}"
     );
 }

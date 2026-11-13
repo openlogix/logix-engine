@@ -293,6 +293,25 @@ pub fn parse_vvp(output: &str, source_folder: &str) -> Vec<VvpMessage> {
     out
 }
 
+/// The length of one simulation tick, in nanoseconds, from the file
+/// iverilog compiles for vvp, whose header says the precision as a power
+/// of ten of a second (":vpi_time_precision - 12;" is 1 ps, 0.001 ns). The
+/// waveform's $timescale says the same, but a run stopped at once (as Stop
+/// does on Windows) may leave it unwritten.
+pub fn vvp_precision_ns(compiled: impl std::io::BufRead) -> Option<f64> {
+    let line = compiled
+        .lines()
+        .map_while(Result::ok)
+        .take(20)
+        .find(|l| l.starts_with(":vpi_time_precision"))?;
+    let value: String = line[":vpi_time_precision".len()..]
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != ';')
+        .collect();
+    let exp: i32 = value.trim_start_matches('+').parse().ok()?;
+    Some(10f64.powi(exp + 9))
+}
+
 /// The length of one time unit of a VCD file, in nanoseconds, from its
 /// $timescale, such as "1ps" (0.001) or "10 ns" (10).
 pub fn vcd_timescale_ns(vcd: impl std::io::BufRead) -> Option<f64> {
@@ -321,6 +340,16 @@ mod tests {
     use super::*;
 
     // Real output from Verilator 5.053 (oss-cad-suite 2026-10-22).
+    #[test]
+    fn the_compiled_file_gives_the_precision() {
+        let ns = |s: &str| vvp_precision_ns(std::io::Cursor::new(s));
+        let out = "#! /usr/bin/vvp\n:ivl_version \"13.0 (devel)\";\n:ivl_delay_selection \"TYPICAL\";\n:vpi_time_precision - 12;\n:vpi_module \"system\";\n";
+        assert_eq!(ns(out), Some(0.001));
+        assert_eq!(ns(":vpi_time_precision - 9;\n"), Some(1.0));
+        assert_eq!(ns(":vpi_time_precision + 0;\n"), Some(1e9));
+        assert_eq!(ns("#! /usr/bin/vvp\n"), None);
+    }
+
     #[test]
     fn windows_paths_have_their_line_and_time() {
         // vvp on Windows names files by their full path, with a drive.
