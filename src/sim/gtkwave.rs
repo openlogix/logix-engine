@@ -366,7 +366,6 @@ mod tests {
     use super::*;
     use std::io::Cursor;
     use std::path::PathBuf;
-    #[cfg(unix)]
     use std::time::{Duration, Instant};
 
     // A real VCD header from iverilog (oss-cad-suite 2026-10-22).
