@@ -14,6 +14,9 @@ jobs:
   build:
     runs-on: windows-2025
     timeout-minutes: 60
+    # While the engine is being ported (see the top), a failure here doesn't
+    # fail build-pre-release (its badge and repos-janitor stay on macOS's).
+    continue-on-error: true
 
     # Git's bash, as on macOS: the scripts are bash.
     defaults:
@@ -32,6 +35,12 @@ jobs:
         uses: openlogix/.github/actions/read-build-info@main
         with:
           platform: windows-x86-64
+
+      # Files as in the repo, with LF line endings: Git on Windows
+      # converts them to CRLF by default, which breaks the scripts' edits
+      # and the tests that compare files.
+      - name: Keep LF line endings
+        run: git config --global core.autocrlf false
 
       # Into a subdirectory, not to step on BUILD-INFO.json.
       - name: Checkout the commit to build

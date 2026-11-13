@@ -151,19 +151,18 @@ mod tests {
         assert!(check_engine_folder("/", None).is_err());
     }
 
+    // Unix only: making a symlink on Windows needs Developer Mode or
+    // administrator rights.
+    #[cfg(unix)]
     #[test]
     fn engine_folder_is_checked_after_resolving_links() {
         let tmp = tempfile::tempdir().unwrap();
         let target = tmp.path().join("not-it");
         std::fs::create_dir(&target).unwrap();
         let link = tmp.path().join("engine");
-        #[cfg(unix)]
         std::os::unix::fs::symlink(&target, &link).unwrap();
-        #[cfg(unix)]
-        {
-            let err = check_engine_folder(link.to_str().unwrap(), None).unwrap_err();
-            assert!(err.contains("resolves to"), "{err}");
-        }
+        let err = check_engine_folder(link.to_str().unwrap(), None).unwrap_err();
+        assert!(err.contains("resolves to"), "{err}");
     }
 
     #[test]

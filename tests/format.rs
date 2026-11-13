@@ -161,6 +161,9 @@ async fn options_change_the_style() {
     assert!(text.contains("\n    assign b = a;\n"), "{text}");
 }
 
+// Unix only: making a symlink on Windows needs Developer Mode or
+// administrator rights.
+#[cfg(unix)]
 #[tokio::test]
 async fn a_linked_file_is_formatted_through_the_link() {
     let (_tmp, src) = project();

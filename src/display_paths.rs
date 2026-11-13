@@ -455,6 +455,9 @@ mod tests {
         );
     }
 
+    // Unix only: making a symlink on Windows needs Developer Mode or
+    // administrator rights.
+    #[cfg(unix)]
     #[test]
     fn real_locations_match_any_spelling() {
         let tmp = tempfile::tempdir().unwrap();

@@ -698,10 +698,20 @@ mod tests {
         assert!(!yosys_args(&verbose, &[]).contains(&"-q".into()));
     }
 
+    /// A run that exited with code 1.
     fn run(output: &str) -> crate::runner::ToolRun {
-        use std::os::unix::process::ExitStatusExt;
+        #[cfg(unix)]
+        let status = {
+            use std::os::unix::process::ExitStatusExt;
+            std::process::ExitStatus::from_raw(1 << 8)
+        };
+        #[cfg(windows)]
+        let status = {
+            use std::os::windows::process::ExitStatusExt;
+            std::process::ExitStatus::from_raw(1)
+        };
         crate::runner::ToolRun {
-            status: std::process::ExitStatus::from_raw(1 << 8),
+            status,
             output: output.into(),
         }
     }

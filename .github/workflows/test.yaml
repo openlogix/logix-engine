@@ -83,6 +83,13 @@ jobs:
         shell: bash
 
     steps:
+      # Files as in the repo, with LF line endings: Git on Windows
+      # converts them to CRLF by default, which breaks the scripts' edits
+      # and the tests that compare files.
+      - name: Keep LF line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
       - name: Check out the code
         uses: actions/checkout@v7
 
