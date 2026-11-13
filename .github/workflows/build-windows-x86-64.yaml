@@ -1,9 +1,7 @@
 # Builds the Logix Engine Windows (x64) package: a .tgz with logix-engine.exe
 # (Milestone 3). Called by build-pre-release.yaml, which passes
-# BUILD-INFO.json as the 'build-info' artifact. While the engine is being
-# ported (Milestone 3, phase 2), its tests may fail here without stopping
-# the package, and build-pre-release publishes the macOS package whether
-# this one builds or not; both become strict once the Windows tests pass.
+# BUILD-INFO.json as the 'build-info' artifact. Strict, as every build:
+# a failing test or build fails the pre-release.
 
 name: build-windows-x86-64
 
@@ -14,9 +12,6 @@ jobs:
   build:
     runs-on: windows-2025
     timeout-minutes: 60
-    # While the engine is being ported (see the top), a failure here doesn't
-    # fail build-pre-release (its badge and repos-janitor stay on macOS's).
-    continue-on-error: true
 
     # Git's bash, as on macOS: the scripts are bash.
     defaults:
@@ -50,6 +45,25 @@ jobs:
           ref: ${{ env.REPO_COMMIT }}
           path: _repo
 
+      # CI only, until openXC7 fixes apio#1194
+      # (https://github.com/FPGAwars/apio/issues/1194): its Windows
+      # fasm2frames.cmd runs `python`, which a plain Windows, and so the
+      # engine's tool PATH, doesn't have. A python.cmd in the Windows folder,
+      # which is on that PATH, forwards to Python 3.12, the version its
+      # packages are for. So the rest of the Xilinx flow stays tested. Remove
+      # both steps with the fix (the website repo's CLAUDE.md, Strict CI).
+      - name: Set up Python 3.12 for fasm2frames (apio#1194, CI only)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Put python on the tools' PATH (apio#1194, CI only)
+        shell: pwsh
+        run: |
+          $py = (Get-Command python).Source
+          Set-Content -Path "$env:SystemRoot\python.cmd" -Value "@`"$py`" %*" -Encoding ascii
+          & "$env:SystemRoot\python.cmd" --version
+
       # Installs the Rust version pinned in rust-toolchain.toml.
       - name: Set up Rust
         working-directory: _repo
@@ -65,11 +79,9 @@ jobs:
           path: _repo/target/tmp/test-engine/packages
           key: test-engine-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('_repo/remote-config/**') }}
 
-      # Not yet required (see the top): remove continue-on-error once the
-      # Windows tests pass.
+      # Don't publish a build that fails its own checks.
       - name: Run checks and tests
         working-directory: _repo
-        continue-on-error: true
         run: scripts/test.sh
 
       # Cargo needs a semver version: the release date without leading zeros

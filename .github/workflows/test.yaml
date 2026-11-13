@@ -72,11 +72,11 @@ jobs:
         channel: ${{ fromJSON(needs.channels.outputs.channels) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    # While the engine is being ported to Windows (Milestone 3, phase 2), a
-    # Windows failure doesn't fail the run: its jobs show their results, but
-    # the badge and repos-janitor stay on macOS's. Remove this once the
-    # Windows tests pass.
-    continue-on-error: ${{ startsWith(matrix.os, 'windows') }}
+    # Strict (the website repo's CLAUDE.md, Strict CI), but for one
+    # temporary step: on the prod channel, Windows doesn't fail the run until
+    # prod names logix-core 2026-11-13 or later (VERILATOR_ROOT on Windows).
+    # Remove this with that promotion.
+    continue-on-error: ${{ startsWith(matrix.os, 'windows') && matrix.channel == 'prod' }}
     # Git's bash on Windows, as on macOS: the scripts are bash.
     defaults:
       run:
@@ -92,6 +92,27 @@ jobs:
 
       - name: Check out the code
         uses: actions/checkout@v7
+
+      # CI only, until openXC7 fixes apio#1194
+      # (https://github.com/FPGAwars/apio/issues/1194): its Windows
+      # fasm2frames.cmd runs `python`, which a plain Windows, and so the
+      # engine's tool PATH, doesn't have. A python.cmd in the Windows folder,
+      # which is on that PATH, forwards to Python 3.12, the version its
+      # packages are for. So the rest of the Xilinx flow stays tested. Remove
+      # both steps with the fix (the website repo's CLAUDE.md, Strict CI).
+      - name: Set up Python 3.12 for fasm2frames (apio#1194, CI only)
+        if: runner.os == 'Windows'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Put python on the tools' PATH (apio#1194, CI only)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $py = (Get-Command python).Source
+          Set-Content -Path "$env:SystemRoot\python.cmd" -Value "@`"$py`" %*" -Encoding ascii
+          & "$env:SystemRoot\python.cmd" --version
 
       # Installs the Rust version pinned in rust-toolchain.toml, with
       # rustfmt and clippy.

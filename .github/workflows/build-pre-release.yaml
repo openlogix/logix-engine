@@ -11,8 +11,8 @@
 # The shared parts are Open Logix actions in openlogix/.github (tested
 # there): start-pre-release, read-build-info and publish-pre-release, which
 # also writes the standard release text and applies the pre-release policy. macOS (Apple Silicon), and Windows (x64) while
-# it's being ported (Milestone 3): the pre-release doesn't wait for a
-# Windows package, and includes it when it built. Linux comes as another
+# it's being ported (Milestone 3). Both must build (Strict CI, in the
+# website repo's CLAUDE.md). Linux comes as another
 # build-<platform>.yaml workflow (Milestone 4).
 
 name: build-pre-release
@@ -83,11 +83,8 @@ jobs:
 
   # ----- Create the pre-release with the generated files.
 
-  # While Windows is being ported (Milestone 3), only macOS must build;
-  # make it a plain needs list once the Windows build is required.
   pre-release:
     needs: [prepare, build-darwin-arm64, build-windows-x86-64]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.build-darwin-arm64.result == 'success' }}
 
     runs-on: ubuntu-latest
     permissions:
