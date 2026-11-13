@@ -24,8 +24,8 @@ The engine is a single native executable, written in Rust, that offers FPGA oper
 In development, macOS on Apple Silicon only.
 
 - **Milestone 1, done:** a proof of concept for iCE40 boards with seven tools: `get_engine_info`, `download_packages`, `get_catalog` (22 iCE40 boards), `build`, `clean_build`, `list_devices` and `program_board`. An AI agent, Claude Code, changed a design, built it and programmed an Alhambra II board through the engine alone.
-- **Milestone 2, next:** Logix IDE running on the engine, keeping every feature it has today: lint, test, simulate, format, diagram, live tool output, and the same boards across the iCE40, ECP5, Gowin and Xilinx 7-series FPGA families. See [Acceptance and phasing](docs/requirements.md#acceptance-and-phasing).
-- **Then:** Milestone 3 brings the engine and Logix IDE to Windows, and Milestone 4 to Linux.
+- **Milestone 2, done:** Logix IDE running on the engine, keeping every feature it had: lint, test, simulate, format, diagram, live tool output, and the same boards across the iCE40, ECP5, Gowin and Xilinx 7-series FPGA families. See [Acceptance and phasing](docs/requirements.md#acceptance-and-phasing).
+- **Milestone 3, next:** the engine and Logix IDE on Windows. Then Milestone 4 brings them to Linux.
 
 Daily development builds are on the [Releases](https://github.com/openlogix/logix-engine/releases) page.
 
