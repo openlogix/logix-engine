@@ -12,7 +12,7 @@ fn verilator_line() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
         Regex::new(
-            r"^%(?P<kind>Error|Warning)(?:-(?P<code>[A-Za-z0-9_]+))?: (?:(?P<file>[^\s:][^:]*):(?P<line>\d+):(?:(?P<col>\d+):)? )?(?P<text>.*)$",
+            r"^%(?P<kind>Error|Warning)(?:-(?P<code>[A-Za-z0-9_]+))?: (?:(?P<file>(?:[A-Za-z]:[\\/])?[^\s:][^:]*):(?P<line>\d+):(?:(?P<col>\d+):)? )?(?P<text>.*)$",
         )
         .unwrap()
     })
@@ -91,7 +91,7 @@ fn iverilog_located() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
         Regex::new(
-            r"^(?P<file>[^\s:][^:]*):(?P<line>\d+):\s*(?:(?P<kind>error|warning|sorry):\s*)?(?P<text>[^:\s].*)$",
+            r"^(?P<file>(?:[A-Za-z]:[\\/])?[^\s:][^:]*):(?P<line>\d+):\s*(?:(?P<kind>error|warning|sorry):\s*)?(?P<text>[^:\s].*)$",
         )
         .unwrap()
     })
@@ -149,7 +149,7 @@ fn vvp_line() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
         Regex::new(
-            r"^(?P<kind>FATAL|ERROR|WARNING): (?P<file>[^\s:][^:]*):(?P<line>\d+):\s*(?P<text>.*)$",
+            r"^(?P<kind>FATAL|ERROR|WARNING): (?P<file>(?:[A-Za-z]:[\\/])?[^\s:][^:]*):(?P<line>\d+):\s*(?P<text>.*)$",
         )
         .unwrap()
     })
@@ -162,7 +162,7 @@ fn assertion_line() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
         Regex::new(
-            r"^\*+\s*ASSERTION FAILED(?: at (?P<file>[^\s:][^:]*):(?P<line>\d+):)?\s*:?\s*(?P<text>.*)$",
+            r"^\*+\s*ASSERTION FAILED(?: at (?P<file>(?:[A-Za-z]:[\\/])?[^\s:][^:]*):(?P<line>\d+):)?\s*:?\s*(?P<text>.*)$",
         )
         .unwrap()
     })
@@ -173,7 +173,10 @@ fn assertion_line() -> &'static Regex {
 fn error_at_line() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r"^ERROR at (?P<file>[^\s:][^:]*):(?P<line>\d+):\s*(?P<text>.*)$").unwrap()
+        Regex::new(
+            r"^ERROR at (?P<file>(?:[A-Za-z]:[\\/])?[^\s:][^:]*):(?P<line>\d+):\s*(?P<text>.*)$",
+        )
+        .unwrap()
     })
 }
 
@@ -318,6 +321,20 @@ mod tests {
     use super::*;
 
     // Real output from Verilator 5.053 (oss-cad-suite 2026-10-22).
+    #[test]
+    fn windows_paths_have_their_line_and_time() {
+        // vvp on Windows names files by their full path, with a drive.
+        let out = "ERROR: D:\\proj\\main_tb.v:7: first failure\n       Time: 10000  Scope: main_tb";
+        let m = parse_vvp(out, "D:\\proj");
+        assert_eq!(m.len(), 1, "{m:#?}");
+        assert_eq!(m[0].diagnostic.line, Some(7));
+        assert_eq!(m[0].diagnostic.text, "first failure");
+        assert_eq!(m[0].ticks, Some(10000));
+        let d = parse_verilator("%Error: C:/proj/rtl/bad.v:3:1: syntax error", "C:/proj");
+        assert_eq!((d[0].line, d[0].column), (Some(3), Some(1)));
+        assert_eq!(d[0].text, "syntax error");
+    }
+
     #[test]
     fn verilator_warnings_and_errors() {
         let out = "%Warning-WIDTHTRUNC: main.v:6:9: Operator ASSIGNDLY expects 4 bits on the Assign RHS, but Assign RHS's VARREF 'cnt' generates 8 bits.

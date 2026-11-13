@@ -106,7 +106,7 @@ fn location_line() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
         Regex::new(
-            r"^(?:[^:\s][^:]*: )?(?P<file>[^:\s][^:]*):(?P<line>\d+):(?P<col>\d+)(?:-\d+)?: (?P<text>.*)$",
+            r"^(?:[^:\s][^:]*: )?(?P<file>(?:[A-Za-z]:[\\/])?[^:\s][^:]*):(?P<line>\d+):(?P<col>\d+)(?:-\d+)?: (?P<text>.*)$",
         )
         .unwrap()
     })

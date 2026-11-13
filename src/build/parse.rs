@@ -22,7 +22,7 @@ fn yosys_line() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
         Regex::new(
-            r"^(?:(?P<file>[^\s:][^:]*):(?P<line>\d+): )?(?P<kind>ERROR|Warning): (?P<text>.*)$",
+            r"^(?:(?P<file>(?:[A-Za-z]:[\\/])?[^\s:][^:]*):(?P<line>\d+): )?(?P<kind>ERROR|Warning): (?P<text>.*)$",
         )
         .unwrap()
     })

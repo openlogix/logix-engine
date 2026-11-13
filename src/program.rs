@@ -522,7 +522,7 @@ mod tests {
         assert_eq!(args[0], "--verbose");
         let v = &c.boards["icestick"].variants[0];
         let (prog, args) = command(v, None, &d, Path::new("/b/hardware.bin"), bin, false).unwrap();
-        assert_eq!(prog, Path::new("/pkg/bin/iceprog"));
+        assert_eq!(prog, crate::commands::program_in(bin, "iceprog"));
         assert_eq!(args.len(), 3); // -d d:1/9 /b/hardware.bin
     }
 

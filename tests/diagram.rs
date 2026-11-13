@@ -166,11 +166,21 @@ async fn diagram_draws_the_design() {
         "{script}"
     );
     std::fs::remove_file(src.join("_build/diagram/netlist.json")).unwrap();
+    // A shell line on macOS and Linux, a cmd line on Windows.
+    #[cfg(unix)]
     let rerun = std::process::Command::new("/bin/sh")
         .arg("-c")
         .arg(&out.commands[0].shell)
         .status()
         .unwrap();
+    #[cfg(windows)]
+    let rerun = {
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("cmd")
+            .raw_arg(format!("/S /C \"{}\"", out.commands[0].shell))
+            .status()
+            .unwrap()
+    };
     assert!(rerun.success());
     assert!(src.join("_build/diagram/netlist.json").is_file());
 }
@@ -435,7 +445,13 @@ async fn diagram_source_places_follow_display_paths() {
         .unwrap();
     assert_ne!(result.is_error, Some(true), "{result:?}");
     let text = read(&src, "diagram/diagram.json");
-    assert!(text.contains(r#""file": "PROJECT/main.v""#), "{text}");
+    // A display name without a separator is joined with the platform's
+    // (\ on Windows, escaped in JSON).
+    let sep = if cfg!(windows) { r"\\" } else { "/" };
+    assert!(
+        text.contains(&format!(r#""file": "PROJECT{sep}main.v""#)),
+        "{text}"
+    );
     // Without display_paths: relative to the source folder.
     args.as_object_mut().unwrap().remove("display_paths");
     logix_engine::tools::call(&state, "diagram", args.as_object().cloned(), &call())
