@@ -91,6 +91,12 @@ pub async fn run_tool_with(
     );
     let mut child = cmd.spawn().map_err(RunError::Spawn)?;
     let pid = child.id();
+    // Windows: the tool and every process it starts are in a job, which
+    // Stop ends (and which ends with the engine).
+    #[cfg(windows)]
+    let job = child
+        .raw_handle()
+        .and_then(windows_job::ToolJob::for_process);
 
     let (tx, mut rx) = mpsc::unbounded_channel::<(String, bool)>();
     for stream in [
@@ -142,6 +148,12 @@ pub async fn run_tool_with(
             _ = cancel.cancelled() => {
                 // Ask first, so tools can finish writing their files, such
                 // as a waveform; then force whatever is left.
+                // Windows has no such request for programs without a
+                // console: the job ends the tree at once.
+                #[cfg(windows)]
+                if let Some(job) = &job {
+                    job.terminate();
+                }
                 signal_tree(pid, Signal::Terminate);
                 let exited = tokio::time::timeout(STOP_GRACE, child.wait()).await;
                 signal_tree(pid, Signal::Kill);
@@ -264,11 +276,76 @@ fn signal_tree(pid: Option<u32>, signal: Signal) {
     let _ = (pid, signal);
 }
 
+/// A Windows Job Object holding one tool and the processes it starts.
+#[cfg(windows)]
+mod windows_job {
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, TerminateJobObject,
+    };
+
+    pub struct ToolJob(HANDLE);
+
+    // SAFETY: a job handle may be used from any thread.
+    unsafe impl Send for ToolJob {}
+    unsafe impl Sync for ToolJob {}
+
+    impl ToolJob {
+        /// A job that ends its processes when it's closed, with `process`
+        /// in it; None if Windows refuses (the tool then runs outside one).
+        pub fn for_process(process: std::os::windows::io::RawHandle) -> Option<ToolJob> {
+            // SAFETY: plain Win32 calls on handles this function owns or
+            // borrows for the call; failures are checked.
+            unsafe {
+                let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                if job.is_null() {
+                    return None;
+                }
+                let job = ToolJob(job);
+                let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+                info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                if SetInformationJobObject(
+                    job.0,
+                    JobObjectExtendedLimitInformation,
+                    &info as *const _ as *const std::ffi::c_void,
+                    std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                ) == 0
+                    || AssignProcessToJobObject(job.0, process as HANDLE) == 0
+                {
+                    log::warn!("Can't put a tool in a job: Stop may leave its child processes");
+                    return None;
+                }
+                Some(job)
+            }
+        }
+
+        /// Ends every process in the job.
+        pub fn terminate(&self) {
+            // SAFETY: the handle is open until drop.
+            unsafe {
+                TerminateJobObject(self.0, 1);
+            }
+        }
+    }
+
+    impl Drop for ToolJob {
+        fn drop(&mut self) {
+            // SAFETY: closing the handle this value owns, once.
+            unsafe {
+                CloseHandle(self.0);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn captures_output_and_status() {
         let tmp = tempfile::tempdir().unwrap();
@@ -295,6 +372,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn carriage_returns_split_lines_and_mark_redraws() {
         let tmp = tempfile::tempdir().unwrap();
@@ -358,6 +436,7 @@ mod tests {
         assert_eq!(split(b"x"), vec![("x".into(), false)]);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn the_environment_is_minimal() {
         let tmp = tempfile::tempdir().unwrap();
@@ -379,6 +458,7 @@ mod tests {
         assert!(!run.output.contains("CARGO"), "{}", run.output);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn cancel_kills_a_tool_that_ignores_the_request_to_exit() {
         let tmp = tempfile::tempdir().unwrap();
@@ -399,6 +479,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn cancel_stops_the_process_tree() {
         let tmp = tempfile::tempdir().unwrap();
@@ -418,5 +499,147 @@ mod tests {
         assert!(start.elapsed() < Duration::from_secs(5));
         tokio::time::sleep(Duration::from_secs(3)).await;
         assert!(!marker.exists(), "the background child was stopped too");
+    }
+
+    /// PowerShell running `script` (every Windows has it): the program and
+    /// its arguments, the script encoded so no quoting rule applies.
+    #[cfg(windows)]
+    fn powershell(script: &str) -> (std::path::PathBuf, Vec<OsString>) {
+        const B64: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let bytes: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        let mut encoded = String::new();
+        for chunk in bytes.chunks(3) {
+            let n = chunk
+                .iter()
+                .enumerate()
+                .fold(0u32, |n, (i, &b)| n | (b as u32) << (16 - 8 * i));
+            for i in 0..4 {
+                encoded.push(if i <= chunk.len() {
+                    B64[(n >> (18 - 6 * i) & 63) as usize] as char
+                } else {
+                    '='
+                });
+            }
+        }
+        let root = std::env::var_os("SystemRoot").unwrap();
+        let exe =
+            std::path::PathBuf::from(root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
+        let args = ["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded];
+        (exe, args.iter().map(OsString::from).collect())
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn captures_output_and_status() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (exe, args) = powershell("Write-Output out; [Console]::Error.WriteLine('err'); exit 3");
+        let run = run_tool(
+            &exe,
+            &args,
+            tmp.path(),
+            tmp.path(),
+            &CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(run.status.code(), Some(3));
+        assert!(
+            run.output.contains("out") && run.output.contains("err"),
+            "{}",
+            run.output
+        );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn carriage_returns_split_lines_and_mark_redraws() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (exe, args) = powershell("[Console]::Out.Write(\"a 10%`rb 50%`r`nc`n\")");
+        let seen = std::sync::Mutex::new(Vec::new());
+        let run = run_tool_with(
+            &exe,
+            &args,
+            tmp.path(),
+            tmp.path(),
+            &CancellationToken::new(),
+            &|l, redraw| seen.lock().unwrap().push((l.to_string(), redraw)),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec![
+                ("a 10%".to_string(), true),
+                ("b 50%".to_string(), false),
+                ("c".to_string(), false)
+            ]
+        );
+        assert_eq!(run.output, "a 10%\nb 50%\nc");
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn the_environment_is_minimal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (exe, args) =
+            powershell("Get-ChildItem env: | ForEach-Object { \"$($_.Name)=$($_.Value)\" }");
+        let run = run_tool(
+            &exe,
+            &args,
+            tmp.path(),
+            Path::new(r"C:\pkg\bin"),
+            &CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        let path = run
+            .output
+            .lines()
+            .find(|l| l.to_ascii_uppercase().starts_with("PATH="))
+            .unwrap_or("");
+        assert!(path[5..].starts_with(r"C:\pkg\bin;"), "{}", run.output);
+        assert!(path.to_ascii_lowercase().contains(r"\system32"), "{path}");
+        assert!(!run.output.contains("CARGO"), "{}", run.output);
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn cancel_stops_the_process_tree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let marker = tmp.path().join("child-ran");
+        // A child process sleeps, then would write a file. Stop must end it
+        // too: it's in the tool's job.
+        let child = format!(
+            "Start-Sleep 2; New-Item -ItemType File '{}'",
+            marker.display()
+        );
+        let (exe, mut child_args) = powershell(&child);
+        let script = format!(
+            "Start-Process -NoNewWindow -FilePath '{}' -ArgumentList '{}'; Start-Sleep 30",
+            exe.display(),
+            child_args
+                .split_off(0)
+                .iter()
+                .map(|a| a.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        let (exe, args) = powershell(&script);
+        let cancel = CancellationToken::new();
+        let c = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(1500)).await;
+            c.cancel();
+        });
+        let start = Instant::now();
+        let r = run_tool(&exe, &args, tmp.path(), tmp.path(), &cancel).await;
+        assert!(matches!(r, Err(RunError::Cancelled)));
+        assert!(
+            start.elapsed() < Duration::from_secs(6),
+            "{:?}",
+            start.elapsed()
+        );
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        assert!(!marker.exists(), "the child process was stopped too");
     }
 }
