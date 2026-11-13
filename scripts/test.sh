@@ -14,7 +14,7 @@ echo "== Lint"
 cargo clippy --all-targets --locked -- -D warnings
 
 echo "== Tests"
-cargo test --locked
+cargo test --locked --no-fail-fast
 
 # Delete build files unused for 7 days: Cargo never deletes old ones, so
 # the build folder otherwise grows by gigabytes. Needs cargo-sweep
