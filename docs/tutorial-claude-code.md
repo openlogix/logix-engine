@@ -31,7 +31,9 @@ project.
 - One of the engine's [predefined boards](https://www.openlogix.org/logix-catalog/boards/), and its USB cable. The
   examples use the **iCESugar v1.5**, which has an RGB LED and 4 switches.
   Any predefined board works: replace "iCESugar v1.5" with your board in the
-  prompts, and Claude adapts the designs to it.
+  prompts, and Claude adapts the designs to it. You can also add a board
+  that isn't on the list ([custom boards](tool-api.md#board-specification)),
+  but that's outside this tutorial.
 
 > [!NOTE]
 > Without a board, you can still do every step but 9.
