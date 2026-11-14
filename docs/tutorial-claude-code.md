@@ -36,7 +36,7 @@ project.
   but that's outside this tutorial.
 
 > [!NOTE]
-> Without a board, you can still do every step but 9.
+> Without a board, you can still do every step but 10.
 
 Each text block is labeled with where it goes:
 
