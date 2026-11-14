@@ -256,30 +256,30 @@ fn report(info: &GetEngineInfoOutput) -> String {
             ""
         }
     ));
+    // The remote config as a short block, one fact per line, as the
+    // packages above (Logix IDE's user, 2026-11-14: one line was too long).
     let r = &info.remote_config;
-    let channel = match (&r.channel, &r.channel_reason, &r.config_file) {
-        (Some(c), Some(why), Some(file)) => {
-            let fallback = if *file != format!("{c}.jsonc") {
-                format!(", using {file}")
-            } else {
-                String::new()
-            };
-            format!(", channel {c} ({why}{fallback})")
-        }
-        _ => String::new(),
-    };
+    lines.push(format!("Remote config: {}", r.config_version));
+    if let (Some(c), Some(why), Some(file)) = (&r.channel, &r.channel_reason, &r.config_file) {
+        let fallback = if *file != format!("{c}.jsonc") {
+            format!(", using {file}")
+        } else {
+            String::new()
+        };
+        lines.push(format!("  Channel: {c} ({why}{fallback})"));
+    }
     lines.push(format!(
-        "Remote config: {} from {}{}{channel}, {}",
-        r.config_version,
+        "  Source: {}{}",
         r.source,
         if r.is_override {
             " (LOGIX_ENGINE_DEV_REMOTE_CONFIG)"
         } else {
             ""
-        },
-        r.read_at
-            .as_ref()
-            .map_or("not read yet".to_string(), |t| format!("read {t}"))
+        }
+    ));
+    lines.push(format!(
+        "  Read: {}",
+        r.read_at.as_deref().unwrap_or("not yet")
     ));
     lines.push(format!("Boards schema: {}", info.boards_schema));
     lines.join("\n")
@@ -410,7 +410,10 @@ Packages:
   logix-catalog  2026.11.08  ready
   logix-core     2026.11.10  missing
 Board catalog: Logix Catalog 2026.11.08
-Remote config: 001 from https://raw.githubusercontent.com/openlogix/logix-engine/main/remote-config/logix-engine/001/, channel dev (default, using prod.jsonc), read 2026-11-08T09:30:00Z
+Remote config: 001
+  Channel: dev (default, using prod.jsonc)
+  Source: https://raw.githubusercontent.com/openlogix/logix-engine/main/remote-config/logix-engine/001/
+  Read: 2026-11-08T09:30:00Z
 Boards schema: https://www.openlogix.org/schemas/logix-board-v1.json"
         );
     }
