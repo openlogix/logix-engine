@@ -267,7 +267,29 @@ The build ends with a bitstream in the `_build/` folder in the project, and
 a short report: how much of the FPGA the design uses, and the fastest clock
 it could run at.
 
-## 7. Test it
+## 7. See it as a diagram
+
+**Claude Code:**
+
+```text
+Make a diagram of the design and open it.
+```
+
+The engine draws the design as a schematic and opens it in your web browser:
+the counter's register, the adder that counts, and the pins.
+
+![The diagram of the blinky design: the clock, the counter and its adder, and the RGB LED's pins](images/diagram.png)
+
+Try it:
+
+- **Hover** over a block or a wire to see its details, such as a signal's
+  name and width.
+- **Drag** to move the drawing, **scroll** to zoom, and click **Fit** to see
+  all of it again.
+- Ask Claude about what you see, such as "What's the block between the
+  counter and the LED?"
+
+## 8. Test it
 
 On an FPGA, you test before you program the board. Ask for a testbench, a
 simulation that checks what the design does:
@@ -289,7 +311,7 @@ Change the testbench to expect the LED to turn on one clock cycle too early. Run
 The engine reports the failed check at its line and simulation time, and
 Claude explains what went wrong.
 
-## 8. See the signals
+## 9. See the signals
 
 **Claude Code:**
 
@@ -297,10 +319,23 @@ Claude explains what went wrong.
 Simulate the testbench and open the waveforms in GTKWave.
 ```
 
-GTKWave opens with the clock, the counter and the LED. Zoom in to watch the
-counter count and the LED switch.
+GTKWave, a waveform viewer, opens with the clock, the counter and the LED.
 
-## 9. Program the board
+![GTKWave showing a testbench's signals over time: the clock, the counter and the LEDs](images/gtkwave.png)
+
+Try it:
+
+- **Read the waves:** each row on the right is one signal over time, from
+  left to right: the clock ticking, the counter counting up, and the LED
+  turning on and off as the counter's top bit changes.
+- **Zoom** with the zoom buttons in GTKWave's toolbar, to see single clock
+  cycles or the whole simulation.
+- **Add a signal:** select the testbench in the tree at the top left, select a
+  signal in the list below it, and click **Append**.
+
+Close GTKWave when you're done.
+
+## 10. Program the board
 
 Connect the board with its USB cable.
 
@@ -344,7 +379,7 @@ Program the board with the design.
 The LED blinks green, about once a second: a design that went from a
 sentence to real hardware.
 
-## 10. Change it with prompts
+## 11. Change it with prompts
 
 From here on, say what you want, and Claude changes the design in your
 project folder, tests it and programs the board. Try these one at a time,
@@ -386,7 +421,7 @@ Put the rainbow in its own module with a speed parameter, give it its own testbe
 > If the board does something you didn't expect, say what you see, such as
 > "the LED is green when it should be red", and let Claude find out why.
 
-## 11. Ask questions
+## 12. Ask questions
 
 Claude knows your design and the engine's reports, so ask about either:
 
@@ -411,16 +446,10 @@ Explain main.v line by line, as if I'm new to Verilog.
 **Claude Code:**
 
 ```text
-Make a diagram of the design and open it.
-```
-
-**Claude Code:**
-
-```text
 Why did you choose that counter width? What would happen with a 20-bit counter?
 ```
 
-## 12. When things go wrong
+## 13. When things go wrong
 
 The engine reports problems as data, with their file and line, so Claude can
 fix them:
@@ -454,7 +483,7 @@ Program the board with the design.
 Claude reports that the board isn't connected, and what to check. Connect it
 again and ask again.
 
-## 13. Keep going
+## 14. Keep going
 
 Some ideas, each one prompt:
 
