@@ -56,12 +56,17 @@ impl Log for Logger {
     }
 }
 
-/// The log file name for a process started now: `yyyymmdd-<pid>.log`.
+/// The log file name for a process started now (UTC), by the org's rule
+/// for programs that run several instances on one folder (the website
+/// repo's `CLAUDE.md`, Log files): `logix-engine-<yyyymmdd>-<hhmmss>-<pid>.log`,
+/// so a name says which program wrote it and when, and names sort by start.
 pub fn log_file_name(now: OffsetDateTime, pid: u32) -> String {
-    let date = now
-        .format(format_description!("[year][month][day]"))
+    let started = now
+        .format(format_description!(
+            "[year][month][day]-[hour][minute][second]"
+        ))
         .unwrap_or_default();
-    format!("{date}-{pid}.log")
+    format!("logix-engine-{started}-{pid}.log")
 }
 
 /// Creates the log file in `<engine folder>/logs`, installs the logger,
@@ -120,9 +125,12 @@ mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
     #[test]
-    fn file_name_has_date_and_pid() {
-        let t = OffsetDateTime::from_unix_timestamp(1_793_145_600).unwrap(); // 2026-10-28
-        assert_eq!(log_file_name(t, 4123), "20261028-4123.log");
+    fn file_name_has_program_start_time_and_pid() {
+        let t = OffsetDateTime::from_unix_timestamp(1_793_145_600 + 3_723).unwrap(); // 2026-10-28 01:02:03Z
+        assert_eq!(
+            log_file_name(t, 4123),
+            "logix-engine-20261028-010203-4123.log"
+        );
     }
 
     fn make(dir: &Path, name: &str, size: usize, age_secs: u64) -> PathBuf {

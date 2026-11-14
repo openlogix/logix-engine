@@ -126,13 +126,19 @@ async fn get_engine_info_reports_the_launch_settings() {
     );
 
     // The log file is in the engine folder's logs subfolder, named
-    // yyyymmdd-<pid>.log, and has the startup line.
+    // logix-engine-<yyyymmdd>-<hhmmss>-<pid>.log, and has the startup line.
     let log_file = out["log_file"].as_str().unwrap();
     assert!(
         std::path::Path::new(log_file).starts_with(std::path::Path::new(folder).join("logs")),
         "{log_file}"
     );
     assert!(log_file.ends_with(".log"));
+    let name = std::path::Path::new(log_file)
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    assert!(name.starts_with("logix-engine-"), "{name}");
     let log = std::fs::read_to_string(log_file).expect("log file exists");
     assert!(
         log.contains("Logix Engine") && log.contains("started"),
