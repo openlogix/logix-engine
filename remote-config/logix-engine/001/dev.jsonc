@@ -13,9 +13,11 @@
   // 2026-11-13: for Windows (Milestone 3): openXC7 runs with the suite's
   // yosys and Python, and verilator gets VERILATOR_ROOT (logix-core.json's
   // run.path and run.env).
+  // 2026-11-14: the Windows package also has libwdi's wdi-simple, which
+  // install_driver runs to install WinUSB (Milestone 3, drivers).
   "logix-core": {
     "repo": "openlogix/logix-core",
-    "release": "2026-11-13",
+    "release": "2026-11-14",
     "file": "logix-core-${PLATFORM}-${YYYYMMDD}.tgz"
   },
 
