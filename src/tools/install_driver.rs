@@ -165,7 +165,7 @@ pub async fn run(
         .packages
         .needing_download(&[crate::packages::CORE])
         .await?;
-    let phases = Phases::new(call.progress.clone(), needed.len() + 2);
+    let phases = std::sync::Arc::new(Phases::new(call.progress.clone(), needed.len() + 3));
     state
         .packages
         .ensure(&needed, state.auto_download, &phases, &call.cancel)
@@ -182,9 +182,9 @@ pub async fn run(
         })?
         .join("wdi-simple.exe");
 
-    phases.start("Installing driver");
+    phases.start("Waiting for permission");
     call.output.message(&format!(
-        "Installing WinUSB for the {} (USB interface {}). Windows will ask whether Logix Engine may make changes: answer Yes.",
+        "Installing WinUSB for the {} (USB interface {}). Windows will ask whether Logix Engine may make changes: answer Yes. Installing can take a minute or two.",
         located.board_name, driver.interface
     ));
     let d = &located.device;
@@ -198,9 +198,13 @@ pub async fn run(
         name: located.board_name.clone(),
         dest: dest.clone(),
     };
-    let response = tokio::task::spawn_blocking(move || elevated::run_elevated(&request))
-        .await
-        .map_err(|e| ToolError::engine(format!("The driver installation stopped: {e}")))??;
+    let started = phases.clone();
+    let response = tokio::task::spawn_blocking(move || {
+        elevated::run_elevated(&request, || started.start("Installing driver"))
+    })
+    .await
+    .map_err(|e| ToolError::engine(format!("The driver installation stopped: {e}")))??;
+    elevated::report(&response, call.output.as_ref());
     // Best effort: files the administrator wrote may stay until Windows
     // cleans its temporary folder.
     let _ = std::fs::remove_dir_all(&dest);
@@ -220,6 +224,8 @@ pub async fn run(
     }
 
     phases.start("Checking driver");
+    call.output
+        .message("Waiting for Windows to give the device WinUSB.");
     let (custom, build, id) = (
         input.custom_boards_folder.clone(),
         input.build_folder.clone(),

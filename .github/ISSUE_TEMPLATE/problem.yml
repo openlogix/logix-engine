@@ -29,4 +29,4 @@ body:
     id: details
     attributes:
       label: Details
-      description: "Logix IDE: Help > System Info (Copy), and the log (Help > Show Log Folder, logix.log, attached). Logix Engine: get_engine_info's report. Your board, if it's about one."
+      description: "Logix IDE: Help > System Info (Copy), and the log (Help > Show Log Folder, logix-ide-latest.log, attached). Logix Engine: get_engine_info's report. Your board, if it's about one."

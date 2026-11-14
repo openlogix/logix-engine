@@ -100,8 +100,8 @@ pub async fn run(
         });
     }
 
-    let phases = Phases::new(call.progress.clone(), 2);
-    phases.start("Removing driver");
+    let phases = std::sync::Arc::new(Phases::new(call.progress.clone(), 3));
+    phases.start("Waiting for permission");
     call.output.message(&format!(
         "Removing the WinUSB driver of the {} ({}). Windows will ask whether Logix Engine may make changes: answer Yes.",
         located.board_name,
@@ -111,9 +111,13 @@ pub async fn run(
         packages: packages.clone(),
         certificate: drivers::certificate_subject(&hardware_id),
     };
-    let response = tokio::task::spawn_blocking(move || elevated::run_elevated(&request))
-        .await
-        .map_err(|e| ToolError::engine(format!("The driver removal stopped: {e}")))??;
+    let started = phases.clone();
+    let response = tokio::task::spawn_blocking(move || {
+        elevated::run_elevated(&request, || started.start("Removing driver"))
+    })
+    .await
+    .map_err(|e| ToolError::engine(format!("The driver removal stopped: {e}")))??;
+    elevated::report(&response, call.output.as_ref());
     if let Some(e) = &response.error {
         return Err(ToolError::engine(format!("The driver helper refused: {e}"))
             .with_details(response.details()));
@@ -133,6 +137,8 @@ pub async fn run(
     }
 
     phases.start("Checking driver");
+    call.output
+        .message("Waiting for Windows to give the device its own driver back.");
     let (custom, build, id) = (
         input.custom_boards_folder.clone(),
         input.build_folder.clone(),

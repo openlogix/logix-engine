@@ -88,6 +88,44 @@ impl Response {
     }
 }
 
+/// The program a step ran, as live output names tools: its file name
+/// without folder or `.exe` (`wdi-simple`, `pnputil`), or `logix-engine`
+/// for the helper's own steps, such as removing a certificate.
+pub fn step_tool(command: &str) -> String {
+    let first = command.split_whitespace().next().unwrap_or("");
+    let name = first.rsplit(['/', '\\']).next().unwrap_or(first);
+    let name = name.strip_suffix(".exe").unwrap_or(name);
+    match name {
+        "wdi-simple" | "pnputil" => name.to_string(),
+        _ => "logix-engine".to_string(),
+    }
+}
+
+/// Sends what the helper did to the live output, step by step: its command
+/// line, then its output lines. The helper runs hidden, as an
+/// administrator, so its output comes once it's done.
+pub fn report(response: &Response, output: &dyn crate::progress::OutputSink) {
+    use crate::progress::{OutputLevel, ToolLine};
+    for step in &response.steps {
+        let tool = step_tool(&step.command);
+        output.command(&tool, &step.command);
+        for text in step
+            .output
+            .lines()
+            .map(str::trim_end)
+            .filter(|l| !l.is_empty())
+        {
+            output.line(&ToolLine {
+                tool: &tool,
+                level: OutputLevel::of(text),
+                text,
+                redraw: false,
+                original: None,
+            });
+        }
+    }
+}
+
 /// The result file beside a request file.
 pub fn result_path(request: &Path) -> PathBuf {
     request.with_extension("result.json")
@@ -267,7 +305,9 @@ fn run(_request: &Request) -> Response {
 /// Runs `request` in the helper, as an administrator, and returns what it
 /// did. Windows asks the user for permission first; a refusal is a setup
 /// error. Blocks until the helper ends (call it from a blocking task).
-pub fn run_elevated(request: &Request) -> Result<Response, ToolError> {
+/// Runs a request in the helper, as an administrator. `on_started` is
+/// called once Windows has the user's permission and the helper runs.
+pub fn run_elevated(request: &Request, on_started: impl FnOnce()) -> Result<Response, ToolError> {
     check(request).map_err(|e| ToolError::engine(format!("Bad driver request: {e}")))?;
     let folder = TempFolder::new().ok_or_else(|| {
         ToolError::engine("Can't create a temporary folder for the driver change.")
@@ -280,7 +320,7 @@ pub fn run_elevated(request: &Request) -> Result<Response, ToolError> {
     .map_err(|e| ToolError::engine(format!("Can't write the driver request: {e}")))?;
     let exe = std::env::current_exe()
         .map_err(|e| ToolError::engine(format!("Can't find the engine's own program: {e}")))?;
-    launch(&exe, &request_path)?;
+    launch(&exe, &request_path, on_started)?;
     let text = std::fs::read_to_string(result_path(&request_path))
         .map_err(|e| ToolError::engine(format!("The driver helper left no result: {e}")))?;
     let response: Response = serde_json::from_str(&text)
@@ -316,12 +356,12 @@ impl Drop for TempFolder {
 const TIMEOUT_MS: u32 = 10 * 60 * 1000;
 
 #[cfg(windows)]
-fn launch(exe: &Path, request: &Path) -> Result<(), ToolError> {
-    windows::launch_elevated(exe, request)
+fn launch(exe: &Path, request: &Path, on_started: impl FnOnce()) -> Result<(), ToolError> {
+    windows::launch_elevated(exe, request, on_started)
 }
 
 #[cfg(not(windows))]
-fn launch(_exe: &Path, _request: &Path) -> Result<(), ToolError> {
+fn launch(_exe: &Path, _request: &Path, _on_started: impl FnOnce()) -> Result<(), ToolError> {
     Err(ToolError::request("Drivers are changed only on Windows."))
 }
 
@@ -351,7 +391,11 @@ mod windows {
 
     /// Runs `exe OPTION request` as an administrator ("runas": Windows asks
     /// the user) and waits for it.
-    pub fn launch_elevated(exe: &Path, request: &Path) -> Result<(), ToolError> {
+    pub fn launch_elevated(
+        exe: &Path,
+        request: &Path,
+        on_started: impl FnOnce(),
+    ) -> Result<(), ToolError> {
         let verb = wide("runas".as_ref());
         let file = wide(exe.as_os_str());
         let params = wide(format!("{} \"{}\"", super::OPTION, request.display()).as_ref());
@@ -383,6 +427,7 @@ mod windows {
             if info.hProcess.is_null() {
                 return Err(ToolError::engine("The driver helper didn't start."));
             }
+            on_started();
             let waited = WaitForSingleObject(info.hProcess, TIMEOUT_MS);
             let mut code = 0u32;
             GetExitCodeProcess(info.hProcess, &mut code);
@@ -511,6 +556,19 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(result_path(&req)).unwrap()).unwrap();
         assert!(res.error.unwrap().contains("can't read the request"));
         assert!(res.steps.is_empty());
+    }
+
+    #[test]
+    fn steps_name_their_tools() {
+        assert_eq!(
+            step_tool(r"C:\\x\\wdi-simple\\wdi-simple.exe --vid 0x0403"),
+            "wdi-simple"
+        );
+        assert_eq!(step_tool("pnputil /scan-devices"), "pnputil");
+        assert_eq!(
+            step_tool("delete certificate \"x\" from Root"),
+            "logix-engine"
+        );
     }
 
     #[test]
