@@ -162,7 +162,6 @@ mod windows {
         SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo, SetupDiGetClassDevsW,
         SetupDiGetDeviceInstanceIdW, SetupDiGetDeviceRegistryPropertyW,
     };
-    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
 
     fn wide(s: &str) -> Vec<u16> {
         s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -191,7 +190,8 @@ mod windows {
                 std::ptr::null_mut(),
                 DIGCF_ALLCLASSES | DIGCF_PRESENT,
             );
-            if set == INVALID_HANDLE_VALUE as _ {
+            // INVALID_HANDLE_VALUE, -1, whatever HDEVINFO's type.
+            if set as isize == -1 {
                 log::info!("Can't list the USB devices' drivers");
                 return out;
             }
