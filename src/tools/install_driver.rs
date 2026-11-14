@@ -145,8 +145,8 @@ pub async fn run(
     )?;
     let Some(driver) = located.driver.clone() else {
         return Err(ToolError::request(format!(
-            "The {} needs no driver: its programmer uses Windows' own.",
-            located.board_name
+            "No driver is needed for {}: its programmer uses Windows' own.",
+            located.who
         )));
     };
     if driver.ready {
@@ -184,8 +184,8 @@ pub async fn run(
 
     phases.start("Waiting for permission");
     call.output.message(&format!(
-        "Installing WinUSB for the {} (USB interface {}). Windows will ask whether Logix Engine may make changes: answer Yes. Installing can take a minute or two.",
-        located.board_name, driver.interface
+        "Installing WinUSB for {} (USB interface {}). Windows asks whether Logix Engine may make changes: answer Yes.",
+        located.who, driver.interface
     ));
     let d = &located.device;
     // wdi-simple writes the driver package here; Windows keeps its own copy.
@@ -195,12 +195,18 @@ pub async fn run(
         vid: d.vid.clone(),
         pid: d.pid.clone(),
         interface: d.composite.then_some(driver.interface),
-        name: located.board_name.clone(),
+        name: located.name.clone(),
         dest: dest.clone(),
     };
-    let started = phases.clone();
+    let (started, said) = (phases.clone(), call.output.clone());
     let response = tokio::task::spawn_blocking(move || {
-        elevated::run_elevated(&request, || started.start("Installing driver"))
+        elevated::run_elevated(&request, || {
+            // Each phase its own line, so the last one says where it is.
+            said.message(
+                "Permission given. Installing the driver, which can take a minute or two.",
+            );
+            started.start("Installing driver")
+        })
     })
     .await
     .map_err(|e| ToolError::engine(format!("The driver installation stopped: {e}")))??;
@@ -279,7 +285,8 @@ mod tests {
                 None,
                 2,
             ),
-            board_name: "Alhambra II".into(),
+            name: "Alhambra II".into(),
+            who: "the Alhambra II".into(),
             driver: None,
             same_ids: vec!["Dual RS232-HS (0403:6010)".into()],
         };

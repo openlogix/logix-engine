@@ -397,6 +397,56 @@ pub fn check_fpga(
     ))
 }
 
+/// Watches a programmer's output for a flood of the same lines, as when the
+/// board is unplugged while being written: openFPGALoader then repeats
+/// "mpsse_write: fail to write ... (usb bulk write failed)" forever, which
+/// froze Logix IDE (the user's report, 2026-11-14). A line counts as a
+/// repeat when it equals one of the few lines before it; after `LIMIT`
+/// repeats in a row the run is a runaway, to be stopped. Repeats past the
+/// first few aren't shown.
+#[derive(Default)]
+pub struct Runaway {
+    recent: std::collections::VecDeque<String>,
+    repeats: usize,
+}
+
+impl Runaway {
+    /// Repeats in a row that make a runaway.
+    pub const LIMIT: usize = 200;
+    /// Repeats in a row still shown.
+    pub const SHOWN: usize = 10;
+    /// How many earlier lines a repeat is compared with (tools alternate
+    /// a few messages).
+    const WINDOW: usize = 4;
+
+    /// Takes the next line: whether to show it, and whether the run is a
+    /// runaway now.
+    pub fn line(&mut self, line: &str) -> (bool, bool) {
+        if self.recent.iter().any(|l| l == line) {
+            self.repeats += 1;
+        } else {
+            self.repeats = 0;
+        }
+        self.recent.push_back(line.to_string());
+        if self.recent.len() > Self::WINDOW {
+            self.recent.pop_front();
+        }
+        (self.repeats <= Self::SHOWN, self.repeats >= Self::LIMIT)
+    }
+}
+
+/// The error for a programmer stopped as a runaway: the board most likely
+/// went away while it was being written.
+pub fn runaway(programmer: &str, board_name: &str) -> ToolError {
+    ToolError::setup(format!(
+        "The {board_name} stopped answering while it was being programmed (was it unplugged?), and {programmer} kept failing, so it was stopped. The board may hold a partly written design."
+    ))
+    .with_action(
+        ActionCode::ConnectBoard,
+        format!("Connect the {board_name} by USB, then upload again."),
+    )
+}
+
 /// Turns a failed programmer run into an error, by what its output says.
 pub fn failure(programmer: &str, board_name: &str, output: &str, status: &str) -> ToolError {
     let lower = output.to_lowercase();
@@ -465,6 +515,38 @@ pub fn failure(programmer: &str, board_name: &str, output: &str, status: &str) -
 mod tests {
     use super::*;
     use crate::devices::tests::device;
+
+    #[test]
+    fn a_flood_of_the_same_lines_is_a_runaway() {
+        let mut r = Runaway::default();
+        // Progress lines differ: never a runaway.
+        for i in 0..1000 {
+            assert_eq!(
+                r.line(&format!("addr 0x{i:06x} {}%", i / 10)),
+                (true, false)
+            );
+        }
+        // Two messages alternating, as openFPGALoader's after an unplug.
+        let flood = [
+            "mpsse_write: fail to write with error -1 (usb bulk write failed)",
+            "mpsse_store: fails to first flush -1 usb bulk write failed",
+        ];
+        let mut shown = 0;
+        let mut stopped_at = None;
+        for i in 0..1000 {
+            let (show, runaway) = r.line(flood[i % 2]);
+            shown += usize::from(show);
+            if runaway {
+                stopped_at = Some(i);
+                break;
+            }
+        }
+        // The first two are new; then repeats, a few shown.
+        assert_eq!(stopped_at, Some(Runaway::LIMIT + 1));
+        assert_eq!(shown, 2 + Runaway::SHOWN);
+        // Anything new starts over.
+        assert_eq!(r.line("Done"), (true, false));
+    }
 
     #[test]
     fn templates_expand_per_word() {

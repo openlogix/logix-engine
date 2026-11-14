@@ -85,8 +85,8 @@ pub async fn run(
     )?;
     let Some(driver) = located.driver.clone() else {
         return Err(ToolError::request(format!(
-            "The {} needs no driver: its programmer uses Windows' own.",
-            located.board_name
+            "No driver is needed for {}: its programmer uses Windows' own.",
+            located.who
         )));
     };
     let d = &located.device;
@@ -103,17 +103,21 @@ pub async fn run(
     let phases = std::sync::Arc::new(Phases::new(call.progress.clone(), 3));
     phases.start("Waiting for permission");
     call.output.message(&format!(
-        "Removing the WinUSB driver of the {} ({}). Windows will ask whether Logix Engine may make changes: answer Yes.",
-        located.board_name,
+        "Removing the WinUSB driver of {} ({}). Windows asks whether Logix Engine may make changes: answer Yes.",
+        located.who,
         packages.join(", ")
     ));
     let request = Request::UninstallDriver {
         packages: packages.clone(),
         certificate: drivers::certificate_subject(&hardware_id),
     };
-    let started = phases.clone();
+    let (started, said) = (phases.clone(), call.output.clone());
     let response = tokio::task::spawn_blocking(move || {
-        elevated::run_elevated(&request, || started.start("Removing driver"))
+        elevated::run_elevated(&request, || {
+            // Each phase its own line, so the last one says where it is.
+            said.message("Permission given. Removing the driver.");
+            started.start("Removing driver")
+        })
     })
     .await
     .map_err(|e| ToolError::engine(format!("The driver removal stopped: {e}")))??;
@@ -138,7 +142,7 @@ pub async fn run(
 
     phases.start("Checking driver");
     call.output
-        .message("Waiting for Windows to give the device its own driver back.");
+        .message("Waiting for Windows to restore the device's original driver.");
     let (custom, build, id) = (
         input.custom_boards_folder.clone(),
         input.build_folder.clone(),

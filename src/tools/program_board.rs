@@ -199,7 +199,20 @@ pub async fn run_with_programmers(
     let phase = std::sync::Mutex::new(None::<&str>);
     let tool_name = crate::commands::tool_name(&program);
     let shown = ToolOutput::new(&tool_name, call.output.as_ref());
+    // A flood of the same failing lines (the board unplugged while being
+    // written) stops the programmer instead of running forever.
+    let runaway = std::sync::Mutex::new(program::Runaway::default());
+    let ran_away = std::sync::atomic::AtomicBool::new(false);
+    let stop = call.cancel.child_token();
     let on_line = |line: &str, redraw: bool| {
+        let (show, away) = runaway.lock().unwrap().line(line);
+        if away && !ran_away.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            log::info!("{tool_name} repeats the same lines: stopping it");
+            stop.cancel();
+        }
+        if !show {
+            return;
+        }
         let progress = shown.line(line, redraw);
         if custom.is_some() {
             return;
@@ -224,7 +237,7 @@ pub async fn run_with_programmers(
         .command(&tool_name, &command_line(&program, &args));
     call.commands
         .push(crate::commands::record(&program, &args, &folder, &bin));
-    let run = run_tool_with(&program, &args, &folder, &bin, &call.cancel, &on_line).await;
+    let run = run_tool_with(&program, &args, &folder, &bin, &stop, &on_line).await;
     match run {
         Ok(r) if r.status.success() => {
             if custom.is_none()
@@ -244,6 +257,9 @@ pub async fn run_with_programmers(
             &r.output,
             &r.status.to_string(),
         )),
+        Err(RunError::Cancelled) if ran_away.load(std::sync::atomic::Ordering::SeqCst) => {
+            Err(program::runaway(&tool_name, &board.name))
+        }
         Err(RunError::Cancelled) => Err(ToolError::cancelled("Programming was cancelled.")),
         Err(RunError::Spawn(e)) => Err(ToolError::new(
             Category::Tool,

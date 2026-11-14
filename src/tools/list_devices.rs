@@ -217,8 +217,13 @@ fn driver_status(
 pub struct Located {
     /// The device as scanned (its interfaces included).
     pub device: Device,
-    /// Its board's name, for people and Device Manager.
-    pub board_name: String,
+    /// Its name in Device Manager: its board's, when only one board fits it
+    /// (or the build's board), else the device's own label.
+    pub name: String,
+    /// The same for people in a sentence: "the Alhambra II", or the label.
+    /// Never the first of many boards with its USB IDs, which named a Tang
+    /// Nano 9k "the Alchitry Au" (the user's report, 2026-11-14).
+    pub who: String,
     /// The driver it needs for that board and the one it has; None when
     /// the board's programmer needs none.
     pub driver: Option<DriverStatus>,
@@ -284,13 +289,19 @@ pub fn locate(
         )));
     };
     let known = crate::board::known_boards(&custom);
-    let board_name = known
-        .get(best.board.as_str())
-        .map(|b| b.description.to_string())
-        .unwrap_or_else(|| best.board.clone());
+    let (name, who) = if boards.len() == 1 {
+        let board = known
+            .get(best.board.as_str())
+            .map(|b| b.description.to_string())
+            .unwrap_or_else(|| best.board.clone());
+        (board.clone(), format!("the {board}"))
+    } else {
+        (device.label.clone(), device.label.clone())
+    };
     Ok(Located {
         device,
-        board_name,
+        name,
+        who,
         driver,
         same_ids,
     })
