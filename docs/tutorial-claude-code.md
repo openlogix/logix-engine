@@ -28,9 +28,9 @@ project.
 - Claude Code, installed and signed in to your Claude account, so that
   `claude` starts it in a terminal (on Windows, in PowerShell). If it isn't installed yet, follow the
   official [Claude Code installation instructions](https://code.claude.com/docs/en/setup).
-- An FPGA board from the engine's catalog, and its USB cable. The examples
-  use the **iCESugar v1.5**, which has an RGB LED and 4 switches. Any board
-  in the catalog works: replace "iCESugar v1.5" with your board in the
+- One of the engine's [predefined boards](https://www.openlogix.org/logix-catalog/boards/), and its USB cable. The
+  examples use the **iCESugar v1.5**, which has an RGB LED and 4 switches.
+  Any predefined board works: replace "iCESugar v1.5" with your board in the
   prompts, and Claude adapts the designs to it.
 
 > [!NOTE]
@@ -236,7 +236,7 @@ what's on their pins. Find yours, and ask about it:
 Tell me about the iCESugar v1.5: its FPGA, its clock, its LED and its switches.
 ```
 
-Claude answers from the engine's board catalog: an iCE40 UltraPlus UP5K, a
+Claude answers from what the engine knows about its [predefined boards](https://www.openlogix.org/logix-catalog/boards/): an iCE40 UltraPlus UP5K, a
 12 MHz clock on pin 35, an RGB LED that's lit when its pins are low, and 4
 switches, with their pins. It never has to guess a pin.
 To see how two boards differ:
@@ -481,8 +481,8 @@ Start each new design in its own folder, and run `claude` there.
   frontend or agent.
 - [Logix IDE](https://www.openlogix.org/ide/): the same engine in an app,
   the Arduino experience, for FPGAs.
-- [Logix Catalog](https://www.openlogix.org/logix-catalog/): the boards, and how
-  to add yours.
+- [Predefined boards](https://www.openlogix.org/logix-catalog/boards/) and [supported FPGAs](https://www.openlogix.org/logix-catalog/fpgas/): what the engine
+  works with, and how to add your own board.
 
 Logix Engine is free and open source, under MIT or Apache 2.0. To report a
 problem or share an idea, open an issue on
