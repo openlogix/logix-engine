@@ -13,6 +13,7 @@ pub mod custom_boards;
 pub mod devices;
 pub mod diagram;
 pub mod display_paths;
+pub mod drivers;
 pub mod errors;
 pub mod format;
 pub mod json_pos;

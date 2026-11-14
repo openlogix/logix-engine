@@ -4439,7 +4439,7 @@
   },
   {
     "name": "list_devices",
-    "description": "Lists the USB devices connected to this computer, with their USB IDs, names and serial numbers, and for each the boards it may be: catalog boards and the request's custom_boards_folder, best first, each with the variants it fits and how well it matches: strong (very likely this board), possible (a few other boards look the same) or weak (many boards fit). Show the level as it is: how the engine decides it is internal and changes without notice. program_board needs the id of one of these devices. Given a build_folder, it lists only the devices that fit that build's board and variant, best first, each with its build_match: program the only one, or ask the user when there are several. Devices that need a driver or permissions first are listed apart, under unreachable, with the fix.",
+    "description": "Lists the USB devices connected to this computer, with their USB IDs, names and serial numbers, and for each the boards it may be: catalog boards and the request's custom_boards_folder, best first, each with the variants it fits and how well it matches: strong (very likely this board), possible (a few other boards look the same) or weak (many boards fit). Show the level as it is: how the engine decides it is internal and changes without notice. program_board needs the id of one of these devices. Given a build_folder, it lists only the devices that fit that build's board and variant, best first, each with its build_match: program the only one, or ask the user when there are several. Devices that need a driver or permissions first are listed apart, under unreachable, with the fix. On Windows, a device whose board's programmer needs a driver has driver: the one it needs (WinUSB), on which USB interface, the one it has and whether it's ready.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "ListDevicesInput",
@@ -4627,6 +4627,17 @@
                   "type": "null"
                 }
               ]
+            },
+            "driver": {
+              "description": "On Windows only: the driver the device needs for its board's\nprogrammer (the build's board when list_devices was given a\nbuild_folder, else its best match) and the one it has, for a board\nwhose programmer needs one. ready false means install_driver first.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DriverStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false,
@@ -4733,10 +4744,47 @@
             }
           ]
         },
+        "DriverStatus": {
+          "description": "The driver a device needs for a board's programmer on Windows, and the\none it has: in list_devices, on Windows only, for devices whose board\nneeds one.",
+          "type": "object",
+          "properties": {
+            "needed": {
+              "description": "The driver the board's programmer needs: winusb.",
+              "type": "string"
+            },
+            "interface": {
+              "description": "The USB interface that needs it, such as 0 (an FTDI chip's first\nchannel; its other channels, such as a serial port, keep their\ndriver).",
+              "type": "integer",
+              "maximum": 255,
+              "minimum": 0
+            },
+            "current": {
+              "description": "The driver Windows has on that interface now, by its service name in\nlowercase, such as ftdibus (FTDI's), usbser or winusb. Omitted when\nit has none.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ready": {
+              "description": "Whether the programmer can use the interface as it is: true with\nWinUSB, and with libusbK or libusb0, which older guides installed.\nFalse means install_driver (WinUSB) first.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "needed",
+            "interface",
+            "ready"
+          ]
+        },
         "UnreachableDevice": {
           "description": "A device the engine sees but can't open, so it can't read its names or\nprogram it: it needs a driver or permissions first. Listed only when its\nUSB IDs fit a board.",
           "type": "object",
           "properties": {
+            "id": {
+              "description": "The device's ID, as for devices: for install_driver. Opaque: don't\nparse it.",
+              "type": "string"
+            },
             "kind": {
               "description": "The kind of device: usb.",
               "$ref": "#/$defs/DeviceKind"
@@ -4776,6 +4824,17 @@
               "description": "What makes the device usable, such as fix_device_permissions.",
               "$ref": "#/$defs/Action"
             },
+            "driver": {
+              "description": "On Windows only: the driver it needs for its board's programmer and\nthe one it has, as for devices.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DriverStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "build_match": {
               "description": "How well it matches the given build's board: always weak, since its\nnames can't be read. Present only when list_devices was given a\nbuild_folder.",
               "anyOf": [
@@ -4790,6 +4849,7 @@
           },
           "additionalProperties": false,
           "required": [
+            "id",
             "kind",
             "label",
             "vid",
@@ -5065,6 +5125,17 @@
                   "type": "null"
                 }
               ]
+            },
+            "driver": {
+              "description": "On Windows only: the driver the device needs for its board's\nprogrammer (the build's board when list_devices was given a\nbuild_folder, else its best match) and the one it has, for a board\nwhose programmer needs one. ready false means install_driver first.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DriverStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false,
@@ -5169,6 +5240,39 @@
               "type": "string",
               "const": "strong"
             }
+          ]
+        },
+        "DriverStatus": {
+          "description": "The driver a device needs for a board's programmer on Windows, and the\none it has: in list_devices, on Windows only, for devices whose board\nneeds one.",
+          "type": "object",
+          "properties": {
+            "needed": {
+              "description": "The driver the board's programmer needs: winusb.",
+              "type": "string"
+            },
+            "interface": {
+              "description": "The USB interface that needs it, such as 0 (an FTDI chip's first\nchannel; its other channels, such as a serial port, keep their\ndriver).",
+              "type": "integer",
+              "maximum": 255,
+              "minimum": 0
+            },
+            "current": {
+              "description": "The driver Windows has on that interface now, by its service name in\nlowercase, such as ftdibus (FTDI's), usbser or winusb. Omitted when\nit has none.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ready": {
+              "description": "Whether the programmer can use the interface as it is: true with\nWinUSB, and with libusbK or libusb0, which older guides installed.\nFalse means install_driver (WinUSB) first.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "needed",
+            "interface",
+            "ready"
           ]
         },
         "CommandRecord": {

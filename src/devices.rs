@@ -75,6 +75,21 @@ pub struct Device {
     #[serde(skip)]
     #[schemars(skip)]
     pub reachable: bool,
+    /// On Windows only: the driver the device needs for its board's
+    /// programmer (the build's board when list_devices was given a
+    /// build_folder, else its best match) and the one it has, for a board
+    /// whose programmer needs one. ready false means install_driver first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub driver: Option<crate::drivers::DriverStatus>,
+    /// The device's DFU interface (USB class 0xFE, subclass 1), if it has
+    /// one: where dfu-util needs its driver.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub dfu_interface: Option<u8>,
+    /// Whether it has several interfaces, each its own device on Windows.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub composite: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -199,6 +214,9 @@ pub fn match_level(device: &Device, filter: &UsbFilter) -> MatchLevel {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UnreachableDevice {
+    /// The device's ID, as for devices: for install_driver. Opaque: don't
+    /// parse it.
+    pub id: String,
     /// The kind of device: usb.
     pub kind: DeviceKind,
     /// The device for people, such as "USB device (0403:6010)": its names
@@ -217,6 +235,10 @@ pub struct UnreachableDevice {
     pub boards: Vec<BoardMatch>,
     /// What makes the device usable, such as fix_device_permissions.
     pub action: Action,
+    /// On Windows only: the driver it needs for its board's programmer and
+    /// the one it has, as for devices.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub driver: Option<crate::drivers::DriverStatus>,
     /// How well it matches the given build's board: always weak, since its
     /// names can't be read. Present only when list_devices was given a
     /// build_folder.
@@ -291,6 +313,19 @@ pub fn scan() -> Result<Vec<Device>, ToolError> {
             reachable,
         );
         device.release = raw_release(&d);
+        // Read from the descriptors the system already has, without opening
+        // the device, so devices without a usable driver have them too.
+        if let Ok(config) = d
+            .active_config_descriptor()
+            .or_else(|_| d.config_descriptor(0))
+        {
+            device.composite = config.num_interfaces() > 1;
+            device.dfu_interface = config.interfaces().find_map(|i| {
+                i.descriptors()
+                    .find(|x| x.class_code() == 0xfe && x.sub_class_code() == 1)
+                    .map(|x| x.interface_number())
+            });
+        }
         out.push(device);
     }
     out.sort_by(|a, b| (&a.vid, &a.pid, a.bus, a.device).cmp(&(&b.vid, &b.pid, b.bus, b.device)));
@@ -332,6 +367,9 @@ impl Device {
             build_match: None,
             location,
             reachable,
+            driver: None,
+            dfu_interface: None,
+            composite: false,
         }
     }
 }

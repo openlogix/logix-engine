@@ -881,6 +881,8 @@ Hosts show the level, in their own words, and compare levels (weak < possible < 
 
 **Unreachable devices.** A device the engine sees but can't open, because of missing permissions or a missing driver, can't be programmed and its names can't be read, so it isn't in `devices`. When its USB IDs fit a board, it is listed in `unreachable` with those boards (every board variant `weak`, since its names are unknown) and the action that makes it usable: `install_drivers` on Windows, `fix_device_permissions` elsewhere. Other devices the engine can't open are left out.
 
+**Drivers on Windows.** The programmers reach most boards through libusb, which on Windows can use only a USB interface that has WinUSB (or libusbK or libusb0), not the driver Windows picks by itself, such as FTDI's. Which interface needs it follows from the board variant's programmer: interface 0 for FTDI chips (iceprog, openFPGALoader's FTDI cables and the boards it knows by name, such as Digilent's, Alchitry's, the Tang Nanos and the ULX3S), the DFU interface for `dfu-util` (a board's bootloader), and none for `icesprog` (the iCESugar's iCELink) and CMSIS-DAP adapters, which Windows' own HID driver serves. On Windows, `list_devices` gives each such device its `driver`, from the drivers Windows has on the present devices with its USB IDs and interface (Windows gives drivers by USB IDs and interface, not by serial number, so such devices normally share it; `ready` only when every one is). Elsewhere nothing is reported. A device that isn't `ready` needs WinUSB first (the coming `install_driver`).
+
 **Device IDs.** An `id` names the device on this computer for a short time: it is made from where the device is plugged in and what it is, so it stays valid while the device stays on the same USB port, even when it is plugged in again, and survives an engine restart. IDs differ between platforms and computers. Hosts must treat them as opaque, never parse or build them, and list the devices again before asking the user to choose.
 
 **Table 11.** list_devices tool inputs
@@ -896,7 +898,7 @@ Hosts show the level, in their own words, and compare levels (weak < possible < 
 | Field | Type | Description |
 | --- | --- | --- |
 | `devices` | list of devices | The connected devices the engine can open. See device fields in Table 13 |
-| `unreachable` | list of objects | Optional. Devices that can't be opened and whose USB IDs fit a board: `kind`, `label` (such as "USB device (0403:6010)", since its names can't be read), `vid`, `pid`, `bus`, `device`, `boards` (as in Table 13), `action`, the fix (see Table 5), and `build_match` with `build_folder` |
+| `unreachable` | list of objects | Optional. Devices that can't be opened and whose USB IDs fit a board: `id` (as in Table 13, for `install_driver`; `program_board` refuses it), `kind`, `label` (such as "USB device (0403:6010)", since its names can't be read), `vid`, `pid`, `bus`, `device`, `boards` (as in Table 13), `action`, the fix (see Table 5), and `build_match` with `build_folder` On Windows, `driver` as in Table 13 |
 
 **Table 13.** Device fields
 
@@ -912,6 +914,7 @@ Hosts show the level, in their own words, and compare levels (weak < possible < 
 | `build_match` | enum | Only with `build_folder`. How well the device matches the build's board in the build's board variant: `strong`, `possible` or `weak`, as for `boards` (`weak` for an unreachable device) |
 | `boards` | list of objects | Optional, omitted when empty. The boards the device may be, best first, each with `board` (its ID), `custom` (true for a board from the custom boards folder, omitted otherwise) and `variants` (the board's variants this device fits, in the board's order, each with its `selector` and its own `match` level) |
 | `likely_boards` | list of board IDs | Optional, omitted when empty. The boards the device most likely is, best first: those at its strongest match level, unless that is `weak` (many boards fit, so none is likely). Use it to name what a device probably is; `boards` has every candidate |
+| `driver` | object | Optional, on Windows only, for a device whose board's programmer needs a driver (see Drivers on Windows): the board variant is the build's with `build_folder`, else the first variant of its best match. `needed` (`winusb`), `interface` (the USB interface that needs it, such as 0, an FTDI chip's first channel; its other channels, such as a serial port, keep their driver), `current` (the driver Windows has on that interface now, by its service name in lowercase, such as `ftdibus`, `usbser` or `winusb`; omitted when it has none) and `ready` (whether the programmer can use it as it is: true with WinUSB, and with libusbK or libusb0, which older guides installed) |
 
 **Errors:** setup errors with `install_drivers` or `fix_device_permissions` when devices cannot be scanned. Request errors for an invalid custom board, or a build folder without a build record from a successful build. Engine errors.
 

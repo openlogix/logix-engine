@@ -4,7 +4,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::EngineTool;
-use crate::devices::{self, Candidate, Device, MatchLevel, UnreachableDevice};
+use crate::catalog::Variant;
+use crate::devices::{self, BoardMatch, Candidate, Device, MatchLevel, UnreachableDevice};
+use crate::drivers::{self, DriverStatus};
 use crate::errors::ToolError;
 use crate::state::EngineState;
 
@@ -22,7 +24,8 @@ impl EngineTool for ListDevices {
         the devices that fit that build's board and variant, best first, each with its \
         build_match: program the only one, or ask the user when there are several. \
         Devices that need a driver or permissions first are listed apart, under unreachable, \
-        with the fix.";
+        with the fix. On Windows, a device whose board's programmer needs a driver has driver: \
+        the one it needs (WinUSB), on which USB interface, the one it has and whether it's ready.";
     const READ_ONLY: bool = true;
     type Input = ListDevicesInput;
     type Output = ListDevicesOutput;
@@ -75,9 +78,28 @@ pub struct ListDevicesOutput {
     pub unreachable: Vec<UnreachableDevice>,
 }
 
+/// The drivers Windows has on the present devices with some USB IDs, on an
+/// interface (drivers::current_drivers; a fake in tests).
+pub type DriverLookup<'a> = &'a dyn Fn(&str, &str, u8, bool) -> Vec<Option<String>>;
+
 pub fn run_with(
     input: ListDevicesInput,
     scan: impl FnOnce() -> Result<Vec<Device>, ToolError>,
+) -> Result<ListDevicesOutput, ToolError> {
+    let lookup = |v: &str, p: &str, i: u8, c: bool| drivers::current_drivers(v, p, i, c);
+    run_with_drivers(
+        input,
+        scan,
+        cfg!(windows).then_some(&lookup as DriverLookup),
+    )
+}
+
+/// As run_with, with Windows' drivers from `drivers` (None: not on Windows,
+/// so no driver statuses).
+pub fn run_with_drivers(
+    input: ListDevicesInput,
+    scan: impl FnOnce() -> Result<Vec<Device>, ToolError>,
+    drivers: Option<DriverLookup>,
 ) -> Result<ListDevicesOutput, ToolError> {
     let custom = crate::custom_boards::load(input.custom_boards_folder.as_deref())?;
     let known = crate::board::known_boards(&custom);
@@ -91,17 +113,14 @@ pub fn run_with(
         .collect();
 
     // The build's board as program_board will program it.
-    let build_usb = match &input.build_folder {
+    let build_variant: Option<Variant> = match &input.build_folder {
         Some(folder) => {
             let built = super::program_board::read_build(folder)?.1.board;
-            Some(
-                super::program_board::upload_board(&built, &custom, folder)?
-                    .variant
-                    .usb,
-            )
+            Some(super::program_board::upload_board(&built, &custom, folder)?.variant)
         }
         None => None,
     };
+    let build_usb = build_variant.as_ref().map(|v| v.usb.clone());
     let mut out = ListDevicesOutput {
         devices: Vec::new(),
         unreachable: Vec::new(),
@@ -122,6 +141,9 @@ pub fn run_with(
             }
         };
         let (matches, promoted) = devices::board_matches_and_promotion(&d, &boards);
+        let driver = drivers.and_then(|lookup| {
+            driver_status(&d, &matches, &boards, build_variant.as_ref(), lookup)
+        });
         // The build's level is raised as the device's other matches are.
         let build_match = build_level.map(|l| {
             if promoted && l == MatchLevel::Weak {
@@ -131,12 +153,14 @@ pub fn run_with(
             }
         });
         if d.reachable {
+            d.driver = driver;
             d.likely_boards = devices::likely_boards(&matches);
             d.boards = matches;
             d.build_match = build_match;
             out.devices.push(d);
         } else if !matches.is_empty() || build_match.is_some() {
             out.unreachable.push(UnreachableDevice {
+                id: d.id,
                 kind: d.kind,
                 label: devices::label(None, None, &d.vid, &d.pid),
                 vid: d.vid,
@@ -145,6 +169,7 @@ pub fn run_with(
                 device: d.device,
                 boards: matches,
                 action: devices::unreachable_action(),
+                driver,
                 build_match,
             });
         }
@@ -155,6 +180,37 @@ pub fn run_with(
             .sort_by_key(|d| std::cmp::Reverse(d.build_match));
     }
     Ok(out)
+}
+
+/// The driver a device needs for its board's programmer, on Windows, and the
+/// one it has: for the build's variant when there's a build, else for the
+/// first variant of its best match. None when that programmer needs none,
+/// or the device matches no board.
+fn driver_status(
+    d: &Device,
+    matches: &[BoardMatch],
+    boards: &[Candidate],
+    build_variant: Option<&Variant>,
+    lookup: DriverLookup,
+) -> Option<DriverStatus> {
+    let variant = match build_variant {
+        Some(v) => v,
+        None => {
+            let best = matches.first()?;
+            let selector = &best.variants.first()?.selector;
+            boards
+                .iter()
+                .find(|b| b.id == best.board && b.custom == best.custom)?
+                .variants
+                .iter()
+                .find(|v| &v.selector == selector)?
+        }
+    };
+    let interface = drivers::interface_number(drivers::needed(variant)?, d.dfu_interface);
+    Some(drivers::status(
+        interface,
+        &lookup(&d.vid, &d.pid, interface, d.composite),
+    ))
 }
 
 pub fn run(_state: &EngineState, input: ListDevicesInput) -> Result<ListDevicesOutput, ToolError> {
@@ -173,6 +229,72 @@ mod tests {
     ) -> Result<ListDevicesOutput, ToolError> {
         let input: ListDevicesInput = serde_json::from_value(input).unwrap();
         run_with(input, move || Ok(devices))
+    }
+
+    /// list_devices as on Windows, with `current` as every interface's
+    /// driver, and the interfaces the lookup was asked about.
+    fn list_on_windows(
+        devices: Vec<Device>,
+        current: Option<&str>,
+    ) -> (ListDevicesOutput, Vec<(String, u8, bool)>) {
+        let asked = std::cell::RefCell::new(Vec::new());
+        let lookup = |v: &str, p: &str, i: u8, c: bool| {
+            asked.borrow_mut().push((format!("{v}:{p}"), i, c));
+            vec![current.map(String::from)]
+        };
+        let input: ListDevicesInput = serde_json::from_value(json!({})).unwrap();
+        let out = run_with_drivers(input, move || Ok(devices), Some(&lookup)).unwrap();
+        (out, asked.into_inner())
+    }
+
+    #[test]
+    fn on_windows_ftdi_boards_need_winusb_on_their_first_interface() {
+        let mut alhambra = device("0403", "6010", Some("Alhambra II v1.0A"), None, 2);
+        alhambra.composite = true;
+        let (out, asked) = list_on_windows(vec![alhambra.clone()], Some("ftdibus"));
+        let driver = out.devices[0].driver.clone().unwrap();
+        assert_eq!(driver.needed, "winusb");
+        assert_eq!(driver.interface, 0);
+        assert_eq!(driver.current.as_deref(), Some("ftdibus"));
+        assert!(!driver.ready);
+        assert_eq!(asked, [("0403:6010".to_string(), 0, true)]);
+        let json = serde_json::to_value(&out.devices[0]).unwrap();
+        assert_eq!(json["driver"]["ready"], false);
+
+        let (out, _) = list_on_windows(vec![alhambra], Some("winusb"));
+        assert!(out.devices[0].driver.as_ref().unwrap().ready);
+    }
+
+    #[test]
+    fn on_windows_the_icesugar_needs_no_driver() {
+        let icesugar = device("1d50", "602b", Some("CMSIS-DAP"), Some("0700ab"), 2);
+        let (out, asked) = list_on_windows(vec![icesugar], Some("hidusb"));
+        assert_eq!(out.devices[0].boards[0].board, "icesugar-1-5");
+        assert_eq!(out.devices[0].driver, None);
+        assert!(asked.is_empty());
+    }
+
+    #[test]
+    fn unreachable_devices_have_an_id_and_their_driver() {
+        let mut d = device("0403", "6010", None, None, 5);
+        d.reachable = false;
+        d.composite = true;
+        let id = d.id.clone();
+        let (out, _) = list_on_windows(vec![d], None);
+        let u = &out.unreachable[0];
+        assert_eq!(u.id, id);
+        let driver = u.driver.as_ref().unwrap();
+        assert_eq!((driver.current.as_deref(), driver.ready), (None, false));
+    }
+
+    #[test]
+    fn elsewhere_no_driver_is_reported() {
+        let out = list(
+            json!({}),
+            vec![device("0403", "6010", Some("Alhambra II v1.0A"), None, 2)],
+        )
+        .unwrap();
+        assert_eq!(out.devices[0].driver.is_some(), cfg!(windows));
     }
 
     #[test]
@@ -340,9 +462,12 @@ mod tests {
         assert!(u.boards.iter().all(|m| m.best_level() == MatchLevel::Weak));
         assert_eq!(u.action, devices::unreachable_action());
         let v = serde_json::to_value(&out).unwrap();
+        // An id, for install_driver; program_board still refuses it.
         assert!(
-            v["unreachable"][0].get("id").is_none(),
-            "can't be programmed"
+            v["unreachable"][0]["id"]
+                .as_str()
+                .unwrap()
+                .starts_with("usb:")
         );
         assert!(
             v["unreachable"][0]["boards"][0].get("match").is_none(),
