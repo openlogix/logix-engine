@@ -23,12 +23,12 @@ project.
 
 ## What you need
 
-- A computer: a Mac with Apple Silicon (M1 or later), or a 64-bit (x64) PC
+- **A computer:** a Mac with Apple Silicon (M1 or later), or a 64-bit (x64) PC
   with Windows 10 or 11.
-- Claude Code, installed and signed in to your Claude account, so that
+- **Claude Code:** installed and signed in to your Claude account, so that
   `claude` starts it in a terminal (on Windows, in PowerShell). If it isn't installed yet, follow the
   official [Claude Code installation instructions](https://code.claude.com/docs/en/setup).
-- One of the engine's [predefined boards](https://www.openlogix.org/logix-catalog/boards/), and its USB cable. The
+- **An FPGA board:** one of the engine's [predefined boards](https://www.openlogix.org/logix-catalog/boards/), and its USB cable. The
   examples use the **iCESugar v1.5**, which has an RGB LED and 4 switches.
   Any predefined board works: replace "iCESugar v1.5" with your board in the
   prompts, and Claude adapts the designs to it. You can also add a board
