@@ -13,7 +13,7 @@ format, draw the design and program the board. Frontends such as
 [Logix IDE](https://www.openlogix.org/ide/), scripts, CI and AI agents such
 as Claude Code start it and call its tools. It downloads the open source
 FPGA tools it needs, and knows about boards, with their FPGAs and pins,
-from [Logix Catalog](https://www.openlogix.org/catalog/).
+from [Logix Catalog](https://www.openlogix.org/logix-catalog/).
 
 Logix Engine is in development, on macOS with Apple Silicon for now. It's
 part of [Open Logix](https://www.openlogix.org), free and open source under

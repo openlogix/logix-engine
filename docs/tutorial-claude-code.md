@@ -481,7 +481,7 @@ Start each new design in its own folder, and run `claude` there.
   frontend or agent.
 - [Logix IDE](https://www.openlogix.org/ide/): the same engine in an app,
   the Arduino experience, for FPGAs.
-- [Logix Catalog](https://www.openlogix.org/catalog/): the boards, and how
+- [Logix Catalog](https://www.openlogix.org/logix-catalog/): the boards, and how
   to add yours.
 
 Logix Engine is free and open source, under MIT or Apache 2.0. To report a
