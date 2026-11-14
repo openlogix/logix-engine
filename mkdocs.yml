@@ -53,6 +53,10 @@ extra:
       link: https://github.com/openlogix/logix-engine
       name: Logix Engine on GitHub
 
+# Headings (and screenshots) styled the same in every Open Logix docs site.
+extra_css:
+  - stylesheets/extra.css
+
 plugins:
   - search
 
