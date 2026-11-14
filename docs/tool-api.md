@@ -286,7 +286,7 @@ Before running, each tool checks that the packages it needs are downloaded and i
 
 The `--no-auto-download` command-line argument, described in [Command line](command-line.md), turns this off for offline or managed setups. A missing or broken package is then a setup error with `download_packages`, and so is a download that fails, such as when there's no network. To download, the host calls the download_packages tool, which works whether automatic download is on or off.
 
-Download progress is one phase per package, such as "Downloading logix-core 2026.11.10". Its percentage covers the download (the first 80%) and then unpacking.
+Download progress is one phase per package, such as "Downloading logix-core 2026.11.10". Its percentage covers the download (the first 60%) and then unpacking (the last 40%), the same split in every Open Logix program.
 
 **Engine folder layout.** Hosts don't need to know it, but it helps when troubleshooting:
 

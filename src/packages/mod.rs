@@ -105,8 +105,9 @@ pub const RECORD_FILE: &str = "logix-download.json";
 pub const LAYOUT: u32 = 1;
 
 /// Share of a package's progress taken by the download. Unpacking takes
-/// the rest.
-const DOWNLOAD_SHARE: f64 = 80.0;
+/// the rest: 60% and 40%, the same in every Open Logix program (the org's
+/// rule, 2026-11-14: website repo's `CLAUDE.md`, Download progress).
+const DOWNLOAD_SHARE: f64 = 60.0;
 
 /// A package's receipt: what was downloaded. A package is ready only when
 /// its folder has a receipt matching the package set: the same release,
