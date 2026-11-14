@@ -39,6 +39,8 @@ theme:
   features:
     - navigation.footer
     - content.code.copy
+    # Platform tabs ("macOS", "Windows") switch together, on every page.
+    - content.tabs.link
 
 # The header logo links to the product page; the footer links back to it and the org.
 extra:
@@ -61,6 +63,8 @@ markdown_extensions:
   - github-callouts
   - pymdownx.details
   - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
   - toc:
       permalink: true
 

@@ -23,9 +23,10 @@ project.
 
 ## What you need
 
-- An Apple Mac computer with Apple Silicon (M1 or later).
+- A computer: a Mac with Apple Silicon (M1 or later), or a 64-bit (x64) PC
+  with Windows 10 or 11.
 - Claude Code, installed and signed in to your Claude account, so that
-  `claude` starts it in a terminal. If it isn't installed yet, follow the
+  `claude` starts it in a terminal (on Windows, in PowerShell). If it isn't installed yet, follow the
   official [Claude Code installation instructions](https://code.claude.com/docs/en/setup).
 - An FPGA board from the engine's catalog, and its USB cable. The examples
   use the **iCESugar v1.5**, which has an RGB LED and 4 switches. Any board
@@ -51,34 +52,67 @@ A prompt.
 
 Type the prompts as they are, or in your own words or language.
 
+Where the steps differ between macOS and Windows, they have a tab for each:
+choose yours once, and every tab follows. On Windows, the terminal is
+**PowerShell** (Start menu, type `PowerShell`).
+
 ## 1. Install the engine
 
 Open the engine's [Releases](https://github.com/openlogix/logix-engine/releases)
-page, find the release marked **Latest** (not necessarily the newest one:
-newer pre-releases are development builds) and download its
-`logix-engine-darwin-arm64-<date>.tgz` to your **Downloads** folder.
+page and find the release marked **Latest** (not necessarily the newest one:
+newer pre-releases are development builds).
 
-Clear the download flag and unpack it:
+=== "macOS"
 
-**Terminal:**
+    Download its `logix-engine-darwin-arm64-<date>.tgz` to your **Downloads**
+    folder. Clear the download flag and unpack it:
 
-```sh
-cd ~/Downloads
-xattr -c logix-engine-darwin-arm64-*.tgz
-tar -xzf logix-engine-darwin-arm64-*.tgz
-```
+    **Terminal:**
 
-> [!IMPORTANT]
-> The engine isn't signed with an Apple Developer ID yet. `xattr -c` tells
-> macOS to allow it; without it, macOS refuses to run the engine.
+    ```sh
+    cd ~/Downloads
+    xattr -c logix-engine-darwin-arm64-*.tgz
+    tar -xzf logix-engine-darwin-arm64-*.tgz
+    ```
 
-Check that it runs:
+    > [!IMPORTANT]
+    > The engine isn't signed with an Apple Developer ID yet. `xattr -c` tells
+    > macOS to allow it; without it, macOS refuses to run the engine.
 
-**Terminal:**
+    Check that it runs:
 
-```sh
-~/Downloads/logix-engine/logix-engine --version
-```
+    **Terminal:**
+
+    ```sh
+    ~/Downloads/logix-engine/logix-engine --version
+    ```
+
+=== "Windows"
+
+    Download its `logix-engine-windows-x86-64-<date>.tgz` to your
+    **Downloads** folder. Unblock it and unpack it:
+
+    **PowerShell:**
+
+    ```powershell
+    cd $HOME\Downloads
+    $PACKAGE = (Get-ChildItem logix-engine-windows-x86-64-*.tgz).Name
+    Unblock-File $PACKAGE
+    tar -xzf $PACKAGE
+    ```
+
+    > [!IMPORTANT]
+    > The engine isn't signed yet. `Unblock-File` tells Windows the file is
+    > yours to run. If you have several `logix-engine-windows-x86-64-*.tgz`
+    > files there, delete the older ones first.
+
+    Check that it runs:
+
+    **PowerShell:**
+
+    ```powershell
+    & $HOME\Downloads\logix-engine\logix-engine.exe --version
+    ```
 
 It prints the engine's version, a date such as `2026.11.09`.
 
@@ -86,36 +120,73 @@ It prints the engine's version, a date such as `2026.11.09`.
 
 Register the engine with Claude Code once, for every folder:
 
-**Terminal:**
+=== "macOS"
 
-```sh
-ENGINE=~/Downloads/logix-engine/logix-engine
-ENGINE_HOME=~/.logix/claude-code/engine
-claude mcp add -s user logix-engine -- $ENGINE --engine-folder $ENGINE_HOME
-claude mcp list
-```
+    **Terminal:**
+
+    ```sh
+    ENGINE=~/Downloads/logix-engine/logix-engine
+    ENGINE_HOME=~/.logix/claude-code/engine
+    claude mcp add -s user logix-engine -- $ENGINE --engine-folder $ENGINE_HOME
+    claude mcp list
+    ```
+
+=== "Windows"
+
+    **PowerShell:**
+
+    ```powershell
+    $ENGINE = "$HOME\Downloads\logix-engine\logix-engine.exe"
+    $ENGINE_HOME = "$HOME\.logix\claude-code\engine"
+    claude mcp add -s user logix-engine '--' $ENGINE --engine-folder $ENGINE_HOME
+    claude mcp list
+    ```
+
+    The quotes around `--` keep PowerShell from dropping it.
 
 The list shows `logix-engine` as connected. The engine keeps the FPGA tools
-it downloads, and its logs, in its engine folder, `~/.logix/claude-code/engine`.
+it downloads, and its logs, in its engine folder, `.logix/claude-code/engine`
+in your home folder.
 
 ## 3. Create the project
 
 Make a folder for the tutorial's project. You do this only once:
 
-**Terminal:**
+=== "macOS"
 
-```sh
-mkdir -p ~/logix-tutorial
-```
+    **Terminal:**
+
+    ```sh
+    mkdir -p ~/logix-tutorial
+    ```
+
+=== "Windows"
+
+    **PowerShell:**
+
+    ```powershell
+    mkdir $HOME\logix-tutorial
+    ```
 
 ## 4. Start Claude Code
 
-**Terminal:**
+=== "macOS"
 
-```sh
-cd ~/logix-tutorial
-claude
-```
+    **Terminal:**
+
+    ```sh
+    cd ~/logix-tutorial
+    claude
+    ```
+
+=== "Windows"
+
+    **PowerShell:**
+
+    ```powershell
+    cd $HOME\logix-tutorial
+    claude
+    ```
 
 Ask what the engine can do:
 
@@ -144,7 +215,8 @@ Download the FPGA tools the engine needs, and show me the progress.
 
 > [!NOTE]
 > The tools are downloaded into the engine folder you set in step 2,
-> `~/.logix/claude-code/engine`, and don't change your computer's setup. This takes
+> `.logix/claude-code/engine` in your home folder, and don't change your
+> computer's setup. This takes
 > a minute or two, only the first time.
 
 ## 5. Choose your board
@@ -237,6 +309,28 @@ Is my board connected?
 ```
 
 Claude lists what's connected, and how well each device matches your board.
+
+=== "macOS"
+
+    No driver is needed: macOS lets the engine program every board as it is.
+
+=== "Windows"
+
+    The iCESugar v1.5 needs no driver. Many other boards, such as those with
+    an FTDI chip, need the WinUSB driver before the engine can program them,
+    and Claude says so when it lists the devices. Then ask:
+
+    **Claude Code:**
+
+    ```text
+    Install the driver my board needs.
+    ```
+
+    Claude explains what changes and asks you first. Then Windows asks
+    whether Logix Engine may make changes to your device: choose **Yes**.
+    Installing takes a minute or two. To give the board its old driver back
+    later, for the board maker's own tools, ask Claude to remove it.
+
 Then:
 
 **Claude Code:**
@@ -362,7 +456,7 @@ again and ask again.
 
 Some ideas, each one prompt:
 
-- "Send 'hello' over the board's USB serial port once a second, and show me how to read it on my Mac."
+- "Send 'hello' over the board's USB serial port once a second, and show me how to read it on my computer."
 - "Make a reaction game: light the LED in a random color, and count how long until I flip switch 1."
 - "Turn the color sequence into a table at the top of main.v that I can edit."
 - "Make the design work on the iCEBreaker too." Then ask what changed.
@@ -374,8 +468,10 @@ Start each new design in its own folder, and run `claude` there.
 - Build files: ask Claude to clean the build folder, or delete `_build/`.
 - To disconnect the engine from Claude Code:
   `claude mcp remove --scope user logix-engine`
-- To remove the engine, delete `~/Downloads/logix-engine` and its engine
-  folder, `~/.logix/claude-code/engine`.
+- To remove the engine, delete the `logix-engine` folder in your
+  **Downloads** folder, and its engine folder, `.logix/claude-code/engine` in
+  your home folder. On Windows, if Claude installed a WinUSB driver for a
+  board, ask Claude to remove it first.
 
 ## Learn more
 
