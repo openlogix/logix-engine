@@ -107,7 +107,7 @@ Operations that work on a design take these fields. Paths are absolute unless no
 
 ### Display paths
 
-Every tool that reports files (`lint`, `test`, `simulate`, `format`, `diagram`, `build`, `program_board`, `list_devices` and `get_catalog`) takes an optional `display_paths`, which says how to name paths in what people read. A host that gives the engine copies of the user's files, such as unsaved editor text in a scratch folder, uses it so messages name the files the user knows.
+Every tool that reports files (`lint`, `test`, `simulate`, `format`, `diagram`, `build`, `program_board`, `list_devices`, `install_driver`, `uninstall_driver` and `get_catalog`) takes an optional `display_paths`, which says how to name paths in what people read. A host that gives the engine copies of the user's files, such as unsaved editor text in a scratch folder, uses it so messages name the files the user knows.
 
 ```json
 "display_paths": {
@@ -132,7 +132,7 @@ Every tool that reports files (`lint`, `test`, `simulate`, `format`, `diagram`, 
 
 ### Board specification
 
-The `board` field is a board ID: a catalog ID, such as `"icestick"`, or the ID of one of the host's own boards. Every tool that deals with boards (`build`, `lint`, `test`, `simulate`, `program_board`, `list_devices`, `get_catalog` and `compare_boards`) takes the same optional `custom_boards_folder`, the absolute path of a folder with the host's own boards, which is independent of the board a request selects:
+The `board` field is a board ID: a catalog ID, such as `"icestick"`, or the ID of one of the host's own boards. Every tool that deals with boards (`build`, `lint`, `test`, `simulate`, `program_board`, `list_devices`, `install_driver`, `uninstall_driver`, `get_catalog` and `compare_boards`) takes the same optional `custom_boards_folder`, the absolute path of a folder with the host's own boards, which is independent of the board a request selects:
 
 - **Format.** The folder holds one file per board, in [Logix Catalog](https://www.openlogix.org/catalog/)'s format, named by the board's ID: `my-tang-nano-9k.json` is the board `my-tang-nano-9k`. The engine reads every `*.json` file in the folder and ignores other files; an empty folder means no boards. Each file has `name`, the FPGA as `fpga_id` (a catalog ID: the catalog has every FPGA the toolchain supports, so custom boards add boards, never FPGAs), its `variants`, written out in full, with their USB filters, and optional `resources`. It's exactly a Logix Catalog board file, so a board copies between the catalog and a project as a file, name and all; one from `get_catalog` needs its variants' `usb` filters added, which `get_catalog` leaves out. `dimensions` are ignored.
 - **Schema.** The format has a JSON Schema, which Logix Catalog owns, at `https://www.openlogix.org/schemas/logix-board-v1.json` (`boards_schema` in `get_engine_info`). Every catalog board file names it. A file may name it with a `"$schema"` key, so editors that read JSON Schemas, such as VS Code, JetBrains IDEs, Zed or Neovim, check the file and complete its fields as it's written. The key is optional; when it's there, its value must be the schema the engine reads, or the file has a problem at that line. The engine checks more than the schema can, such as that `fpga_id` is a catalog FPGA. Until the first release the schema changes without a new version; after it, it only gains optional fields, and a breaking change gets a new address (`-v2`).
@@ -212,7 +212,7 @@ On success, a tool returns its output object as structured content. On failure, 
 | `download_packages` | Required packages are missing or broken and weren't downloaded automatically, because auto-download is off or the download failed |
 | `connect_board` | No matching board is connected |
 | `fix_device_permissions` | A device was found but cannot be opened |
-| `install_drivers` | A driver required by the board is missing |
+| `install_drivers` | A driver required by the board is missing (Windows): `install_driver` installs it, after asking the user |
 | `disconnect_devices` | Other connected devices have the board's USB IDs and its programmer can't tell them apart; disconnect them and retry |
 
 ### Presentation
@@ -881,7 +881,7 @@ Hosts show the level, in their own words, and compare levels (weak < possible < 
 
 **Unreachable devices.** A device the engine sees but can't open, because of missing permissions or a missing driver, can't be programmed and its names can't be read, so it isn't in `devices`. When its USB IDs fit a board, it is listed in `unreachable` with those boards (every board variant `weak`, since its names are unknown) and the action that makes it usable: `install_drivers` on Windows, `fix_device_permissions` elsewhere. Other devices the engine can't open are left out.
 
-**Drivers on Windows.** The programmers reach most boards through libusb, which on Windows can use only a USB interface that has WinUSB (or libusbK or libusb0), not the driver Windows picks by itself, such as FTDI's. Which interface needs it follows from the board variant's programmer: interface 0 for FTDI chips (iceprog, openFPGALoader's FTDI cables and the boards it knows by name, such as Digilent's, Alchitry's, the Tang Nanos and the ULX3S), the DFU interface for `dfu-util` (a board's bootloader), and none for `icesprog` (the iCESugar's iCELink) and CMSIS-DAP adapters, which Windows' own HID driver serves. On Windows, `list_devices` gives each such device its `driver`, from the drivers Windows has on the present devices with its USB IDs and interface (Windows gives drivers by USB IDs and interface, not by serial number, so such devices normally share it; `ready` only when every one is). Elsewhere nothing is reported. A device that isn't `ready` needs WinUSB first (the coming `install_driver`).
+**Drivers on Windows.** The programmers reach most boards through libusb, which on Windows can use only a USB interface that has WinUSB (or libusbK or libusb0), not the driver Windows picks by itself, such as FTDI's. Which interface needs it follows from the board variant's programmer: interface 0 for FTDI chips (iceprog, openFPGALoader's FTDI cables and the boards it knows by name, such as Digilent's, Alchitry's, the Tang Nanos and the ULX3S), the DFU interface for `dfu-util` (a board's bootloader), and none for `icesprog` (the iCESugar's iCELink) and CMSIS-DAP adapters, which Windows' own HID driver serves. On Windows, `list_devices` gives each such device its `driver`, from the drivers Windows has on the present devices with its USB IDs and interface (Windows gives drivers by USB IDs and interface, not by serial number, so such devices normally share it; `ready` only when every one is). Elsewhere nothing is reported. A device that isn't `ready` needs WinUSB first: `install_driver` installs it, and `uninstall_driver` undoes it.
 
 **Device IDs.** An `id` names the device on this computer for a short time: it is made from where the device is plugged in and what it is, so it stays valid while the device stays on the same USB port, even when it is plugged in again, and survives an engine restart. IDs differ between platforms and computers. Hosts must treat them as opaque, never parse or build them, and list the devices again before asking the user to choose.
 
@@ -939,6 +939,62 @@ Hosts show the level, in their own words, and compare levels (weak < possible < 
   ]
 }
 ```
+
+## install_driver tool
+
+Windows only. Installs WinUSB on the USB interface a board's programmer needs (see Drivers on Windows, under list_devices), for a device whose `driver` isn't `ready`. Elsewhere it's a request error: no driver is needed.
+
+**Ask the user first.** Installing a driver changes Windows for every program, so a host asks before calling it, saying which board gets WinUSB. Windows then asks whether Logix Engine may make changes (its permission prompt, UAC), and the user must answer Yes; a refusal is a setup error with `install_drivers`.
+
+**How it runs:** the engine runs logix-core's `wdi-simple` (libwdi's command-line installer, built by logix-core from libwdi's source) to install WinUSB, the same way Zadig does. It runs it as an administrator: it starts itself again that way for this one step, so Windows' prompt names Logix Engine. libwdi signs the driver package it writes with a certificate of its own, which it adds to Windows' trusted stores (`CN=<hardware ID> (libwdi autogenerated)`); `uninstall_driver` removes it. Afterwards the engine lists the devices again, until Windows gives the device WinUSB.
+
+**Other devices with the same USB IDs.** Windows gives drivers by USB IDs and interface, not per board, and libwdi installs on every connected device with those IDs (such as another FTDI board with the same chip). So while other such devices are connected, the tool refuses with a request error naming them and `disconnect_devices`: unplug them, or retry with `allow_same_ids` when the user agrees that they get WinUSB too. A device with the same IDs plugged in later may keep its driver: Windows chooses then. Only the interface the programmer needs changes, so an FTDI chip's other channel, such as the board's serial port, keeps its driver. Vendor tools that use that interface (such as Vivado for a Digilent board) can't until `uninstall_driver`.
+
+**Table 39.** install_driver tool inputs
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `device` | text | Yes | The device: the `id` of a device from `list_devices`, in `devices` or `unreachable` |
+| `custom_boards_folder` | custom boards folder | No | The host's own boards, as for `list_devices`. Omitted means none |
+| `build_folder` | build folder path | No | A successful build's folder: the driver is the one the build's board and board variant need, as `list_devices`' `driver` with the same `build_folder`. Omitted means the device's best match |
+| `allow_same_ids` | boolean | No | Install even when other connected devices have the same USB IDs, which then get WinUSB too. Default false |
+| `display_paths` | display paths | No | How to name paths in what people read. Omitted means as the request gave them |
+
+**Table 40.** install_driver tool outputs
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `device` | text | The device's `id` now: it can change once the driver lets the engine read its serial number |
+| `driver` | object | The device's `driver` now, as in Table 13 (`ready` true) |
+| `installed` | boolean | False when the driver was `ready` already, so nothing was done |
+| `same_ids` | list of text | Optional, omitted when empty. Other connected devices with the same USB IDs, which got WinUSB too (only with `allow_same_ids`) |
+
+**Errors:** request errors on other systems, for a device that is no known board (or not the build's), for one whose programmer needs no driver, and while other devices have the same USB IDs (`disconnect_devices`). Setup errors with `install_drivers` when the user didn't give permission, when the installation failed (with libwdi's reason, and every step's output in `details`), or when Windows still doesn't give the device WinUSB; with `connect_board` when the device isn't connected anymore; with `download_packages` when the FPGA tools package has no `wdi-simple`. Engine errors.
+
+## uninstall_driver tool
+
+Windows only. Undoes `install_driver` for a device: removes every driver package libwdi installed for the board's USB interface, then asks Windows to look for drivers again, so the device gets Windows' own choice back (such as FTDI's, for vendor tools). Elsewhere it's a request error. Ask the user first: Windows asks whether Logix Engine may make changes, as for `install_driver`.
+
+**How it runs:** the engine finds the packages in Windows' INF folder (`oem<N>.inf`): those libwdi wrote (provider `libwdi`, or `libusbK` or `libusb-win32` for the libusbK and libusb0 drivers older guides installed with Zadig, and libwdi's `DeviceID` naming exactly the interface's hardware ID). Packages from Windows or a vendor never match. Then, as an administrator, it runs `pnputil /delete-driver <package> /uninstall /force` for each, removes libwdi's certificate for that hardware ID from the machine's Root and TrustedPublisher stores, and runs `pnputil /scan-devices`. Like the install, it applies to every device with the same USB IDs. With no such package, it does nothing.
+
+**Table 41.** uninstall_driver tool inputs
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `device` | text | Yes | The device: the `id` of a device from `list_devices`, in `devices` or `unreachable` |
+| `custom_boards_folder` | custom boards folder | No | The host's own boards, as for `list_devices`. Omitted means none |
+| `build_folder` | build folder path | No | A successful build's folder, as for `install_driver`. Omitted means the device's best match |
+| `display_paths` | display paths | No | How to name paths in what people read. Omitted means as the request gave them |
+
+**Table 42.** uninstall_driver tool outputs
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `device` | text | The device's `id` now (it can change with its driver) |
+| `driver` | object | The device's `driver` now, as in Table 13, after Windows looked again; it may take a moment more to settle |
+| `removed` | list of text | The driver packages removed, by their names in Windows (`oem<N>.inf`). Empty when there were none, so nothing was done |
+
+**Errors:** request errors on other systems, for a device that is no known board, and for one whose programmer needs no driver. Setup errors with `install_drivers` when the user didn't give permission or a package couldn't be removed (every step's output in `details`); with `connect_board` when the device isn't connected anymore. Engine errors.
 
 ## get_catalog tool
 
@@ -1333,6 +1389,8 @@ Logic that every frontend would need and that doesn't depend on a frontend's own
 3. One device: use it. Several: ask the user, with a `strong` `build_match` device pre-selected when there is exactly one. None: say the board isn't connected, and mention any `unreachable` device and its action.
 4. Call `program_board` with the build folder and the chosen device `id`.
 5. On `connect_board` or `disconnect_devices`, list the devices again and let the user retry. Never build or guess a device ID.
+
+On Windows, a device whose `driver` isn't `ready` (in `devices` or `unreachable`) needs WinUSB first: before step 4, explain it to the user (which board, that Windows will ask for permission, and that other devices with the same USB IDs get it too) and, if they agree, call `install_driver` with the device and the build folder, then list the devices again. Offer `uninstall_driver` somewhere the user can find it later, such as next to the device, for when vendor tools need the board back.
 
 ### Show progress and a console
 

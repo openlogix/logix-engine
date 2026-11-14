@@ -521,7 +521,7 @@ pub fn unreachable_action() -> Action {
     if cfg!(windows) {
         Action {
             code: ActionCode::InstallDrivers,
-            description: "Install the driver this device needs, then list the devices again."
+            description: "Install the driver this device needs with install_driver (ask the user first), then list the devices again."
                 .into(),
         }
     } else {

@@ -71,7 +71,8 @@ pub enum ActionCode {
     ConnectBoard,
     /// A device was found but cannot be opened.
     FixDevicePermissions,
-    /// A driver required by the board is missing.
+    /// A driver required by the board is missing (Windows): install_driver
+    /// installs it, after asking the user.
     InstallDrivers,
     /// Other connected devices have the board's USB IDs, and the board's
     /// programmer can't tell them apart. Disconnect them and retry.

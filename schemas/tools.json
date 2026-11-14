@@ -4896,7 +4896,7 @@
               "const": "fix_device_permissions"
             },
             {
-              "description": "A driver required by the board is missing.",
+              "description": "A driver required by the board is missing (Windows): install_driver\ninstalls it, after asking the user.",
               "type": "string",
               "const": "install_drivers"
             },
@@ -5320,6 +5320,335 @@
       "readOnlyHint": false,
       "destructiveHint": false,
       "openWorldHint": true
+    }
+  },
+  {
+    "name": "install_driver",
+    "description": "Windows only. Installs WinUSB, the driver the board's programmer needs, on the USB interface list_devices' driver names, for a device from list_devices (in devices or unreachable) whose driver isn't ready. Ask the user first: Windows then asks whether Logix Engine may make changes, and the user must answer Yes. Windows gives drivers by USB IDs and interface, not per board, so other connected devices with the same USB IDs get WinUSB too: the tool refuses while there are any, unless allow_same_ids is true (ask the user to unplug them, or to confirm). Vendor tools that use the interface (such as Vivado for a Digilent board) can't until uninstall_driver. Does nothing when the driver is ready already.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "InstallDriverInput",
+      "description": "The device, and how to tell its board.",
+      "type": "object",
+      "properties": {
+        "device": {
+          "description": "The device's id from list_devices, in devices or unreachable.",
+          "type": "string"
+        },
+        "custom_boards_folder": {
+          "description": "The host's own boards, as for list_devices. Omitted means none.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "build_folder": {
+          "description": "A successful build's folder, as an absolute path: the driver is the\none the build's board and variant need, as list_devices' driver says\nwith the same build_folder. Omitted means the device's best match.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "allow_same_ids": {
+          "description": "Install even when other connected devices have the same USB IDs,\nwhich then get WinUSB too. Default false: refused, naming them.",
+          "type": "boolean",
+          "default": false
+        },
+        "display_paths": {
+          "description": "How to name paths in what people read. Omitted means as given.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DisplayPaths"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "device"
+      ],
+      "$defs": {
+        "DisplayPaths": {
+          "description": "How to name paths in what people read: diagnostics, messages, testbench\noutput, live tool output and diagram labels. Never command lines or\nfields that are paths.",
+          "type": "object",
+          "properties": {
+            "files": {
+              "description": "Files named as a whole. They come before folders; the first that\nmatches wins.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/DisplayPath"
+              },
+              "default": []
+            },
+            "folders": {
+              "description": "Folders whose files keep their path below the folder, under the\nfolder's name `as`. The first that matches wins.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/DisplayPath"
+              },
+              "default": []
+            }
+          },
+          "additionalProperties": false
+        },
+        "DisplayPath": {
+          "description": "One file or folder and how to name it.",
+          "type": "object",
+          "properties": {
+            "path": {
+              "description": "The file or folder, as an absolute path.",
+              "type": "string"
+            },
+            "as": {
+              "description": "How people read it: any text. For a folder, a path inside it keeps\nits part below the folder after this and \"/\", or alone when this is\nempty, so \"\" gives names relative to the folder.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "as"
+          ]
+        }
+      }
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "InstallDriverOutput",
+      "description": "What was done.",
+      "type": "object",
+      "properties": {
+        "device": {
+          "description": "The device's id now: it can change once the driver lets the engine\nread its serial number. Use it, or list the devices again.",
+          "type": "string"
+        },
+        "driver": {
+          "description": "The device's driver now (ready true).",
+          "$ref": "#/$defs/DriverStatus"
+        },
+        "installed": {
+          "description": "False when the driver was ready already, so nothing was done.",
+          "type": "boolean"
+        },
+        "same_ids": {
+          "description": "Other connected devices with the same USB IDs, which got WinUSB too\n(only with allow_same_ids).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "device",
+        "driver",
+        "installed"
+      ],
+      "$defs": {
+        "DriverStatus": {
+          "description": "The driver a device needs for a board's programmer on Windows, and the\none it has: in list_devices, on Windows only, for devices whose board\nneeds one.",
+          "type": "object",
+          "properties": {
+            "needed": {
+              "description": "The driver the board's programmer needs: winusb.",
+              "type": "string"
+            },
+            "interface": {
+              "description": "The USB interface that needs it, such as 0 (an FTDI chip's first\nchannel; its other channels, such as a serial port, keep their\ndriver).",
+              "type": "integer",
+              "maximum": 255,
+              "minimum": 0
+            },
+            "current": {
+              "description": "The driver Windows has on that interface now, by its service name in\nlowercase, such as ftdibus (FTDI's), usbser or winusb. Omitted when\nit has none.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ready": {
+              "description": "Whether the programmer can use the interface as it is: true with\nWinUSB, and with libusbK or libusb0, which older guides installed.\nFalse means install_driver (WinUSB) first.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "needed",
+            "interface",
+            "ready"
+          ]
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "uninstall_driver",
+    "description": "Windows only. Undoes install_driver for a device from list_devices: removes every driver package libwdi installed for the board's USB interface (by WinUSB, and by Zadig with libusbK or libusb0 from older guides; never Windows' or a vendor's), the certificates libwdi signed them with, then asks Windows to look for drivers again, so the device gets Windows' own choice back (such as FTDI's, for vendor tools). Ask the user first: Windows then asks whether Logix Engine may make changes. It applies to every device with the same USB IDs. Does nothing when there's no such package.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "UninstallDriverInput",
+      "description": "The device, and how to tell its board.",
+      "type": "object",
+      "properties": {
+        "device": {
+          "description": "The device's id from list_devices, in devices or unreachable.",
+          "type": "string"
+        },
+        "custom_boards_folder": {
+          "description": "The host's own boards, as for list_devices. Omitted means none.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "build_folder": {
+          "description": "A successful build's folder, as for install_driver. Omitted means\nthe device's best match.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "display_paths": {
+          "description": "How to name paths in what people read. Omitted means as given.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DisplayPaths"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "device"
+      ],
+      "$defs": {
+        "DisplayPaths": {
+          "description": "How to name paths in what people read: diagnostics, messages, testbench\noutput, live tool output and diagram labels. Never command lines or\nfields that are paths.",
+          "type": "object",
+          "properties": {
+            "files": {
+              "description": "Files named as a whole. They come before folders; the first that\nmatches wins.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/DisplayPath"
+              },
+              "default": []
+            },
+            "folders": {
+              "description": "Folders whose files keep their path below the folder, under the\nfolder's name `as`. The first that matches wins.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/DisplayPath"
+              },
+              "default": []
+            }
+          },
+          "additionalProperties": false
+        },
+        "DisplayPath": {
+          "description": "One file or folder and how to name it.",
+          "type": "object",
+          "properties": {
+            "path": {
+              "description": "The file or folder, as an absolute path.",
+              "type": "string"
+            },
+            "as": {
+              "description": "How people read it: any text. For a folder, a path inside it keeps\nits part below the folder after this and \"/\", or alone when this is\nempty, so \"\" gives names relative to the folder.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "as"
+          ]
+        }
+      }
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "UninstallDriverOutput",
+      "description": "What was done.",
+      "type": "object",
+      "properties": {
+        "device": {
+          "description": "The device's id now (it can change with its driver).",
+          "type": "string"
+        },
+        "driver": {
+          "description": "The device's driver now, as Windows reports it after looking again;\nit may take a moment more to settle.",
+          "$ref": "#/$defs/DriverStatus"
+        },
+        "removed": {
+          "description": "The driver packages removed, by their names in Windows (oem<N>.inf).\nEmpty when there were none, so nothing was done.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "device",
+        "driver",
+        "removed"
+      ],
+      "$defs": {
+        "DriverStatus": {
+          "description": "The driver a device needs for a board's programmer on Windows, and the\none it has: in list_devices, on Windows only, for devices whose board\nneeds one.",
+          "type": "object",
+          "properties": {
+            "needed": {
+              "description": "The driver the board's programmer needs: winusb.",
+              "type": "string"
+            },
+            "interface": {
+              "description": "The USB interface that needs it, such as 0 (an FTDI chip's first\nchannel; its other channels, such as a serial port, keep their\ndriver).",
+              "type": "integer",
+              "maximum": 255,
+              "minimum": 0
+            },
+            "current": {
+              "description": "The driver Windows has on that interface now, by its service name in\nlowercase, such as ftdibus (FTDI's), usbser or winusb. Omitted when\nit has none.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ready": {
+              "description": "Whether the programmer can use the interface as it is: true with\nWinUSB, and with libusbK or libusb0, which older guides installed.\nFalse means install_driver (WinUSB) first.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "needed",
+            "interface",
+            "ready"
+          ]
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": false
     }
   }
 ]

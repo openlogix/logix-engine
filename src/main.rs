@@ -63,6 +63,14 @@ fn main() -> ExitCode {
     {
         return logix_engine::diagram::layout::worker_main(Path::new(bundle));
     }
+    // The driver helper: the engine runs itself this way, as an
+    // administrator after Windows asks the user, to change a USB driver
+    // (internal, not for hosts; src/elevated.rs).
+    if let [option, request] = command_line.as_slice()
+        && option == logix_engine::elevated::OPTION
+    {
+        return logix_engine::elevated::helper_main(Path::new(request));
+    }
     let args = Args::parse();
 
     let resolved =

@@ -213,6 +213,89 @@ fn driver_status(
     ))
 }
 
+/// A device a driver tool acts on, with what it needs.
+pub struct Located {
+    /// The device as scanned (its interfaces included).
+    pub device: Device,
+    /// Its board's name, for people and Device Manager.
+    pub board_name: String,
+    /// The driver it needs for that board and the one it has; None when
+    /// the board's programmer needs none.
+    pub driver: Option<DriverStatus>,
+    /// Other connected devices with the same USB IDs, for people: Windows
+    /// gives them the same driver.
+    pub same_ids: Vec<String>,
+}
+
+/// Whether two device IDs name the same device: the same port and USB IDs
+/// (the serial number may appear once a driver lets the engine read it).
+pub fn same_device(a: &str, b: &str) -> bool {
+    let key = |id: &str| id.rsplit_once(':').map(|(k, _)| k.to_string());
+    key(a).is_some() && key(a) == key(b)
+}
+
+/// Finds the device `id` names (from list_devices, reachable or not), its
+/// board (the build's with a build folder, else its best match) and its
+/// driver status, for install_driver and uninstall_driver.
+pub fn locate(
+    id: &str,
+    custom_boards_folder: Option<String>,
+    build_folder: Option<String>,
+    scan: impl FnOnce() -> Result<Vec<Device>, ToolError>,
+    drivers: DriverLookup,
+) -> Result<Located, ToolError> {
+    if !id.starts_with("usb:") {
+        return Err(ToolError::request(format!(
+            "device: {id:?} isn't a device ID. Use the id of a device from list_devices."
+        )));
+    }
+    let scanned = scan()?;
+    let Some(device) = scanned.iter().find(|d| same_device(&d.id, id)).cloned() else {
+        return Err(
+            ToolError::setup("The device isn't connected anymore.").with_action(
+                crate::errors::ActionCode::ConnectBoard,
+                "Connect the board, list the devices again and retry.",
+            ),
+        );
+    };
+    let same_ids: Vec<String> = scanned
+        .iter()
+        .filter(|d| d.vid == device.vid && d.pid == device.pid && !same_device(&d.id, id))
+        .map(|d| d.label.clone())
+        .collect();
+    let custom = crate::custom_boards::load(custom_boards_folder.as_deref())?;
+    let input = ListDevicesInput {
+        custom_boards_folder,
+        display_paths: None,
+        build_folder,
+    };
+    let out = run_with_drivers(input, move || Ok(scanned), Some(drivers))?;
+    let (boards, driver) = match out.devices.iter().find(|d| same_device(&d.id, id)) {
+        Some(d) => (d.boards.clone(), d.driver.clone()),
+        None => match out.unreachable.iter().find(|d| same_device(&d.id, id)) {
+            Some(d) => (d.boards.clone(), d.driver.clone()),
+            None => (Vec::new(), None),
+        },
+    };
+    let Some(best) = boards.first() else {
+        return Err(ToolError::request(format!(
+            "device: {} is no board the engine knows (or not the build's board), so it doesn't know which driver it needs.",
+            device.label
+        )));
+    };
+    let known = crate::board::known_boards(&custom);
+    let board_name = known
+        .get(best.board.as_str())
+        .map(|b| b.description.to_string())
+        .unwrap_or_else(|| best.board.clone());
+    Ok(Located {
+        device,
+        board_name,
+        driver,
+        same_ids,
+    })
+}
+
 pub fn run(_state: &EngineState, input: ListDevicesInput) -> Result<ListDevicesOutput, ToolError> {
     run_with(input, devices::scan)
 }

@@ -11,11 +11,13 @@ pub mod download_packages;
 pub mod format;
 pub mod get_catalog;
 pub mod get_engine_info;
+pub mod install_driver;
 pub mod lint;
 pub mod list_devices;
 pub mod program_board;
 pub mod simulate;
 pub mod test;
+pub mod uninstall_driver;
 
 use std::sync::Arc;
 
@@ -131,6 +133,8 @@ pub fn all_definitions() -> Vec<Tool> {
         definition::<clean_build::CleanBuild>(),
         definition::<list_devices::ListDevices>(),
         definition::<program_board::ProgramBoard>(),
+        definition::<install_driver::InstallDriver>(),
+        definition::<uninstall_driver::UninstallDriver>(),
     ]
 }
 
@@ -205,11 +209,13 @@ pub async fn call(
     use format::Format;
     use get_catalog::GetCatalog;
     use get_engine_info::GetEngineInfo;
+    use install_driver::InstallDriver;
     use lint::Lint;
     use list_devices::ListDevices;
     use program_board::ProgramBoard;
     use simulate::Simulate;
     use test::Test;
+    use uninstall_driver::UninstallDriver;
     // Paths named as the request says: in the live output now, in the
     // result below.
     let display = match crate::display_paths::Display::from_arguments(arguments.as_ref()) {
@@ -257,6 +263,8 @@ pub async fn call(
         Diagram::NAME,
         ListDevices::NAME,
         ProgramBoard::NAME,
+        InstallDriver::NAME,
+        UninstallDriver::NAME,
     ]
     .contains(&name)
         && let Err(e) = state.ensure_catalog(call).await
@@ -365,6 +373,26 @@ pub async fn call(
             with_commands(
                 match parse_input::<ProgramBoard>(arguments) {
                     Ok(input) => program_board::run(state, input, call).await,
+                    Err(e) => Err(e),
+                },
+                call,
+            ),
+        ),
+        InstallDriver::NAME => to_call_result(
+            display,
+            with_commands(
+                match parse_input::<InstallDriver>(arguments) {
+                    Ok(input) => install_driver::run(state, input, call).await,
+                    Err(e) => Err(e),
+                },
+                call,
+            ),
+        ),
+        UninstallDriver::NAME => to_call_result(
+            display,
+            with_commands(
+                match parse_input::<UninstallDriver>(arguments) {
+                    Ok(input) => uninstall_driver::run(state, input, call).await,
                     Err(e) => Err(e),
                 },
                 call,
