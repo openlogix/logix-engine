@@ -15,9 +15,11 @@
   // run.path and run.env).
   // 2026-11-14: the Windows package also has libwdi's wdi-simple, which
   // install_driver runs to install WinUSB (Milestone 3, drivers).
+  // 2026-11-15: openXC7 2026-11-15, which counts Xilinx resources right
+  // (apio#1192) and finds the suite's Python on Windows (apio#1194).
   "logix-core": {
     "repo": "openlogix/logix-core",
-    "release": "2026-11-14",
+    "release": "2026-11-15",
     "file": "logix-core-${PLATFORM}-${YYYYMMDD}.tgz"
   },
 

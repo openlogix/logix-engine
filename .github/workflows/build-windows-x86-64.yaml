@@ -45,25 +45,6 @@ jobs:
           ref: ${{ env.REPO_COMMIT }}
           path: _repo
 
-      # CI only, until openXC7 fixes apio#1194
-      # (https://github.com/FPGAwars/apio/issues/1194): its Windows
-      # fasm2frames.cmd runs `python`, which a plain Windows, and so the
-      # engine's tool PATH, doesn't have. A python.cmd in the Windows folder,
-      # which is on that PATH, forwards to Python 3.12, the version its
-      # packages are for. So the rest of the Xilinx flow stays tested. Remove
-      # both steps with the fix (the website repo's CLAUDE.md, Strict CI).
-      - name: Set up Python 3.12 for fasm2frames (apio#1194, CI only)
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Put python on the tools' PATH (apio#1194, CI only)
-        shell: pwsh
-        run: |
-          $py = (Get-Command python).Source
-          Set-Content -Path "$env:SystemRoot\python.cmd" -Value "@`"$py`" %*" -Encoding ascii
-          & "$env:SystemRoot\python.cmd" --version
-
       # Installs the Rust version pinned in rust-toolchain.toml.
       - name: Set up Rust
         working-directory: _repo
