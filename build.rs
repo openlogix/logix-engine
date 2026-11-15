@@ -2,7 +2,7 @@
 // and --version, as people see it: yyyy.mm.dd (the Open Logix versioning rule).
 // Release builds pass the release tag (yyyy-mm-dd) in the LOGIX_ENGINE_BUILD_VERSION
 // env var. Other builds use today's UTC date, and are local builds
-// (LOGIX_ENGINE_BUILD_RELEASE=false).
+// (LOGIX_ENGINE_BUILD_RELEASE=false). Also sets LOGIX_ENGINE_BUILD_COMMIT.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -22,6 +22,28 @@ fn main() {
     // a local build is always on the dev channel, since its version (today's
     // date) could match a prod release's tag.
     println!("cargo:rustc-env=LOGIX_ENGINE_BUILD_RELEASE={release}");
+    commit();
+}
+
+// LOGIX_ENGINE_BUILD_COMMIT: the commit built, short (7 hex digits), for
+// system info (get_engine_info). Empty outside a git checkout. Release
+// builds check out exactly the commit they build, so it's that one.
+fn commit() {
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    };
+    // Rebuild when HEAD moves (a commit, a checkout).
+    if let Some(dir) = git(&["rev-parse", "--absolute-git-dir"]) {
+        println!("cargo:rerun-if-changed={dir}/HEAD");
+        println!("cargo:rerun-if-changed={dir}/logs/HEAD");
+    }
+    let commit = git(&["rev-parse", "--short=7", "HEAD"]).unwrap_or_default();
+    println!("cargo:rustc-env=LOGIX_ENGINE_BUILD_COMMIT={commit}");
 }
 
 fn is_release_tag(v: &str) -> bool {

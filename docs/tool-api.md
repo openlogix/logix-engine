@@ -1158,6 +1158,8 @@ Returns the Logix Engine's version, platform and package status. A host calls it
 | `engine_version` | version | The engine version, its release date as `yyyy.mm.dd` |
 | `protocol_versions` | list of text | The MCP protocol versions the engine accepts, such as 2026-07-28 and 2025-11-25 |
 | `platform` | text | The platform the engine runs on, such as `darwin-arm64` |
+| `operating_system` | text | The operating system and its version, such as `macOS 26.5` or `Windows 10.0.26100.2314`, for system info |
+| `engine_commit` | text | The commit the engine was built from, short (7 hex digits). Omitted for a build made outside a git checkout |
 | `engine_folder` | absolute path | The engine folder, set by the host with the `--engine-folder` command-line argument when it launches the engine |
 | `auto_download` | boolean | Whether automatic package download and repair is on. It is on by default, and the host turns it off with the `--no-auto-download` command-line argument when it launches the engine |
 | `command_line` | list of text | The command-line arguments the engine was launched with, as given, for diagnostics |
@@ -1166,7 +1168,9 @@ Returns the Logix Engine's version, platform and package status. A host calls it
 | `boards_schema` | text | The address of the board schema this engine reads, Logix Catalog's JSON Schema of a board file, in the catalog and in custom boards folders, such as `https://www.openlogix.org/schemas/logix-board-v1.json` (see Board specification) |
 | `remote_config` | object | The remote config: `config_version` (such as `001`), `source` (the version folder's URL, or a local folder), `is_override` (true only for `LOGIX_ENGINE_DEV_REMOTE_CONFIG`), `channel` (such as `prod` or `dev`), `channel_reason` (`listed`: `channels.jsonc` lists this release; `default`: it doesn't, so `dev`; `local build`: always `dev`; or `LOGIX_ENGINE_CHANNEL`), `config_file` (the file read, such as `dev.jsonc`, or `prod.jsonc` when the channel has none) and `read_at`, when the one in use was read (UTC, `yyyy-mm-ddThh:mm:ssZ`). The channel fields and `read_at` are omitted before the first read |
 | `catalog` | object | The board catalog: `version`, the date of the `logix-catalog` release in use, as `yyyy.mm.dd`, and `local`, true only when the engine reads a local catalog folder (`LOGIX_ENGINE_DEV_CATALOG_FOLDER`, a diagnostic setting), whose `version` is then `local` |
-| `report` | multiline text | The facts above as lines for people, the engine's part of a frontend's system info (see Show system info under Recipes): the version, platform, engine folder, log file, automatic download, command line, each package with its version and status, the board catalog's version and the board schema. Show it as is; its wording can change in any version, so programs read the fields above |
+| `developer_settings` | list | The developer settings in effect, the environment variables the engine reads for development and diagnostics (`LOGIX_ENGINE_CHANNEL`, `LOGIX_ENGINE_DEV_REMOTE_CONFIG`, `LOGIX_ENGINE_DEV_CATALOG_FOLDER`; see the command line's Diagnostic settings), each with a `name` and its `value`. Omitted when none is set, as for users |
+| `versions` | version entry | The version tree, for system info (see Show system info under Recipes): the Logix Engine, its packages under it, and under a downloaded `logix-core` the third-party releases it bundles (such as OSS CAD Suite), where it stops. Each entry has a `name` (a program by its product name, a package by its package name, a third-party release by its project's name), a `version` (`yyyy.mm.dd` for Open Logix releases, upstream's own for third-party ones, or such as `local folder` when a developer setting replaces it), a `kind` (`program`, `package` or `third_party`), and when they apply: `channel` (a program's), `overridden_by` (the developer setting that replaces it), `notes` (short lines for people: only what the name and version don't tell, such as a program's channel, commit and remote config, a third-party release's upstream, or a package not downloaded yet), `details` (label and value pairs for showing on demand, such as on hover: repo, release, file, checksum, which config named it, and for a third-party release the programs Open Logix runs from it) and `children` (its own entries, in order) |
+| `report` | multiline text | The engine's system info as text for people, for when the engine is the product people use (such as with an AI agent): its version, operating system, log file, engine folder, automatic download and command line, then the developer settings when any is set, then the version tree. Show it as is; its wording can change in any version, so programs read the fields above |
 
 **Errors:** engine errors only.
 
@@ -1179,6 +1183,8 @@ Output:
   "engine_version": "2026.12.01",
   "protocol_versions": ["2026-07-28", "2025-11-25"],
   "platform": "darwin-arm64",
+  "operating_system": "macOS 26.5",
+  "engine_commit": "a1b2c3d",
   "engine_folder": "/Users/user/.myhost/engine",
   "auto_download": true,
   "command_line": ["--engine-folder", "/Users/user/.myhost/engine"],
@@ -1199,7 +1205,22 @@ Output:
   },
   "boards_schema": "https://www.openlogix.org/schemas/logix-board-v1.json",
   "catalog": { "version": "2026.11.10" },
-  "report": "Logix Engine 2026.12.01\nPlatform: darwin-arm64\nEngine folder: /Users/user/.myhost/engine\n..."
+  "versions": {
+    "name": "Logix Engine", "version": "2026.12.01", "kind": "program", "channel": "prod",
+    "notes": ["channel prod, commit a1b2c3d, remote config 001"],
+    "details": [{ "label": "Repo", "value": "openlogix/logix-engine" }, { "label": "Release", "value": "2026-12-01" }],
+    "children": [
+      { "name": "logix-core", "version": "2026.11.10", "kind": "package",
+        "details": [{ "label": "Release", "value": "2026-11-10" }],
+        "children": [
+          { "name": "OSS CAD Suite", "version": "2026-11-04", "kind": "third_party",
+            "notes": ["from YosysHQ/oss-cad-suite-build"],
+            "details": [{ "label": "Uses", "value": "yosys, nextpnr-ice40, ..." }] }
+        ] },
+      { "name": "logix-catalog", "version": "2026.11.10", "kind": "package" }
+    ]
+  },
+  "report": "Logix Engine 2026.12.01\nOperating system: macOS 26.5 (darwin-arm64)\n...\n\nVersions:\nLogix Engine 2026.12.01\n│    channel prod, commit a1b2c3d, remote config 001\n├─ logix-core 2026.11.10\n..."
 }
 ```
 
@@ -1425,10 +1446,13 @@ Requests never carry source text. Write the buffer to a file in a scratch folder
 
 ### Show system info
 
-Give users one place, such as Help > System Info, with a plain text report and a Copy button, for bug reports. Every frontend shows the same report, so a report reads the same whichever frontend it came from:
+Give users one place, such as Help > System Info, with the report and a Copy button, for bug reports. Every Open Logix product shows it the same way, so a report reads the same whichever product it came from:
 
-1. The frontend's own lines: its name and version, the operating system and its version, its own log file, and which Logix Engine it runs: the release it pins, or another binary (such as a local build).
-2. A blank line, then `report` from `get_engine_info`, as is. Call `get_engine_info` when the report is opened, so package status is current. If the engine isn't running, say so in its place.
+1. The product's own facts: its name and version, the operating system and its version (with the platform), and its own log file.
+2. The developer settings, only when at least one is in effect: a "Developer settings:" section, one line per variable, `  NAME = value`: the frontend's own, then `developer_settings` from `get_engine_info`.
+3. "Versions:" and the version tree. The frontend's own entry comes first (its name and version, with notes such as its channel, commit and remote config), with its dependencies under it: the engine's `versions` entry, from `get_engine_info`, and anything else the frontend downloads (such as its examples). When the frontend runs another engine binary (such as with `LOGIX_DEV_ENGINE_BINARY`), it marks the engine's entry with a note naming the variable.
+
+In text, each entry is a line, `name version`, its `notes` indented under it, and its children drawn with tree lines (`├─ `, `└─ `, `│  `), as the engine's own `report` shows. Leave `details` out of the text: they follow from the names and versions. In a dialog, show the tree with the top levels open and each entry's `details` on demand, such as on hover. Call `get_engine_info` when the report is opened, so what it shows is what's in place. If the engine isn't running, say so in its place.
 
 ## Open questions
 

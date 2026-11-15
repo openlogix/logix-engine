@@ -59,6 +59,39 @@ pub struct CoreComponent {
     /// Its folder, relative to the core.
     pub folder: String,
     pub run: CoreRun,
+    /// Where it came from: its upstream release (or source, for one
+    /// logix-core builds), for system info.
+    #[serde(default)]
+    pub source: CoreSource,
+}
+
+/// A component's origin, as `logix-core.json` gives it. Fields depend on
+/// how upstream publishes it: a GitHub release (repo, release), an npm
+/// package (url, version) or source built by logix-core (repo, tag, commit,
+/// built).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct CoreSource {
+    /// The upstream project's address, such as https://github.com/kieler/elkjs.
+    #[serde(default)]
+    pub upstream: Option<String>,
+    /// The GitHub repo, owner/name.
+    #[serde(default)]
+    pub repo: Option<String>,
+    #[serde(default)]
+    pub release: Option<String>,
+    #[serde(default)]
+    pub tag: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub commit: Option<String>,
+    #[serde(default)]
+    pub file: Option<String>,
+    #[serde(default)]
+    pub sha256: Option<String>,
+    /// How logix-core made it, when it built it from source.
+    #[serde(default)]
+    pub built: Option<String>,
 }
 
 /// How the engine runs a component's programs.
@@ -390,7 +423,7 @@ impl PackageManager {
         self.packages_dir(&spec.name).join(&spec.version)
     }
 
-    fn file_for<'a>(&self, spec: &'a PackageSpec) -> Option<&'a PackageFile> {
+    pub fn file_for<'a>(&self, spec: &'a PackageSpec) -> Option<&'a PackageFile> {
         spec.files
             .get(&self.platform)
             .or_else(|| spec.files.get(ANY_PLATFORM))

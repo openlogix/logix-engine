@@ -89,13 +89,26 @@ async fn get_engine_info_reports_the_launch_settings() {
     );
     // The catalog folder from LOGIX_ENGINE_DEV_CATALOG_FOLDER.
     assert_eq!(out["catalog"], json!({"version": "local", "local": true}));
-    assert!(
-        out["report"]
-            .as_str()
-            .unwrap()
-            .contains("Board catalog: Logix Catalog ")
+    // It's a developer setting: listed, and in the report's own section.
+    assert_eq!(
+        out["developer_settings"][0]["name"],
+        "LOGIX_ENGINE_DEV_CATALOG_FOLDER"
     );
     let report = out["report"].as_str().unwrap();
+    assert!(
+        report.contains("\nDeveloper settings:\n  LOGIX_ENGINE_DEV_CATALOG_FOLDER = "),
+        "{report}"
+    );
+    // The version tree: the engine alone, before its remote config is read.
+    assert_eq!(out["versions"]["name"], "Logix Engine");
+    assert_eq!(out["versions"]["kind"], "program");
+    assert!(
+        report.contains(&format!(
+            "\nVersions:\nLogix Engine {}\n",
+            out["engine_version"].as_str().unwrap()
+        )),
+        "{report}"
+    );
     assert!(report.starts_with("Logix Engine "), "{report}");
     assert!(
         report.contains(&format!("Engine folder: {}", engine_folder.display())),

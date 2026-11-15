@@ -40,6 +40,13 @@ pub struct GetEngineInfoOutput {
     pub protocol_versions: Vec<String>,
     /// The platform the engine runs on, such as darwin-arm64.
     pub platform: String,
+    /// The operating system and its version, such as "macOS 26.5" or
+    /// "Windows 10.0.26100.2314", for system info.
+    pub operating_system: String,
+    /// The commit the engine was built from, short (7 hex digits); omitted
+    /// for a build made outside a git checkout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine_commit: Option<String>,
     /// The engine folder, as the host set it with the --engine-folder
     /// command-line argument. The engine keeps its packages and logs there.
     pub engine_folder: String,
@@ -65,12 +72,23 @@ pub struct GetEngineInfoOutput {
     pub boards_schema: String,
     /// The board catalog the engine reads: its Logix Catalog version.
     pub catalog: CatalogInfo,
-    /// The facts above as plain text lines for people, the engine's part of
-    /// a frontend's system info (for bug reports), so every frontend shows
-    /// them the same way: the version, platform, engine folder, log file,
-    /// automatic download, command line, each package with its version and
-    /// status, the board catalog and the boards schema. Show it as is; its wording can change
-    /// in any version, so read the fields above, not this text.
+    /// The developer settings in effect: the environment variables the
+    /// engine reads for development and diagnostics (LOGIX_ENGINE_CHANNEL,
+    /// LOGIX_ENGINE_DEV_REMOTE_CONFIG, LOGIX_ENGINE_DEV_CATALOG_FOLDER), each
+    /// with its value, when set. Omitted when none is, as for users.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub developer_settings: Vec<crate::versions::DeveloperSetting>,
+    /// The version tree, for system info: the engine, its packages under
+    /// it, and under logix-core the third-party releases it bundles. A
+    /// frontend shows it under its own entry (see Show system info in the
+    /// tool API's recipes).
+    pub versions: crate::versions::VersionEntry,
+    /// The engine's system info for people, as plain text (for bug reports,
+    /// when the engine is the product people use, such as with an AI
+    /// agent): the version, operating system, log file, engine folder,
+    /// automatic download and command line, then the developer settings
+    /// when any is set, then the version tree. Show it as is; its wording
+    /// can change in any version, so programs read the fields above.
     pub report: String,
 }
 
@@ -180,6 +198,8 @@ pub fn run(
             .map(|v| v.to_string())
             .collect(),
         platform: state::platform(),
+        operating_system: state::operating_system(),
+        engine_commit: Some(state::ENGINE_COMMIT.to_string()).filter(|c| !c.is_empty()),
         engine_folder: state.engine_folder.clone(),
         auto_download: state.auto_download,
         command_line: state.command_line.clone(),
@@ -202,86 +222,42 @@ pub fn run(
                 local: false,
             },
         },
+        developer_settings: crate::versions::developer_settings(),
+        versions: crate::versions::engine_entry(state),
         report: String::new(),
     };
     out.report = report(&out);
     Ok(out)
 }
 
-/// The engine's part of a system info report (`report`).
+/// The engine's system info as text (`report`), in the layout every Open
+/// Logix product uses: its own facts, the developer settings when any is
+/// set, then the version tree.
 fn report(info: &GetEngineInfoOutput) -> String {
     let mut lines = vec![
         format!("Logix Engine {}", info.engine_version),
-        format!("Platform: {}", info.platform),
-        format!("Engine folder: {}", info.engine_folder),
+        format!(
+            "Operating system: {} ({})",
+            info.operating_system, info.platform
+        ),
         format!("Log file: {}", info.log_file),
+        format!("Engine folder: {}", info.engine_folder),
         format!(
             "Automatic package download: {}",
             if info.auto_download { "on" } else { "off" }
         ),
         format!("Command line: {}", info.command_line.join(" ")),
-        "Packages:".to_string(),
     ];
-    // In columns: name, version, status.
-    let name_width = info
-        .packages
-        .iter()
-        .map(|p| p.name.len())
-        .max()
-        .unwrap_or(0);
-    let version_width = info
-        .packages
-        .iter()
-        .map(|p| p.version.len())
-        .max()
-        .unwrap_or(0);
-    for p in &info.packages {
-        let status = match p.status {
-            PackageStatus::Ready => "ready",
-            PackageStatus::Missing => "missing",
-            PackageStatus::Broken => "broken",
-        };
-        lines.push(format!(
-            "  {:name_width$}  {:version_width$}  {status}",
-            p.name, p.version
-        ));
-    }
-    let c = &info.catalog;
-    lines.push(format!(
-        "Board catalog: Logix Catalog {}{}",
-        c.version,
-        if c.local {
-            " (a local folder, LOGIX_ENGINE_DEV_CATALOG_FOLDER)"
-        } else {
-            ""
+    if !info.developer_settings.is_empty() {
+        lines.push(String::new());
+        lines.push("Developer settings:".into());
+        for s in &info.developer_settings {
+            lines.push(format!("  {} = {}", s.name, s.value));
         }
-    ));
-    // The remote config as a short block, one fact per line, as the
-    // packages above (Logix IDE's user, 2026-11-14: one line was too long).
-    let r = &info.remote_config;
-    lines.push(format!("Remote config: {}", r.config_version));
-    if let (Some(c), Some(why), Some(file)) = (&r.channel, &r.channel_reason, &r.config_file) {
-        let fallback = if *file != format!("{c}.jsonc") {
-            format!(", using {file}")
-        } else {
-            String::new()
-        };
-        lines.push(format!("  Channel: {c} ({why}{fallback})"));
     }
-    lines.push(format!(
-        "  Source: {}{}",
-        r.source,
-        if r.is_override {
-            " (LOGIX_ENGINE_DEV_REMOTE_CONFIG)"
-        } else {
-            ""
-        }
-    ));
-    lines.push(format!(
-        "  Read: {}",
-        r.read_at.as_deref().unwrap_or("not yet")
-    ));
-    lines.push(format!("Boards schema: {}", info.boards_schema));
+    lines.push(String::new());
+    lines.push("Versions:".into());
+    lines.extend(crate::versions::tree_lines(&info.versions));
     lines.join("\n")
 }
 
@@ -355,11 +331,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_report_lists_the_facts_for_people() {
+    fn the_report_lists_the_facts_then_the_versions() {
+        use crate::versions::{DeveloperSetting, VersionEntry, VersionKind};
+        let leaf = |name: &str, version: &str, notes: &[&str]| VersionEntry {
+            name: name.into(),
+            version: version.into(),
+            kind: VersionKind::Package,
+            channel: None,
+            overridden_by: None,
+            notes: notes.iter().map(|n| n.to_string()).collect(),
+            details: Vec::new(),
+            children: Vec::new(),
+        };
         let mut info = GetEngineInfoOutput {
             engine_version: "2026.11.08".into(),
             protocol_versions: vec!["2025-11-25".into()],
             platform: "darwin-arm64".into(),
+            operating_system: "macOS 26.5".into(),
+            engine_commit: Some("abc1234".into()),
             engine_folder: "/Users/you/.logix/ide/engine".into(),
             auto_download: true,
             command_line: vec![
@@ -367,26 +356,13 @@ mod tests {
                 "/Users/you/.logix/ide/engine".into(),
             ],
             log_file: "/Users/you/.logix/ide/engine/logs/20261108-1.log".into(),
-            packages: vec![
-                PackageInfo {
-                    name: "logix-catalog".into(),
-                    version: "2026.11.08".into(),
-                    status: PackageStatus::Ready,
-                    components: Vec::new(),
-                },
-                PackageInfo {
-                    name: "logix-core".into(),
-                    version: "2026.11.10".into(),
-                    status: PackageStatus::Missing,
-                    components: Vec::new(),
-                },
-            ],
+            packages: Vec::new(),
             remote_config: RemoteConfigInfo {
                 config_version: "001".into(),
                 source: "https://raw.githubusercontent.com/openlogix/logix-engine/main/remote-config/logix-engine/001/".into(),
                 is_override: false,
                 channel: Some("dev".into()),
-                channel_reason: Some("default".into()),
+                channel_reason: Some("LOGIX_ENGINE_CHANNEL".into()),
                 config_file: Some("prod.jsonc".into()),
                 read_at: Some("2026-11-08T09:30:00Z".into()),
             },
@@ -395,26 +371,44 @@ mod tests {
                 version: "2026.11.08".into(),
                 local: false,
             },
+            developer_settings: vec![DeveloperSetting {
+                name: "LOGIX_ENGINE_CHANNEL".into(),
+                value: "dev".into(),
+            }],
+            versions: VersionEntry {
+                name: "Logix Engine".into(),
+                version: "2026.11.08".into(),
+                kind: VersionKind::Program,
+                channel: Some("dev".into()),
+                overridden_by: None,
+                notes: vec!["channel dev, commit abc1234, remote config 001".into()],
+                details: Vec::new(),
+                children: vec![
+                    leaf("logix-core", "2026.11.10", &["not downloaded yet"]),
+                    leaf("logix-catalog", "2026.11.08", &[]),
+                ],
+            },
             report: String::new(),
         };
         info.report = report(&info);
         assert_eq!(
             info.report,
             "Logix Engine 2026.11.08
-Platform: darwin-arm64
-Engine folder: /Users/you/.logix/ide/engine
+Operating system: macOS 26.5 (darwin-arm64)
 Log file: /Users/you/.logix/ide/engine/logs/20261108-1.log
+Engine folder: /Users/you/.logix/ide/engine
 Automatic package download: on
 Command line: --engine-folder /Users/you/.logix/ide/engine
-Packages:
-  logix-catalog  2026.11.08  ready
-  logix-core     2026.11.10  missing
-Board catalog: Logix Catalog 2026.11.08
-Remote config: 001
-  Channel: dev (default, using prod.jsonc)
-  Source: https://raw.githubusercontent.com/openlogix/logix-engine/main/remote-config/logix-engine/001/
-  Read: 2026-11-08T09:30:00Z
-Boards schema: https://www.openlogix.org/schemas/logix-board-v1.json"
+
+Developer settings:
+  LOGIX_ENGINE_CHANNEL = dev
+
+Versions:
+Logix Engine 2026.11.08
+│    channel dev, commit abc1234, remote config 001
+├─ logix-core 2026.11.10
+│       not downloaded yet
+└─ logix-catalog 2026.11.08"
         );
     }
 }

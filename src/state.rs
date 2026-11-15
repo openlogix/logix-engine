@@ -10,6 +10,10 @@ use rmcp::model::ProtocolVersion;
 /// by build.rs.
 pub const ENGINE_VERSION: &str = env!("LOGIX_ENGINE_BUILD_VERSION");
 
+/// The commit the engine was built from, short (7 hex digits); empty when
+/// built outside a git checkout. Set by build.rs.
+pub const ENGINE_COMMIT: &str = env!("LOGIX_ENGINE_BUILD_COMMIT");
+
 /// The MCP protocol versions the engine accepts, newest first. The engine is
 /// pinned to 2026-07-28 and also accepts 2025-11-25 clients.
 pub const PROTOCOL_VERSIONS: &[ProtocolVersion] =
@@ -27,6 +31,46 @@ pub fn platform() -> String {
         other => other,
     };
     format!("{os}-{arch}")
+}
+
+/// The operating system and its version, such as "macOS 26.5" or "Windows
+/// 10.0.26100.2314", for system info; the platform's name when the version
+/// can't be read. Read once.
+pub fn operating_system() -> String {
+    static OS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    OS.get_or_init(|| os_version().unwrap_or_else(platform))
+        .clone()
+}
+
+fn os_version() -> Option<String> {
+    let run = |cmd: &mut std::process::Command| {
+        cmd.output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    };
+    if cfg!(target_os = "macos") {
+        let v = run(std::process::Command::new("/usr/bin/sw_vers").arg("-productVersion"))?;
+        return Some(format!("macOS {v}"));
+    }
+    if cfg!(windows) {
+        // "Microsoft Windows [Version 10.0.26100.2314]" -> "Windows 10.0.26100.2314".
+        let mut cmd = std::process::Command::new("cmd.exe");
+        cmd.args(["/c", "ver"]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        let text = run(&mut cmd)?;
+        let v = text.split("Version ").nth(1)?.trim().trim_end_matches(']');
+        return Some(format!("Windows {v}"));
+    }
+    // Linux: PRETTY_NAME from /etc/os-release, such as "Ubuntu 24.04.1 LTS".
+    let text = std::fs::read_to_string("/etc/os-release").ok()?;
+    text.lines()
+        .find_map(|l| l.strip_prefix("PRETTY_NAME="))
+        .map(|v| v.trim_matches('"').to_string())
 }
 
 #[derive(Debug, Clone)]

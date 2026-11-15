@@ -31,6 +31,17 @@
           "description": "The platform the engine runs on, such as darwin-arm64.",
           "type": "string"
         },
+        "operating_system": {
+          "description": "The operating system and its version, such as \"macOS 26.5\" or\n\"Windows 10.0.26100.2314\", for system info.",
+          "type": "string"
+        },
+        "engine_commit": {
+          "description": "The commit the engine was built from, short (7 hex digits); omitted\nfor a build made outside a git checkout.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "engine_folder": {
           "description": "The engine folder, as the host set it with the --engine-folder\ncommand-line argument. The engine keeps its packages and logs there.",
           "type": "string"
@@ -69,8 +80,19 @@
           "description": "The board catalog the engine reads: its Logix Catalog version.",
           "$ref": "#/$defs/CatalogInfo"
         },
+        "developer_settings": {
+          "description": "The developer settings in effect: the environment variables the\nengine reads for development and diagnostics (LOGIX_ENGINE_CHANNEL,\nLOGIX_ENGINE_DEV_REMOTE_CONFIG, LOGIX_ENGINE_DEV_CATALOG_FOLDER), each\nwith its value, when set. Omitted when none is, as for users.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DeveloperSetting"
+          }
+        },
+        "versions": {
+          "description": "The version tree, for system info: the engine, its packages under\nit, and under logix-core the third-party releases it bundles. A\nfrontend shows it under its own entry (see Show system info in the\ntool API's recipes).",
+          "$ref": "#/$defs/VersionEntry"
+        },
         "report": {
-          "description": "The facts above as plain text lines for people, the engine's part of\na frontend's system info (for bug reports), so every frontend shows\nthem the same way: the version, platform, engine folder, log file,\nautomatic download, command line, each package with its version and\nstatus, the board catalog and the boards schema. Show it as is; its wording can change\nin any version, so read the fields above, not this text.",
+          "description": "The engine's system info for people, as plain text (for bug reports,\nwhen the engine is the product people use, such as with an AI\nagent): the version, operating system, log file, engine folder,\nautomatic download and command line, then the developer settings\nwhen any is set, then the version tree. Show it as is; its wording\ncan change in any version, so programs read the fields above.",
           "type": "string"
         }
       },
@@ -79,6 +101,7 @@
         "engine_version",
         "protocol_versions",
         "platform",
+        "operating_system",
         "engine_folder",
         "auto_download",
         "command_line",
@@ -87,6 +110,7 @@
         "remote_config",
         "boards_schema",
         "catalog",
+        "versions",
         "report"
       ],
       "$defs": {
@@ -231,6 +255,119 @@
           "additionalProperties": false,
           "required": [
             "version"
+          ]
+        },
+        "DeveloperSetting": {
+          "description": "A developer setting in effect: an environment variable and its value.",
+          "type": "object",
+          "properties": {
+            "name": {
+              "description": "The variable, such as LOGIX_ENGINE_CHANNEL.",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "value"
+          ]
+        },
+        "VersionEntry": {
+          "description": "One entry of the version tree: a program, a package or a third-party\nrelease, with its own dependencies under it.",
+          "type": "object",
+          "properties": {
+            "name": {
+              "description": "What people call it: a program by its product name (Logix Engine), a\npackage by its package name (logix-core), a third-party release by\nits project's name (OSS CAD Suite).",
+              "type": "string"
+            },
+            "version": {
+              "description": "Its version as people see it: yyyy.mm.dd for Open Logix releases,\nupstream's own for third-party releases, or a note such as \"local\nfolder\" when a developer setting replaces it.",
+              "type": "string"
+            },
+            "kind": {
+              "$ref": "#/$defs/VersionKind"
+            },
+            "channel": {
+              "description": "A program's release channel, such as prod or dev; omitted for\npackages and before the remote config has been read.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "overridden_by": {
+              "description": "The developer setting (an environment variable) that replaces this\nentry, such as LOGIX_ENGINE_DEV_CATALOG_FOLDER; omitted otherwise.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "notes": {
+              "description": "Short lines for people, under the entry in a text report: only what\nthe name and version don't already tell (a program's channel, commit\nand remote config; a third-party release's upstream; an override; a\npackage that isn't downloaded yet).",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "details": {
+              "description": "Everything else known about it, as label and value pairs in order,\nfor a frontend to show on demand (such as on hover): its repo,\nrelease, file, checksum, which config named it, and for a third-party\nrelease the programs Open Logix runs from it.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/VersionDetail"
+              }
+            },
+            "children": {
+              "description": "Its own dependencies, in the order to show them.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/VersionEntry"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "version",
+            "kind"
+          ]
+        },
+        "VersionKind": {
+          "description": "What kind of thing a version tree entry is.",
+          "oneOf": [
+            {
+              "description": "An Open Logix program, such as Logix Engine.",
+              "type": "string",
+              "const": "program"
+            },
+            {
+              "description": "An Open Logix package, such as logix-core.",
+              "type": "string",
+              "const": "package"
+            },
+            {
+              "description": "A third-party release bundled unchanged, such as OSS CAD Suite.",
+              "type": "string",
+              "const": "third_party"
+            }
+          ]
+        },
+        "VersionDetail": {
+          "description": "One label and value of a version tree entry's details.",
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "label",
+            "value"
           ]
         }
       }

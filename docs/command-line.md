@@ -28,7 +28,7 @@ logix-engine --engine-folder /Users/user/.myhost/engine --log-level debug
 
 ## Diagnostic settings
 
-Environment variables the engine reads at startup, for Open Logix developers and for testing. A bad value stops the engine with a message on stderr, never a silent fallback.
+Environment variables the engine reads at startup, for Open Logix developers and for testing. A bad value stops the engine with a message on stderr, never a silent fallback. `get_engine_info` lists the ones set in `developer_settings`, and its report in a Developer settings section.
 
 | Variable | Description |
 | --- | --- |
