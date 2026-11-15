@@ -416,7 +416,9 @@ mod tests {
 
     #[test]
     fn the_engine_is_at_the_top_without_a_log_folder() {
-        let engine = Path::new("/home/you/.logix/claude-code/engine");
+        // Absolute on every OS (on Windows, /home/... isn't).
+        let base = std::env::temp_dir();
+        let engine = &base.join(".logix/claude-code/engine");
         let (place, top) = place_for(engine, None, None).unwrap();
         assert!(top);
         assert_eq!(place.name, "logix-engine");
@@ -424,7 +426,7 @@ mod tests {
         assert!(is_session_name(
             &place.folder.file_name().unwrap().to_string_lossy()
         ));
-        let host = Path::new("/home/you/.logix/ide/logs/20261115-171205-4412");
+        let host = &base.join(".logix/ide/logs/20261115-171205-4412");
         let (place, top) = place_for(engine, Some(host), Some("logix-ide.logix-engine")).unwrap();
         assert!(!top);
         assert_eq!(place.file(), host.join("logix-ide.logix-engine.log"));
