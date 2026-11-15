@@ -78,6 +78,7 @@ fn round1(p: f64) -> f64 {
 pub fn resources(arch: Toolchain, usage: &BTreeMap<String, ResourceUsage>) -> Vec<Resource> {
     let mut list: Vec<Resource> = usage
         .iter()
+        .filter(|(name, _)| !not_resources(arch).contains(&name.as_str()))
         .map(|(name, u)| Resource {
             name: name.clone(),
             description: super::descriptions::describe(arch, name).map(String::from),
@@ -94,6 +95,16 @@ pub fn resources(arch: Toolchain, usage: &BTreeMap<String, ResourceUsage>) -> Ve
             .then(a.name.cmp(&b.name))
     });
     list
+}
+
+/// Names a toolchain reports that aren't resources of the FPGA, left out of
+/// `resources`: nextpnr-xilinx's PSEUDO_GND and PSEUDO_VCC, the constant 0
+/// and 1 it makes up for a design, which show 1 used of 0 available.
+fn not_resources(arch: Toolchain) -> &'static [&'static str] {
+    match arch {
+        Toolchain::Openxc7 => &["PSEUDO_GND", "PSEUDO_VCC"],
+        _ => &[],
+    }
 }
 
 /// Per family, the kinds of resources, the family's main capacity measure
@@ -136,10 +147,34 @@ fn kinds(arch: Toolchain) -> &'static [(&'static str, &'static str, &'static [&'
             ),
             ("multipliers", "multipliers", &["DSP48E1"]),
             ("plls", "PLLs", &["PLLE2_ADV", "MMCME2_ADV"]),
+            // See xilinx_io_pins.
             ("io_pins", "I/O pins", &["PAD"]),
         ],
     }
 }
+
+/// Xilinx I/O pins: the pins a design uses are its PADs, and what the FPGA
+/// has are its user I/O pins, the input buffers of its I/O banks (3.3 V and
+/// 1.8 V), as the datasheet counts them (210 on the XC7A35T in CSG324,
+/// where nextpnr-xilinx's PAD count, 212, includes pads that aren't user
+/// I/O). None without a PAD count; PAD's own count when there are no
+/// buffers.
+fn xilinx_io_pins(usage: &BTreeMap<String, ResourceUsage>) -> Option<(u64, u64, bool)> {
+    let pad = usage.get("PAD")?;
+    let buffers: Vec<&ResourceUsage> = XILINX_IO_BUFFERS
+        .iter()
+        .filter_map(|n| usage.get(*n))
+        .collect();
+    let available = if buffers.is_empty() {
+        pad.available
+    } else {
+        buffers.iter().map(|u| u.available).sum()
+    };
+    Some((pad.used, available, pad.used <= available))
+}
+
+/// The resources that count Xilinx user I/O pins, one per bank kind.
+const XILINX_IO_BUFFERS: &[&str] = &["IOB33_INBUF_EN", "IOB18_INBUF_DCIEN"];
 
 /// Xilinx RAM blocks in 36 Kbit blocks: 36 Kbit RAMs and FIFOs count one,
 /// two 18 Kbit ones (rounded up) count one, and the 36 Kbit sites are what
@@ -168,8 +203,13 @@ fn xilinx_ram_blocks(usage: &BTreeMap<String, ResourceUsage>) -> Option<(u64, u6
 pub fn summarize(arch: Toolchain, usage: &BTreeMap<String, ResourceUsage>) -> Vec<ResourceSummary> {
     let mut out = Vec::new();
     for (i, (kind, label, names)) in kinds(arch).iter().enumerate() {
-        let (used, available, valid) = if arch == Toolchain::Openxc7 && *kind == "ram_blocks" {
-            match xilinx_ram_blocks(usage) {
+        let special = match (arch, *kind) {
+            (Toolchain::Openxc7, "ram_blocks") => Some(xilinx_ram_blocks(usage)),
+            (Toolchain::Openxc7, "io_pins") => Some(xilinx_io_pins(usage)),
+            _ => None,
+        };
+        let (used, available, valid) = if let Some(found) = special {
+            match found {
                 Some(t) => t,
                 None => continue,
             }
@@ -408,6 +448,42 @@ mod tests {
             (s[1].kind.as_str(), s[1].used, s[1].available),
             ("plls", 1, 2)
         );
+    }
+
+    #[test]
+    fn xilinx_io_pins_are_user_pins_and_made_up_constants_are_left_out() {
+        // The Arty A7-35T blinky, with openXC7 2026-11-15: 212 PADs, of
+        // which 210 are user I/O (the datasheet's count).
+        let arty = usage(&[
+            ("SLICE_LUTX", 56, 20800),
+            ("PAD", 2, 212),
+            ("IOB33_INBUF_EN", 1, 210),
+            ("IOB33_OUTBUF", 1, 210),
+            ("PSEUDO_GND", 1, 0),
+            ("PSEUDO_VCC", 1, 0),
+        ]);
+        let s = summarize(Toolchain::Openxc7, &arty);
+        assert_eq!(
+            (s[1].kind.as_str(), s[1].used, s[1].available),
+            ("io_pins", 2, 210)
+        );
+        let names: Vec<_> = resources(Toolchain::Openxc7, &arty)
+            .into_iter()
+            .map(|r| r.name)
+            .collect();
+        assert_eq!(
+            names,
+            ["IOB33_INBUF_EN", "IOB33_OUTBUF", "PAD", "SLICE_LUTX"]
+        );
+        // Without the buffers, PAD's own count.
+        let s = summarize(
+            Toolchain::Openxc7,
+            &usage(&[("SLICE_LUTX", 1, 8), ("PAD", 2, 9)]),
+        );
+        assert_eq!((s[1].used, s[1].available), (2, 9));
+        // Other toolchains keep every name.
+        let ice40 = resources(Toolchain::Ice40, &usage(&[("PSEUDO_GND", 1, 0)]));
+        assert_eq!(ice40.len(), 1);
     }
 
     #[test]
