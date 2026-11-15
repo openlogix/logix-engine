@@ -199,6 +199,8 @@ const OPENXC7: &[(&str, &str)] = &[
     ("INVERTER", "Signal inverter"),
     ("BUFFER", "Signal buffer"),
     ("HARD0", "Constant 0 source"),
+    ("PSEUDO_GND", "Constant 0 source"),
+    ("PSEUDO_VCC", "Constant 1 source"),
     ("GTPE2_CHANNEL", "High-speed transceiver (GTP)"),
     ("GTPE2_COMMON", "High-speed transceivers' shared PLL"),
     ("IBUFDS_GTE2", "Transceiver reference clock input"),
