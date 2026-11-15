@@ -189,6 +189,10 @@ pub fn engine_entry(state: &EngineState) -> VersionEntry {
         "Read",
         remote.read_at.clone().unwrap_or_else(|| "not yet".into()),
     ));
+    // Where it keeps its packages and writes its log: a frontend's dev
+    // settings may move them (a local engine, a test remote config).
+    details.push(detail("Engine folder", state.engine_folder.clone()));
+    details.push(detail("Log file", state.log_file.display().to_string()));
     let named_by = match &remote.config_file {
         Some(f) => format!(
             "Logix Engine's remote config {}, {f}",
