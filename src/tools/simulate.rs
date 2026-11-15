@@ -285,9 +285,21 @@ pub async fn run(
         call.commands
             .push(crate::commands::record(&program, &args, &src, &bin));
         let delete = layout.clone();
-        gtkwave::launch_detached(&program, &args, &src, &bin, move || {
-            gtkwave::delete_if_generated(&delete)
-        })?;
+        // GTKWave's own output, in this session's log folder (logging.rs).
+        let log_file = crate::logging::place().map(|p| p.child_file("gtkwave"));
+        let what = format!(
+            "GTKWave started for {} (by Logix Engine process {})",
+            vcd.display(),
+            std::process::id()
+        );
+        gtkwave::launch_detached(
+            &program,
+            &args,
+            &src,
+            &bin,
+            log_file.as_deref().map(|f| (f, what.as_str())),
+            move || gtkwave::delete_if_generated(&delete),
+        )?;
     }
     Ok(SimulateOutput {
         commands: call.commands.take(),

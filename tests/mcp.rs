@@ -149,27 +149,97 @@ async fn get_engine_info_reports_the_launch_settings() {
         })
     );
 
-    // The log file is in the engine folder's logs subfolder, named
-    // logix-engine-<yyyymmdd>-<hhmmss>-<pid>.log, and has the startup line.
-    let log_file = out["log_file"].as_str().unwrap();
-    assert!(
-        std::path::Path::new(log_file).starts_with(std::path::Path::new(folder).join("logs")),
-        "{log_file}"
+    // At the top (no --log-folder), the engine's log is logix-engine.log in
+    // its own session folder, <engine folder>/logs/<yyyymmdd>-<hhmmss>-<pid>,
+    // after a separator line.
+    let log_file = std::path::Path::new(out["log_file"].as_str().unwrap());
+    assert_eq!(log_file.file_name().unwrap(), "logix-engine.log");
+    let session = log_file.parent().unwrap();
+    assert_eq!(
+        session.parent().unwrap(),
+        std::path::Path::new(folder).join("logs")
     );
-    assert!(log_file.ends_with(".log"));
-    let name = std::path::Path::new(log_file)
-        .file_name()
-        .unwrap()
-        .to_string_lossy()
-        .into_owned();
-    assert!(name.starts_with("logix-engine-"), "{name}");
+    assert!(logix_engine::logging::is_session_name(
+        &session.file_name().unwrap().to_string_lossy()
+    ));
     let log = std::fs::read_to_string(log_file).expect("log file exists");
+    assert!(log.starts_with("=== "), "{log}");
     assert!(
-        log.contains("Logix Engine") && log.contains("started"),
+        log.lines().next().unwrap().contains("  Logix Engine ")
+            && log.lines().next().unwrap().ends_with(" ==="),
         "{log}"
     );
     assert!(log.contains("Tool call: get_engine_info"), "{log}");
 
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn under_a_host_the_engine_logs_in_its_session_folder_and_cleans_its_logs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let engine_folder = tmp.path().join("engine");
+    let logs = tmp.path().join("logs");
+    let session = logs.join("20261115-171205-4412");
+    // An old session of the host's, and a file of its own that stays.
+    let old = logs.join("20261001-090000-1000");
+    std::fs::create_dir_all(&old).unwrap();
+    std::fs::write(old.join("my-ide.log"), "old").unwrap();
+    let past = std::time::SystemTime::now() - std::time::Duration::from_secs(40 * 24 * 60 * 60);
+    std::fs::File::options()
+        .write(true)
+        .open(old.join("my-ide.log"))
+        .unwrap()
+        .set_modified(past)
+        .unwrap();
+    std::fs::File::open(&old)
+        .and_then(|d| d.set_modified(past))
+        .ok();
+    std::fs::write(logs.join("notes.txt"), "mine").unwrap();
+    let client = start(
+        &engine_folder,
+        &[
+            "--log-folder",
+            session.to_str().unwrap(),
+            "--log-name",
+            "my-ide.logix-engine",
+        ],
+    )
+    .await;
+    let result = call(&client, "get_engine_info", json!({})).await;
+    let out = result
+        .structured_content
+        .clone()
+        .expect("structured content");
+    assert_eq!(
+        std::path::Path::new(out["log_file"].as_str().unwrap()),
+        session.join("my-ide.logix-engine.log")
+    );
+    // Nothing in the engine folder's own logs: the host has them.
+    assert!(!engine_folder.join("logs").exists());
+
+    let result = call(
+        &client,
+        "clean_logs",
+        json!({"logs_folder": logs.to_str().unwrap(), "keep": [session.to_str().unwrap()]}),
+    )
+    .await;
+    assert_ne!(result.is_error, Some(true), "{result:?}");
+    let out = result
+        .structured_content
+        .clone()
+        .expect("structured content");
+    assert_eq!(out["deleted"], json!([old.to_str().unwrap()]));
+    assert!(session.join("my-ide.logix-engine.log").exists());
+    assert!(logs.join("notes.txt").exists());
+
+    // A folder not named logs is refused.
+    let result = call(
+        &client,
+        "clean_logs",
+        json!({"logs_folder": tmp.path().to_str().unwrap()}),
+    )
+    .await;
+    assert_eq!(result.is_error, Some(true));
     client.cancel().await.unwrap();
 }
 

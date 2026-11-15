@@ -148,7 +148,8 @@ Register the engine with Claude Code once, for every folder:
 
 The list shows `logix-engine` as connected. The engine keeps the FPGA tools
 it downloads, and its logs, in its engine folder, `.logix/claude-code/engine`
-in your home folder.
+in your home folder. Each Claude Code session's logs are in a folder of
+their own in its `logs` folder, named by the session's start time.
 
 ## 3. Create the project
 

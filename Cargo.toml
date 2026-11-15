@@ -29,7 +29,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.11"
 tar = "0.4"
-time = { version = "0.3", features = ["formatting", "macros"] }
+time = { version = "0.3", features = ["formatting", "macros", "local-offset"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "process", "sync", "time", "fs"] }
 tokio-util = "0.7"
 

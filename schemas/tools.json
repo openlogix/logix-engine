@@ -4575,6 +4575,58 @@
     }
   },
   {
+    "name": "clean_logs",
+    "description": "Deletes a host's old log session folders, by the policy the Logix Engine uses for its own logs. A host that keeps its logs in session folders (one folder per run, named <yyyymmdd>-<hhmmss>-<pid>, holding only .log files) calls it with its logs folder, such as /home/user/.myhost/logs, usually once at startup, and names its current session folder in keep. The newest 10 session folders are kept, at most 100 MB in all, none older than 30 days; folders changed in the last 24 hours (a program in them may still run), the ones in keep, and anything that isn't a session folder are never deleted. A logs folder that doesn't exist is fine.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "CleanLogsInput",
+      "description": "Whose logs to clean.",
+      "type": "object",
+      "properties": {
+        "logs_folder": {
+          "description": "The host's logs folder, the parent of its session folders, as an\nabsolute path. Its last folder name must be \"logs\".",
+          "type": "string"
+        },
+        "keep": {
+          "description": "Session folders never to delete, as absolute paths, such as the\nhost's current session. Omitted means none beyond the policy's own.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "logs_folder"
+      ]
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "CleanLogsOutput",
+      "description": "What was deleted.",
+      "type": "object",
+      "properties": {
+        "deleted": {
+          "description": "The deleted session folders, as absolute paths. Empty when there was\nnothing to delete.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "deleted"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
     "name": "list_devices",
     "description": "Lists the USB devices connected to this computer, with their USB IDs, names and serial numbers, and for each the boards it may be: catalog boards and the request's custom_boards_folder, best first, each with the variants it fits and how well it matches: strong (very likely this board), possible (a few other boards look the same) or weak (many boards fit). Show the level as it is: how the engine decides it is internal and changes without notice. program_board needs the id of one of these devices. Given a build_folder, it lists only the devices that fit that build's board and variant, best first, each with its build_match: program the only one, or ask the user when there are several. Devices that need a driver or permissions first are listed apart, under unreachable, with the fix. On Windows, a device whose board's programmer needs a driver has driver: the one it needs (WinUSB), on which USB interface, the one it has and whether it's ready.",
     "inputSchema": {

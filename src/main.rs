@@ -1,7 +1,7 @@
 //! Logix Engine: FPGA operations as MCP tools over stdin/stdout.
 //! The command line is described in docs/command-line.md.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::ExitCode;
 
 use clap::{Parser, ValueEnum};
@@ -28,6 +28,20 @@ struct Args {
     /// How much goes into the log file.
     #[arg(long, value_name = "level", default_value = "info")]
     log_level: LogLevel,
+
+    /// The host's log session folder, as an absolute path: the engine
+    /// writes its log there, and its programs' (GTKWave's), and deletes
+    /// nothing in it. Without it, the engine is at the top and makes its
+    /// own session folder in <engine folder>/logs.
+    #[arg(long, value_name = "absolute path")]
+    log_folder: Option<String>,
+
+    /// The engine's log name in the host's session folder, the chain of
+    /// programs that started it, such as my-ide.logix-engine (written to
+    /// my-ide.logix-engine.log). Needs --log-folder; defaults to
+    /// logix-engine.
+    #[arg(long, value_name = "name")]
+    log_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -55,6 +69,8 @@ fn fail(message: &str) -> ExitCode {
 }
 
 fn main() -> ExitCode {
+    // First, before any thread starts (logging.rs).
+    logging::init_local_offset();
     let command_line: Vec<String> = std::env::args().skip(1).collect();
     // The diagram's layout worker: the engine runs itself this way to lay
     // out diagrams in a process of its own (internal, not for hosts).
@@ -84,14 +100,34 @@ fn main() -> ExitCode {
             args.engine_folder
         ));
     }
-    let log_path = match logging::init(&resolved, args.log_level.into()) {
-        Ok(p) => p,
-        Err(e) => return fail(&format!("can't create the log file: {e}")),
+    let log_folder = match args.log_folder.as_deref().map(paths::check_absolute_path) {
+        Some(Ok(p)) => Some(p),
+        Some(Err(e)) => return fail(&format!("--log-folder: {e}")),
+        None => None,
     };
-    // Reported under the engine folder as the host gave it.
-    let log_file = PathBuf::from(&args.engine_folder)
-        .join("logs")
-        .join(log_path.file_name().unwrap_or_default());
+    let (place, at_top) = match logging::place_for(
+        Path::new(&args.engine_folder),
+        log_folder.as_deref(),
+        args.log_name.as_deref(),
+    ) {
+        Ok(p) => p,
+        Err(e) => return fail(&e),
+    };
+    // Reported as the host gave the folders, not resolved.
+    let log_file = place.file();
+    let resolved_place = if at_top {
+        logging::LogPlace {
+            folder: resolved
+                .join("logs")
+                .join(place.folder.file_name().unwrap_or_default()),
+            name: place.name.clone(),
+        }
+    } else {
+        place
+    };
+    if let Err(e) = logging::init(resolved_place, at_top, args.log_level.into()) {
+        return fail(&format!("can't create the log file: {e}"));
+    }
 
     // The packages come from the engine's remote config, or from the
     // diagnostic override: a version folder's URL, or a local folder that

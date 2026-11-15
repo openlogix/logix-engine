@@ -296,7 +296,7 @@ Download progress is one phase per package, such as "Downloading logix-core 2026
 | `packages/<name>/<release tag>/` | A downloaded package, by its release tag (`yyyy-mm-dd`), such as `packages/logix-core/2026-11-10/`, with one folder per tool in the core (`oss-cad-suite/`, `openxc7/`, `verible/`, `elkjs/`, and `wdi-simple/` on Windows). Its receipt, `logix-download.json`, is written last; once a newer release is in place, the old one is deleted |
 | `downloads/` | Partial downloads, deleted when a download ends |
 | `locks/` | One lock file per package, held while downloading it |
-| `logs/` | Log files, described in [Command line](command-line.md) |
+| `logs/` | The engine's log session folders when it's at the top (see Logs in [Command line](command-line.md)). Under a host that gives `--log-folder`, the logs are in the host's folder instead |
 | `tmp/` | Small files the engine generates for the tools, such as the Verilator config that turns off warnings in the FPGA models. Safe to delete |
 
 An interrupted download never leaves a package that looks downloaded, so the next call downloads it again.
@@ -1163,7 +1163,7 @@ Returns the Logix Engine's version, platform and package status. A host calls it
 | `engine_folder` | absolute path | The engine folder, set by the host with the `--engine-folder` command-line argument when it launches the engine |
 | `auto_download` | boolean | Whether automatic package download and repair is on. It is on by default, and the host turns it off with the `--no-auto-download` command-line argument when it launches the engine |
 | `command_line` | list of text | The command-line arguments the engine was launched with, as given, for diagnostics |
-| `log_file` | absolute path | The log file this engine process writes, in the `logs` subfolder of the engine folder |
+| `log_file` | absolute path | The log file this engine process writes: in the host's session folder (`--log-folder`), or in its own session folder in the engine folder's `logs` when it's at the top. See Logs in [Command line](command-line.md) |
 | `packages` | list of packages | Every package the engine uses, from its remote config (empty until it has read one): `logix-catalog` (the board catalog) and `logix-core` (the FPGA tools). Each has a text `name`, a `version` (its release date as `yyyy.mm.dd`), a `status`: `ready`, `missing` or `broken`, and, for a ready `logix-core`, `components`: its tools, each with a `name` (`oss-cad-suite`, `openxc7`, `verible`, `elkjs`, and `wdi-simple` on Windows), a `description` and `bin_folder`, the absolute path of the folder with its programs, for hosts that run one directly, such as Verible's language server `verible-verilog-ls` from the `verible` component |
 | `boards_schema` | text | The address of the board schema this engine reads, Logix Catalog's JSON Schema of a board file, in the catalog and in custom boards folders, such as `https://www.openlogix.org/schemas/logix-board-v1.json` (see Board specification) |
 | `remote_config` | object | The remote config: `config_version` (such as `001`), `source` (the version folder's URL, or a local folder), `is_override` (true only for `LOGIX_ENGINE_DEV_REMOTE_CONFIG`), `channel` (such as `prod` or `dev`), `channel_reason` (`listed`: `channels.jsonc` lists this release; `default`: it doesn't, so `dev`; `local build`: always `dev`; or `LOGIX_ENGINE_CHANNEL`), `config_file` (the file read, such as `dev.jsonc`, or `prod.jsonc` when the channel has none) and `read_at`, when the one in use was read (UTC, `yyyy-mm-ddThh:mm:ssZ`). The channel fields and `read_at` are omitted before the first read |
@@ -1188,7 +1188,7 @@ Output:
   "engine_folder": "/Users/user/.myhost/engine",
   "auto_download": true,
   "command_line": ["--engine-folder", "/Users/user/.myhost/engine"],
-  "log_file": "/Users/user/.myhost/engine/logs/logix-engine-20261028-140509-4123.log",
+  "log_file": "/Users/user/.myhost/logs/20261201-093000-4120/myhost.logix-engine.log",
   "packages": [
     { "name": "logix-catalog", "version": "2026.11.10", "status": "ready" },
     { "name": "logix-core", "version": "2026.11.10", "status": "ready", "components": [
@@ -1351,6 +1351,44 @@ Output:
 }
 ```
 
+## clean_logs tool
+
+Deletes a host's old log session folders, by the policy the Logix Engine uses for its own logs, so every host that follows the Open Logix log layout (see Logs in [Command line](command-line.md)) cleans its logs the same way without coding the policy itself. A host calls it with its logs folder, usually once at startup, naming its current session folder in `keep`.
+
+- **Kept:** the newest 10 session folders, at most 100 MB in all, none older than 30 days.
+- **Never deleted:** the folders in `keep`; folders changed in the last 24 hours, since a program in them, such as GTKWave, may still run; and anything that isn't a session folder (named `<yyyymmdd>-<hhmmss>-<pid>`) holding only `.log` files, so a wrong path or a user's own file is never removed.
+
+The logs folder's last folder name must be `logs`, as given and after resolving symbolic links, and it can't be the file system root or the home folder. A logs folder that doesn't exist is not an error: nothing is deleted.
+
+**Table 43.** clean_logs tool inputs
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `logs_folder` | absolute path | Yes | The host's logs folder, the parent of its session folders, such as `/home/user/.myhost/logs` |
+| `keep` | list of absolute paths | No | Session folders never to delete, such as the host's current session. Omitted means none beyond the policy's own |
+
+**Table 44.** clean_logs tool outputs
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `deleted` | list of absolute paths | The deleted session folders. Empty when there was nothing to delete |
+
+**Errors:** request errors when the logs folder breaks the path rules. Setup errors when a file can't be deleted, such as when it's in use. Engine errors.
+
+**Example**
+
+Input:
+
+```json
+{ "logs_folder": "/home/user/.myhost/logs", "keep": ["/home/user/.myhost/logs/20261201-093000-4120"] }
+```
+
+Output:
+
+```json
+{ "deleted": ["/home/user/.myhost/logs/20261020-081500-3311"] }
+```
+
 ## Default project model
 
 The Logix Engine doesn't impose a project model: each frontend organizes designs its own way, and requests name every folder and file. The engine doesn't need a project file, in JSON or any other format, and never reads one.
@@ -1392,7 +1430,7 @@ Logic that every frontend would need and that doesn't depend on a frontend's own
 
 ### Start up
 
-1. Launch the Logix Engine with `--engine-folder`, do the MCP handshake, then call `get_engine_info`.
+1. Launch the Logix Engine with `--engine-folder`, and, to keep its logs with yours (the Open Logix log layout, Logs in [Command line](command-line.md)), with `--log-folder` (your session folder) and `--log-name` (your name, a dot, then `logix-engine`). Do the MCP handshake, then call `get_engine_info`. If you follow the layout, call `clean_logs` with your logs folder, keeping your session folder.
 2. Check that `engine_version` is one your frontend supports, by its own rule, such as a version range or a list of tested releases. If it isn't, call no other tools: tell the user which Logix Engine versions the frontend needs, then stop or fall back as the frontend decides.
 3. Call `download_packages` and show its progress. It reads the engine's remote config when that's due and downloads only what's missing, so it returns at once when everything is ready, and it's how a first start downloads the packages with the host's own progress screen. (Tools would download what they need on first use anyway.) Then show package status from its `packages`. To check for newer packages now, call `check_updates`.
 

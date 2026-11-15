@@ -5,6 +5,7 @@
 pub mod build;
 pub mod check_updates;
 pub mod clean_build;
+pub mod clean_logs;
 pub mod compare_boards;
 pub mod diagram;
 pub mod download_packages;
@@ -131,6 +132,7 @@ pub fn all_definitions() -> Vec<Tool> {
         definition::<diagram::Diagram>(),
         definition::<build::Build>(),
         definition::<clean_build::CleanBuild>(),
+        definition::<clean_logs::CleanLogs>(),
         definition::<list_devices::ListDevices>(),
         definition::<program_board::ProgramBoard>(),
         definition::<install_driver::InstallDriver>(),
@@ -203,6 +205,7 @@ pub async fn call(
     use build::Build;
     use check_updates::CheckUpdates;
     use clean_build::CleanBuild;
+    use clean_logs::CleanLogs;
     use compare_boards::CompareBoards;
     use diagram::Diagram;
     use download_packages::DownloadPackages;
@@ -240,11 +243,12 @@ pub async fn call(
     // error from needing_download; one that doesn't, such as get_catalog
     // with a local catalog folder, works anyway. download_packages and
     // check_updates read it themselves (they may use the network even with
-    // automatic download off), and get_engine_info and clean_build use no
+    // automatic download off), and get_engine_info, clean_build and clean_logs use no
     // packages.
     if ![
         GetEngineInfo::NAME,
         CleanBuild::NAME,
+        CleanLogs::NAME,
         DownloadPackages::NAME,
         CheckUpdates::NAME,
     ]
@@ -358,6 +362,13 @@ pub async fn call(
             display,
             with_commands(
                 parse_input::<CleanBuild>(arguments).and_then(|i| clean_build::run(state, i)),
+                call,
+            ),
+        ),
+        CleanLogs::NAME => to_call_result(
+            display,
+            with_commands(
+                parse_input::<CleanLogs>(arguments).and_then(|i| clean_logs::run(state, i)),
                 call,
             ),
         ),

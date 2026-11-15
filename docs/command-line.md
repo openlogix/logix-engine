@@ -9,6 +9,8 @@ A host launches the engine as a child process on the same computer and talks MCP
 | `--engine-folder <absolute path>` | Yes | The host's engine folder. It must satisfy the path keyword rules. Hosts don't share engine folders by default |
 | `--no-auto-download` | No | Turns off automatic package download and repair, and the engine's own reading of its remote config. A missing or broken package is then a setup error with `download_packages`; `download_packages` and `check_updates` still work, since the host asks |
 | `--log-level <level>` | No | One of `error`, `warn`, `info` and `debug`. Defaults to `info` |
+| `--log-folder <absolute path>` | No | The host's log session folder (see Logs). The engine writes its log there, and its programs' (GTKWave's), and deletes nothing in it. Without it, the engine is at the top and makes its own session folder in its engine folder's `logs` |
+| `--log-name <name>` | No | The engine's name in the host's session folder: the chain of programs that started it, joined by dots, such as `my-ide.logix-engine` (the engine writes `my-ide.logix-engine.log`). Lowercase letters, digits, `-` and `.`. Needs `--log-folder`; defaults to `logix-engine` |
 | `--version` | No | Prints the engine version and exits, without starting MCP |
 | `--help` | No | Prints the arguments and exits, without starting MCP |
 
@@ -38,10 +40,16 @@ Environment variables the engine reads at startup, for Open Logix developers and
 
 ## Logs
 
-- **Location.** The engine always writes a log file in the `logs` subfolder of the engine folder, such as `~/.logix/ide/engine/logs`. No argument is needed, and since the engine folder is engine-owned, no new file rule is needed either.
-- **One file per process.** Each instance writes its own file, named with the program, its start time (UTC) and process ID, such as `logix-engine-20261028-140509-4123.log` (the Open Logix rule for log files), so instances sharing an engine folder don't mix their lines.
-- **Cleanup.** The engine deletes old log files automatically, keeping the last 20 files and at most 50 MB.
+The engine follows the Open Logix log layout, the same for every Open Logix program, and third-party hosts are invited to follow it too:
+
+- **A folder per session.** Each run of the program at the top, the one people start, makes a *session folder* in its own `logs` folder, named by its start (local time) and process ID: `<yyyymmdd>-<hhmmss>-<pid>`, such as `20261115-171205-4412`. Every program it starts, and each one those start, writes into that folder.
+- **One file per program, named by its chain of programs.** The top program's file is its own name; a program it started adds its name after a dot, and so on down: `my-ide.log`, `my-ide.logix-engine.log`, `my-ide.logix-engine.gtkwave.log`. So a name says who started the program, and sorting the names gives the tree.
+- **Each run appends.** A program that runs again in the session, such as an engine restarted by its host, adds to its file after a separator line naming it, its version or what it opened, the local time with its offset from UTC, and its process ID: `=== 2026-11-15 17:12:05 +02:00  Logix Engine 2026.11.15 started (process 98223) ===`. Nothing is ever renamed.
+- **The engine at the top.** Without `--log-folder`, as when Claude Code starts it, the engine is the top program: it makes its own session folder in its engine folder's `logs` (such as `~/.logix/claude-code/engine/logs/20261115-172001-5120/logix-engine.log`), and at startup deletes its old session folders (`clean_logs`'s policy, in the [tool API](tool-api.md)).
+- **The engine under a host.** With `--log-folder` and `--log-name`, the engine writes `<name>.log` in the host's session folder and deletes nothing there: cleanup is the host's, which can call `clean_logs` for it. A host that runs several engines at once gives each its own name or folder.
+- **GTKWave.** When `simulate` opens GTKWave, the engine appends a separator to `<name>.gtkwave.log` in its session folder and gives GTKWave that file as its output, so GTKWave writes to it directly, also after the engine exits. Several open windows append to the same file, so their lines may mix.
+- **Size.** Above 10 MB, a log gets no more debug lines (the tools' full output) and says so; messages still go in. GTKWave's file has no cap, since GTKWave writes it; cleanup bounds it.
 - **stderr.** Warnings and errors also go to stderr. Hosts such as Claude Code show an MCP server's stderr in their own logs, which helps when the engine fails at startup.
 - **Level.** `--log-level` sets how much goes into the log file. A host can raise it to debug when chasing a problem.
 - **Boards.** At `info`, every tool that deals with boards logs its custom boards folder, when the request names one (its path, the first 12 hex digits of a SHA-256 of its board files, so a log tells which version of them was used, and its board IDs or how many problems they have), and the board it uses (its ID, whether it comes from the catalog or the custom boards folder, and its variant's selector).
-- **Finding the file.** `get_engine_info` returns the path of the current log file, so a host can show it to the user.
+- **Finding the file.** `get_engine_info` returns the path of the current log file, so a host can show it to the user. For a problem report, attach the session folder's files.

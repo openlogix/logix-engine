@@ -135,6 +135,7 @@ fn open_page(page: &Path) -> bool {
         &args,
         dir,
         Path::new("/usr/bin"),
+        None,
         || {},
     ) {
         Ok(()) => true,

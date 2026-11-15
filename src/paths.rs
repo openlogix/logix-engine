@@ -106,6 +106,31 @@ pub fn check_engine_folder(s: &str, home: Option<&Path>) -> Result<PathBuf, Stri
     Ok(resolved)
 }
 
+/// Checks a host's logs folder, the parent of its log session folders
+/// (`clean_logs`): an absolute path whose last folder name is `logs`, both
+/// as given and after resolving symbolic links, and not the file system root
+/// or the home folder. Returns the resolved path.
+pub fn check_logs_folder(s: &str, home: Option<&Path>) -> Result<PathBuf, String> {
+    let given = check_absolute_path(s)?;
+    if last_name(&given) != "logs" {
+        return Err(format!(
+            "the last folder name of the logs folder {s:?} must be \"logs\", such as ~/.myhost/logs"
+        ));
+    }
+    let resolved =
+        resolve(&given).map_err(|e| format!("can't resolve the logs folder {s:?}: {e}"))?;
+    if let Some(what) = is_forbidden(&resolved, home) {
+        return Err(format!("the logs folder {s:?} can't be {what}"));
+    }
+    if last_name(&resolved) != "logs" {
+        return Err(format!(
+            "the logs folder {s:?} resolves to {:?}, whose last folder name isn't \"logs\"",
+            resolved.display()
+        ));
+    }
+    Ok(resolved)
+}
+
 /// The user's home folder, from the environment.
 pub fn home_folder() -> Option<PathBuf> {
     let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };

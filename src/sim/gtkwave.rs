@@ -276,15 +276,21 @@ pub fn delete_if_generated(path: &Path) {
 }
 
 /// Starts `program` fully detached and returns at once: its own session, no
-/// input or output, and not stopped when the operation is cancelled or the
-/// engine exits. The environment is the same minimal one the tools get, plus
-/// what a window needs on Linux. `on_exit` runs when the program exits, if
-/// the engine is still running then.
+/// input, and not stopped when the operation is cancelled or the engine
+/// exits. The environment is the same minimal one the tools get, plus what a
+/// window needs on Linux. `on_exit` runs when the program exits, if the
+/// engine is still running then.
+///
+/// `log` is the program's log, `(file, what)`: the engine appends a separator
+/// line saying `what`, then the program writes its own output to the file
+/// directly, so it keeps logging after the engine exits (the org's log rule,
+/// logging.rs). Without one, its output goes nowhere.
 pub fn launch_detached(
     program: &Path,
     args: &[OsString],
     cwd: &Path,
     bin_dir: &Path,
+    log: Option<(&Path, &str)>,
     on_exit: impl FnOnce() + Send + 'static,
 ) -> Result<(), ToolError> {
     let path = crate::commands::tool_path(bin_dir);
@@ -293,9 +299,20 @@ pub fn launch_detached(
         .current_dir(cwd)
         .env_clear()
         .env("PATH", path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdin(Stdio::null());
+    match log.and_then(|(file, what)| open_program_log(file, what)) {
+        Some(out) => match out.try_clone() {
+            Ok(err) => {
+                cmd.stdout(out).stderr(err);
+            }
+            Err(_) => {
+                cmd.stdout(out).stderr(Stdio::null());
+            }
+        },
+        None => {
+            cmd.stdout(Stdio::null()).stderr(Stdio::null());
+        }
+    }
     for (var, value) in crate::commands::tool_env(bin_dir) {
         cmd.env(var, value);
     }
@@ -353,12 +370,37 @@ pub fn launch_detached(
             ),
         )
     })?;
+    match log {
+        Some((file, _)) => log::info!(
+            "Started {} (process {}), its output in {}",
+            program.display(),
+            child.id(),
+            file.display()
+        ),
+        None => log::info!("Started {} (process {})", program.display(), child.id()),
+    }
     // Reap it when it exits, so it doesn't linger as a zombie.
     std::thread::spawn(move || {
         let _ = child.wait();
         on_exit();
     });
     Ok(())
+}
+
+/// Opens a program's log for appending and writes its separator line. None
+/// (its output then goes nowhere) when the file can't be written.
+fn open_program_log(file: &Path, what: &str) -> Option<std::fs::File> {
+    use std::io::Write;
+    let mut f = match crate::logging::open_append(file) {
+        Ok(f) => f,
+        Err(e) => {
+            log::warn!("Can't open the log {}: {e}", file.display());
+            return None;
+        }
+    };
+    let line = crate::logging::separator(crate::logging::now_local(), what);
+    f.write_all(line.as_bytes()).ok()?;
+    Some(f)
 }
 
 #[cfg(test)]
@@ -469,16 +511,34 @@ $end
         let tmp = tempfile::tempdir().unwrap();
         let marker = tmp.path().join("ran");
         let bin = tmp.path().join("bin");
-        // The program writes its PATH after a pause, so after the call.
+        // The program writes its PATH after a pause, so after the call, and
+        // a line to its output, which goes to its log.
         let script = if cfg!(windows) {
             // No quotes: cmd /C keeps the rest of the line as it is.
-            format!("{} & echo %PATH%>{}", pause(1), marker.display())
+            format!(
+                "{} & echo %PATH%>{} & echo hello from the viewer",
+                pause(1),
+                marker.display()
+            )
         } else {
-            format!("{}; echo \"$PATH\" > '{}'", pause(1), marker.display())
+            format!(
+                "{}; echo \"$PATH\" > '{}'; echo hello from the viewer",
+                pause(1),
+                marker.display()
+            )
         };
         let (program, args) = shell(&script);
+        let log = tmp.path().join("logs/s/logix-engine.gtkwave.log");
         let start = Instant::now();
-        launch_detached(&program, &args, tmp.path(), &bin, || {}).unwrap();
+        launch_detached(
+            &program,
+            &args,
+            tmp.path(),
+            &bin,
+            Some((&log, "GTKWave started for test.vcd")),
+            || {},
+        )
+        .unwrap();
         assert!(
             start.elapsed() < Duration::from_millis(500),
             "returns at once"
@@ -495,12 +555,26 @@ $end
             path.starts_with(&format!("{}{sep}", bin.display())),
             "{path}"
         );
+        // Its log: the separator first, then what it printed.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut text = String::new();
+        while !text.contains("hello") && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(100));
+            text = fs::read_to_string(&log).unwrap_or_default();
+        }
+        assert!(text.starts_with("=== "), "{text}");
+        assert!(
+            text.contains("  GTKWave started for test.vcd ===\n"),
+            "{text}"
+        );
+        assert!(text.contains("hello from the viewer"), "{text}");
 
         let err = launch_detached(
             Path::new("/no/such/gtkwave"),
             &[],
             tmp.path(),
             tmp.path(),
+            None,
             || {},
         )
         .unwrap_err();
@@ -523,7 +597,7 @@ $end
         let (tx, rx) = std::sync::mpsc::channel();
         let paths = [default.clone(), saved.clone()];
         let (program, args) = shell(&pause(1));
-        launch_detached(&program, &args, tmp.path(), tmp.path(), move || {
+        launch_detached(&program, &args, tmp.path(), tmp.path(), None, move || {
             paths.iter().for_each(|p| delete_if_generated(p));
             tx.send(()).unwrap();
         })
