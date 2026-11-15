@@ -90,13 +90,24 @@ async fn get_engine_info_reports_the_launch_settings() {
     // The catalog folder from LOGIX_ENGINE_DEV_CATALOG_FOLDER.
     assert_eq!(out["catalog"], json!({"version": "local", "local": true}));
     // It's a developer setting: listed, and in the report's own section.
-    assert_eq!(
-        out["developer_settings"][0]["name"],
-        "LOGIX_ENGINE_DEV_CATALOG_FOLDER"
+    // (Others may be set too, such as CI's LOGIX_ENGINE_CHANNEL.)
+    let settings = out["developer_settings"].as_array().expect("listed");
+    assert!(
+        settings
+            .iter()
+            .any(|s| s["name"] == "LOGIX_ENGINE_DEV_CATALOG_FOLDER"),
+        "{settings:?}"
     );
     let report = out["report"].as_str().unwrap();
+    let section = report
+        .split("\nDeveloper settings:\n")
+        .nth(1)
+        .and_then(|rest| rest.split("\n\n").next())
+        .unwrap_or_else(|| panic!("no Developer settings section: {report}"));
     assert!(
-        report.contains("\nDeveloper settings:\n  LOGIX_ENGINE_DEV_CATALOG_FOLDER = "),
+        section
+            .lines()
+            .any(|l| l.starts_with("  LOGIX_ENGINE_DEV_CATALOG_FOLDER = ")),
         "{report}"
     );
     // The version tree: the engine alone, before its remote config is read.
