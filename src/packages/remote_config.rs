@@ -521,9 +521,25 @@ pub struct Cached {
     pub config_version: String,
     /// The channel and the config file read.
     pub channel: Channel,
+    /// The engine build that read it (`reader()`): the channel depends on
+    /// it, so another build (a newer release, a local build sharing the
+    /// engine folder) reads the config again.
+    pub reader: String,
     /// When it was read, in seconds since 1970 (UTC).
     pub fetched: u64,
     pub set: Manifest,
+}
+
+/// This engine build, as the cache records it: its version, and whether
+/// it's a release build or a local one, which is what its channel depends
+/// on besides channels.jsonc and LOGIX_ENGINE_CHANNEL.
+pub fn reader() -> String {
+    let kind = if IS_RELEASE_BUILD {
+        "release"
+    } else {
+        "local build"
+    };
+    format!("logix-engine {} {kind}", crate::state::ENGINE_VERSION)
 }
 
 pub fn now() -> u64 {
@@ -534,13 +550,17 @@ pub fn now() -> u64 {
 }
 
 impl Cached {
-    /// Whether it's from this source and config version, read with the same
-    /// channel override (none, or the same LOGIX_ENGINE_CHANNEL).
+    /// Whether it's from this source and config version, read by this
+    /// engine build (a cache another build wrote may be another channel's:
+    /// found 2026-11-16, when a local build shared a prod release's folder)
+    /// with the same channel override (none, or the same
+    /// LOGIX_ENGINE_CHANNEL).
     pub fn matches(&self, source: &ConfigSource) -> bool {
         let variable = channel_variable().ok().flatten();
         let cached_variable = (self.channel.how == CHANNEL_VAR).then(|| self.channel.name.clone());
         self.source == source.location
             && self.config_version == CONFIG_VERSION
+            && self.reader == reader()
             && variable == cached_variable
     }
 
@@ -586,6 +606,32 @@ pub fn utc_time(secs: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A cache another engine build wrote (another release, or a local build
+    // sharing the engine folder) may be another channel's: read again.
+    #[test]
+    fn a_cache_from_another_build_is_read_again() {
+        let mut cached = Cached {
+            source: ConfigSource::regular().location,
+            config_version: CONFIG_VERSION.to_string(),
+            channel: Channel {
+                name: "dev".into(),
+                how: "local build".into(),
+                file: "dev.jsonc".into(),
+            },
+            reader: reader(),
+            fetched: now(),
+            set: Manifest {
+                packages: Vec::new(),
+            },
+        };
+        if channel_variable().ok().flatten().is_none() {
+            assert!(cached.matches(&ConfigSource::regular()));
+        }
+        cached.reader = "logix-engine 2026.11.15 release".into();
+        assert!(!cached.matches(&ConfigSource::regular()));
+        assert!(reader().starts_with(&format!("logix-engine {} ", crate::state::ENGINE_VERSION)));
+    }
 
     const CONFIG: &str = r#"// What Logix Engine on config 001 uses.
 {

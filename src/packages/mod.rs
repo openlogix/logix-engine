@@ -378,6 +378,7 @@ impl PackageManager {
             source: remote.source.location.clone(),
             config_version: remote_config::CONFIG_VERSION.to_string(),
             channel: channel.clone(),
+            reader: remote_config::reader(),
             fetched: now,
             set: new.clone(),
         };
