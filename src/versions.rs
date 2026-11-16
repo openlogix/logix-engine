@@ -257,7 +257,7 @@ fn package_entry(packages: &PackageManager, spec: &PackageSpec, named_by: &str) 
         details.push(detail("File", f.file.clone()));
         details.push(detail("SHA-256", f.sha256.clone()));
     }
-    details.push(detail("Named by", named_by));
+    details.push(detail("Pinned in", named_by));
     let children = if status == PackageStatus::Ready && spec.name == CORE {
         third_party_entries(packages.core_components().unwrap_or_default())
     } else {
