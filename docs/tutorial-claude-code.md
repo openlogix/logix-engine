@@ -24,7 +24,7 @@ project.
 ## What you need
 
 - **A computer:** a Mac with Apple Silicon (M1 or later), or a 64-bit (x64) PC
-  with Windows 10 or 11.
+  with Windows 10 or 11, or with Linux (such as Ubuntu 22.04 or later).
 - **Claude Code:** installed and signed in to your Claude account, so that
   `claude` starts it in a terminal (on Windows, in PowerShell). If it isn't installed yet, follow the
   official [Claude Code installation instructions](https://code.claude.com/docs/en/setup).
@@ -54,8 +54,8 @@ A prompt.
 
 Type the prompts as they are, or in your own words or language.
 
-Where the steps differ between macOS and Windows, they have a tab for each:
-choose yours once, and every tab follows. On Windows, the terminal is
+Where the steps differ between macOS, Windows and Linux, they have a tab for
+each: choose yours once, and every tab follows. On Windows, the terminal is
 **PowerShell** (Start menu, type `PowerShell`).
 
 ## 1. Install the engine
@@ -116,6 +116,26 @@ newer pre-releases are development builds).
     & $HOME\Downloads\logix-engine\logix-engine.exe --version
     ```
 
+=== "Linux"
+
+    Download its `logix-engine-linux-x86-64-<date>.tgz` to your **Downloads**
+    folder, and unpack it:
+
+    **Terminal:**
+
+    ```sh
+    cd ~/Downloads
+    tar -xzf logix-engine-linux-x86-64-*.tgz
+    ```
+
+    Check that it runs:
+
+    **Terminal:**
+
+    ```sh
+    ~/Downloads/logix-engine/logix-engine --version
+    ```
+
 It prints the engine's version, a date such as `2026.11.09`.
 
 ## 2. Connect Claude Code to the engine
@@ -146,6 +166,17 @@ Register the engine with Claude Code once, for every folder:
 
     The quotes around `--` keep PowerShell from dropping it.
 
+=== "Linux"
+
+    **Terminal:**
+
+    ```sh
+    ENGINE=~/Downloads/logix-engine/logix-engine
+    ENGINE_HOME=~/.logix/claude-code/engine
+    claude mcp add -s user logix-engine -- $ENGINE --engine-folder $ENGINE_HOME
+    claude mcp list
+    ```
+
 The list shows `logix-engine` as connected. The engine keeps the FPGA tools
 it downloads, and its logs, in its engine folder, `.logix/claude-code/engine`
 in your home folder. Each Claude Code session's logs are in a folder of
@@ -171,6 +202,14 @@ Make a folder for the tutorial's project. You do this only once:
     mkdir $HOME\logix-tutorial
     ```
 
+=== "Linux"
+
+    **Terminal:**
+
+    ```sh
+    mkdir -p ~/logix-tutorial
+    ```
+
 ## 4. Start Claude Code
 
 === "macOS"
@@ -188,6 +227,15 @@ Make a folder for the tutorial's project. You do this only once:
 
     ```powershell
     cd $HOME\logix-tutorial
+    claude
+    ```
+
+=== "Linux"
+
+    **Terminal:**
+
+    ```sh
+    cd ~/logix-tutorial
     claude
     ```
 
@@ -369,6 +417,22 @@ Claude lists what's connected, and how well each device matches your board.
     Installing takes a minute or two. To give the board its old driver back
     later, for the board maker's own tools, ask Claude to remove it.
 
+=== "Linux"
+
+    Linux lets only the administrator open most USB devices, so your board
+    needs a udev rule before the engine can program it. If Claude says it
+    can't open the board, ask:
+
+    **Claude Code:**
+
+    ```text
+    Write the udev rule my board needs, and tell me how to install it.
+    ```
+
+    Claude writes a rule for your board's USB IDs only, and gives you the
+    commands that install it, which ask for your password (`sudo`). Then
+    unplug the board and plug it in again.
+
 Then:
 
 **Claude Code:**
@@ -503,7 +567,8 @@ Start each new design in its own folder, and run `claude` there.
 - To remove the engine, delete the `logix-engine` folder in your
   **Downloads** folder, and its engine folder, `.logix/claude-code/engine` in
   your home folder. On Windows, if Claude installed a WinUSB driver for a
-  board, ask Claude to remove it first.
+  board, ask Claude to remove it first. On Linux, if you installed a udev
+  rule for a board, delete its file in `/etc/udev/rules.d/` (with `sudo`).
 
 ## Learn more
 
