@@ -35,7 +35,10 @@ pub fn platform() -> String {
 
 /// The operating system and its version, such as "macOS 26.5" or "Windows
 /// 10.0.26100.2314", for system info; the platform's name when the version
-/// can't be read. Read once.
+/// can't be read. On Linux, with the desktop and session type when known,
+/// such as "Ubuntu 22.04.5 LTS, GNOME on Wayland" (they change how some
+/// things behave, such as raising GTKWave's window; the user's decision,
+/// 2026-11-16). Read once.
 pub fn operating_system() -> String {
     static OS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     OS.get_or_init(|| os_version().unwrap_or_else(platform))
@@ -66,11 +69,48 @@ fn os_version() -> Option<String> {
         let v = text.split("Version ").nth(1)?.trim().trim_end_matches(']');
         return Some(format!("Windows {v}"));
     }
-    // Linux: PRETTY_NAME from /etc/os-release, such as "Ubuntu 24.04.1 LTS".
+    // Linux: PRETTY_NAME from /etc/os-release, such as "Ubuntu 24.04.1 LTS",
+    // then the desktop session.
     let text = std::fs::read_to_string("/etc/os-release").ok()?;
-    text.lines()
+    let name = text
+        .lines()
         .find_map(|l| l.strip_prefix("PRETTY_NAME="))
-        .map(|v| v.trim_matches('"').to_string())
+        .map(|v| v.trim_matches('"').to_string())?;
+    let var = |n: &str| std::env::var(n).ok();
+    Some(
+        match linux_session(
+            var("XDG_CURRENT_DESKTOP").as_deref(),
+            var("XDG_SESSION_TYPE").as_deref(),
+        ) {
+            Some(session) => format!("{name}, {session}"),
+            None => name,
+        },
+    )
+}
+
+/// A Linux desktop session for people, from XDG_CURRENT_DESKTOP (such as
+/// "ubuntu:GNOME": its last name) and XDG_SESSION_TYPE (wayland, x11, or
+/// tty for a text console, such as over SSH): "GNOME on Wayland", "KDE on
+/// X11", "Wayland", or None when neither is set.
+pub fn linux_session(desktop: Option<&str>, session: Option<&str>) -> Option<String> {
+    let desktop = desktop
+        .and_then(|d| d.split(':').rev().find(|p| !p.trim().is_empty()))
+        .map(str::trim);
+    let session = session
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| match s {
+            "wayland" => "Wayland".to_string(),
+            "x11" => "X11".to_string(),
+            "tty" => "a text console".to_string(),
+            other => other.to_string(),
+        });
+    match (desktop, session) {
+        (Some(d), Some(s)) => Some(format!("{d} on {s}")),
+        (Some(d), None) => Some(d.to_string()),
+        (None, Some(s)) => Some(s),
+        (None, None) => None,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -124,6 +164,25 @@ impl EngineState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_linux_session_is_named_for_people() {
+        assert_eq!(
+            linux_session(Some("ubuntu:GNOME"), Some("wayland")).as_deref(),
+            Some("GNOME on Wayland")
+        );
+        assert_eq!(
+            linux_session(Some("KDE"), Some("x11")).as_deref(),
+            Some("KDE on X11")
+        );
+        assert_eq!(
+            linux_session(None, Some("tty")).as_deref(),
+            Some("a text console")
+        );
+        assert_eq!(linux_session(Some("XFCE"), None).as_deref(), Some("XFCE"));
+        assert_eq!(linux_session(Some(""), Some("")), None);
+        assert_eq!(linux_session(None, None), None);
+    }
 
     #[test]
     fn engine_version_is_a_dotted_date() {

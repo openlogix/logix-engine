@@ -1162,7 +1162,7 @@ Returns the Logix Engine's version, platform and package status. A host calls it
 | `engine_version` | version | The engine version, its release date as `yyyy.mm.dd` |
 | `protocol_versions` | list of text | The MCP protocol versions the engine accepts, such as 2026-07-28 and 2025-11-25 |
 | `platform` | text | The platform the engine runs on, such as `darwin-arm64` |
-| `operating_system` | text | The operating system and its version, such as `macOS 26.5` or `Windows 10.0.26100.2314`, for system info |
+| `operating_system` | text | The operating system and its version, such as `macOS 26.5` or `Windows 10.0.26100.2314`, for system info. On Linux, with the desktop and session type when the engine's environment has them (`XDG_CURRENT_DESKTOP`, `XDG_SESSION_TYPE`), such as `Ubuntu 22.04.5 LTS, GNOME on Wayland` |
 | `engine_commit` | text | The commit the engine was built from, short (7 hex digits). Omitted for a build made outside a git checkout |
 | `engine_folder` | absolute path | The engine folder, set by the host with the `--engine-folder` command-line argument when it launches the engine |
 | `auto_download` | boolean | Whether automatic package download and repair is on. It is on by default, and the host turns it off with the `--no-auto-download` command-line argument when it launches the engine |

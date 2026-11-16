@@ -41,7 +41,8 @@ pub struct GetEngineInfoOutput {
     /// The platform the engine runs on, such as darwin-arm64.
     pub platform: String,
     /// The operating system and its version, such as "macOS 26.5" or
-    /// "Windows 10.0.26100.2314", for system info.
+    /// "Windows 10.0.26100.2314", for system info; on Linux with the desktop
+    /// session when known, such as "Ubuntu 22.04.5 LTS, GNOME on Wayland".
     pub operating_system: String,
     /// The commit the engine was built from, short (7 hex digits); omitted
     /// for a build made outside a git checkout.

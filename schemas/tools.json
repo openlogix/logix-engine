@@ -32,7 +32,7 @@
           "type": "string"
         },
         "operating_system": {
-          "description": "The operating system and its version, such as \"macOS 26.5\" or\n\"Windows 10.0.26100.2314\", for system info.",
+          "description": "The operating system and its version, such as \"macOS 26.5\" or\n\"Windows 10.0.26100.2314\", for system info; on Linux with the desktop\nsession when known, such as \"Ubuntu 22.04.5 LTS, GNOME on Wayland\".",
           "type": "string"
         },
         "engine_commit": {
