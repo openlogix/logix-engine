@@ -1,13 +1,17 @@
-//! USB drivers on Windows (docs/requirements.md, Milestone 3 plan, drivers;
-//! docs/tool-api.md, list_devices). The programmers reach most boards
-//! through libusb, which on Windows can use only an interface that has
-//! WinUSB (or libusbK or libusb0), not the driver Windows picks by itself,
-//! such as FTDI's. Which interface needs it follows from the variant's
-//! programmer and connection, so the catalog has no driver field: the
-//! engine knows its programmers.
+//! What a board's USB device needs before its programmer can open it
+//! (docs/tool-api.md, list_devices: Drivers on Windows, udev rules on Linux):
 //!
-//! Elsewhere (macOS, Linux) there are no drivers to install: nothing here
-//! is reported.
+//! - On Windows, a driver (docs/requirements.md, Milestone 3 plan, drivers).
+//!   The programmers reach most boards through libusb, which on Windows can
+//!   use only an interface that has WinUSB (or libusbK or libusb0), not the
+//!   driver Windows picks by itself, such as FTDI's. Which interface needs
+//!   it follows from the variant's programmer and connection, so the
+//!   catalog has no driver field: the engine knows its programmers.
+//! - On Linux, a udev rule (Milestone 4): only root may open a USB device
+//!   until a rule lets the user, for every programmer (HID ones too). The
+//!   engine's rule, one file per pair of USB IDs, lets the user at the
+//!   computer (systemd's uaccess) and the plugdev group open it.
+//! - On macOS, nothing: nothing here is reported.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -52,26 +56,33 @@ fn is_cmsis_dap(args: &str) -> bool {
             .any(|w| w.eq_ignore_ascii_case("--cable=cmsisdap"))
 }
 
-/// The driver a device needs for a board's programmer on Windows, and the
-/// one it has: in list_devices, on Windows only, for devices whose board
-/// needs one.
+/// What a device needs for a board's programmer, and what it has: a driver
+/// on Windows (for devices whose board's programmer needs one), a udev rule
+/// on Linux (for every device that fits a board). Not on macOS.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DriverStatus {
-    /// The driver the board's programmer needs: winusb.
+    /// What the board's programmer needs: winusb (Windows) or udev-rule
+    /// (Linux).
     pub needed: String,
-    /// The USB interface that needs it, such as 0 (an FTDI chip's first
-    /// channel; its other channels, such as a serial port, keep their
-    /// driver).
-    pub interface: u8,
-    /// The driver Windows has on that interface now, by its service name in
-    /// lowercase, such as ftdibus (FTDI's), usbser or winusb. Omitted when
-    /// it has none.
+    /// On Windows, the USB interface that needs it, such as 0 (an FTDI
+    /// chip's first channel; its other channels, such as a serial port,
+    /// keep their driver). Omitted on Linux: a rule is for the whole
+    /// device.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interface: Option<u8>,
+    /// On Windows, the driver Windows has on that interface now, by its
+    /// service name in lowercase, such as ftdibus (FTDI's), usbser or
+    /// winusb. On Linux, the file of Logix Engine's udev rule for the
+    /// device's USB IDs, such as 70-logix-engine-0403-6010.rules, when
+    /// there is one (another rule may give access too). Omitted when there's
+    /// none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current: Option<String>,
-    /// Whether the programmer can use the interface as it is: true with
-    /// WinUSB, and with libusbK or libusb0, which older guides installed.
-    /// False means install_driver (WinUSB) first.
+    /// Whether the programmer can use the device as it is. On Windows: true
+    /// with WinUSB, and with libusbK or libusb0, which older guides
+    /// installed. On Linux: whether the engine can open the device. False
+    /// means install_driver first.
     pub ready: bool,
 }
 
@@ -101,7 +112,7 @@ pub fn status(interface: u8, current: &[Option<String>]) -> DriverStatus {
         .flatten();
     DriverStatus {
         needed: "winusb".into(),
-        interface,
+        interface: Some(interface),
         ready: !current.is_empty() && current.iter().all(ready),
         current: shown,
     }
@@ -322,6 +333,68 @@ pub fn is_package_name(name: &str) -> bool {
         .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
 }
 
+/// Where udev rules that administrators add go, on Linux.
+pub const UDEV_RULES_FOLDER: &str = "/etc/udev/rules.d";
+
+/// The file of Logix Engine's udev rule for a pair of USB IDs. 70, before
+/// systemd's 73-seat-late.rules, which acts on the uaccess tag.
+pub fn udev_rule_name(vid: &str, pid: &str) -> String {
+    format!(
+        "70-logix-engine-{}-{}.rules",
+        vid.to_ascii_lowercase(),
+        pid.to_ascii_lowercase()
+    )
+}
+
+/// Logix Engine's udev rule for a pair of USB IDs: the USB device (libusb's
+/// programmers) and its HID nodes (HID programmers, such as icesprog and
+/// CMSIS-DAP adapters, through hidraw) may be opened by the user at the
+/// computer (uaccess) and by the plugdev group (such as over SSH), as
+/// openFPGALoader's own rules do. `name` is for the comment.
+pub fn udev_rule_text(vid: &str, pid: &str, name: &str) -> String {
+    let (vid, pid) = (vid.to_ascii_lowercase(), pid.to_ascii_lowercase());
+    format!(
+        "# Added by Logix Engine for {name} ({vid}:{pid}), so the user at this\n\
+         # computer and the plugdev group can program it. Logix Engine's\n\
+         # uninstall_driver removes this file.\n\
+         SUBSYSTEM==\"usb\", ATTRS{{idVendor}}==\"{vid}\", ATTRS{{idProduct}}==\"{pid}\", MODE=\"0660\", GROUP=\"plugdev\", TAG+=\"uaccess\"\n\
+         SUBSYSTEM==\"hidraw\", ATTRS{{idVendor}}==\"{vid}\", ATTRS{{idProduct}}==\"{pid}\", MODE=\"0660\", GROUP=\"plugdev\", TAG+=\"uaccess\"\n"
+    )
+}
+
+/// The commands that add Logix Engine's udev rule by hand, for a terminal
+/// (they ask for the user's password): what install_driver suggests when
+/// Linux can't ask for it (no password prompt, such as over SSH).
+pub fn udev_rule_commands(vid: &str, pid: &str, name: &str) -> String {
+    format!(
+        "sudo tee {UDEV_RULES_FOLDER}/{} > /dev/null <<'EOF'\n{}EOF\nsudo udevadm control --reload-rules\nsudo udevadm trigger",
+        udev_rule_name(vid, pid),
+        udev_rule_text(vid, pid, name)
+    )
+}
+
+/// The status on Linux of a device that fits a board: ready when the engine
+/// can open it, with Logix Engine's rule when it's there.
+pub fn udev_status(reachable: bool, rule: Option<String>) -> DriverStatus {
+    DriverStatus {
+        needed: "udev-rule".into(),
+        interface: None,
+        current: rule,
+        ready: reachable,
+    }
+}
+
+/// Logix Engine's udev rule for these USB IDs, by its file name, when it's
+/// there (on Linux; never elsewhere).
+pub fn udev_rule(vid: &str, pid: &str) -> Option<String> {
+    let name = udev_rule_name(vid, pid);
+    (cfg!(target_os = "linux")
+        && std::path::Path::new(UDEV_RULES_FOLDER)
+            .join(&name)
+            .is_file())
+    .then_some(name)
+}
+
 /// Windows' INF folder, where it keeps the installed driver packages.
 pub fn inf_folder() -> std::path::PathBuf {
     let root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
@@ -428,6 +501,65 @@ mod tests {
             "tested": true
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn the_udev_rule_lets_the_user_open_the_device_and_its_hid_nodes() {
+        assert_eq!(
+            udev_rule_name("1D50", "602B"),
+            "70-logix-engine-1d50-602b.rules"
+        );
+        let text = udev_rule_text("0403", "6010", "the Alhambra II");
+        let rules: Vec<&str> = text.lines().filter(|l| !l.starts_with('#')).collect();
+        assert_eq!(rules.len(), 2, "{text}");
+        assert!(rules[0].starts_with("SUBSYSTEM==\"usb\""), "{text}");
+        assert!(rules[1].starts_with("SUBSYSTEM==\"hidraw\""), "{text}");
+        for r in rules {
+            for part in [
+                "ATTRS{idVendor}==\"0403\"",
+                "ATTRS{idProduct}==\"6010\"",
+                "MODE=\"0660\"",
+                "GROUP=\"plugdev\"",
+                "TAG+=\"uaccess\"",
+            ] {
+                assert!(r.contains(part), "{r}");
+            }
+        }
+        assert!(text.contains("the Alhambra II (0403:6010)"), "{text}");
+        assert!(text.ends_with('\n'));
+    }
+
+    #[test]
+    fn the_udev_commands_write_the_same_rule() {
+        let commands = udev_rule_commands("0403", "6010", "the Alhambra II");
+        assert!(
+            commands.starts_with(
+                "sudo tee /etc/udev/rules.d/70-logix-engine-0403-6010.rules > /dev/null <<'EOF'\n"
+            ),
+            "{commands}"
+        );
+        assert!(
+            commands.contains(&format!(
+                "{}EOF\n",
+                udev_rule_text("0403", "6010", "the Alhambra II")
+            )),
+            "{commands}"
+        );
+        assert!(commands.ends_with("sudo udevadm control --reload-rules\nsudo udevadm trigger"));
+    }
+
+    #[test]
+    fn the_udev_status_is_ready_when_the_device_opens() {
+        let s = udev_status(false, None);
+        assert_eq!(
+            (s.needed.as_str(), s.interface, s.ready),
+            ("udev-rule", None, false)
+        );
+        assert!(udev_status(true, Some("x.rules".into())).ready);
+        // Never on other systems.
+        if !cfg!(target_os = "linux") {
+            assert_eq!(udev_rule("0403", "6010"), None);
+        }
     }
 
     #[test]

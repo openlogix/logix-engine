@@ -75,10 +75,11 @@ pub struct Device {
     #[serde(skip)]
     #[schemars(skip)]
     pub reachable: bool,
-    /// On Windows only: the driver the device needs for its board's
-    /// programmer (the build's board when list_devices was given a
-    /// build_folder, else its best match) and the one it has, for a board
-    /// whose programmer needs one. ready false means install_driver first.
+    /// What the device needs for its board's programmer (the build's board
+    /// when list_devices was given a build_folder, else its best match) and
+    /// what it has: on Windows a driver, for a board whose programmer needs
+    /// one; on Linux a udev rule, for every device that fits a board. Never
+    /// on macOS. ready false means install_driver first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub driver: Option<crate::drivers::DriverStatus>,
     /// The device's DFU interface (USB class 0xFE, subclass 1), if it has
@@ -235,8 +236,8 @@ pub struct UnreachableDevice {
     pub boards: Vec<BoardMatch>,
     /// What makes the device usable, such as fix_device_permissions.
     pub action: Action,
-    /// On Windows only: the driver it needs for its board's programmer and
-    /// the one it has, as for devices.
+    /// On Windows and Linux: what it needs for its board's programmer and
+    /// what it has, as for devices.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub driver: Option<crate::drivers::DriverStatus>,
     /// How well it matches the given build's board: always weak, since its
@@ -528,6 +529,12 @@ pub fn unreachable_action() -> Action {
         Action {
             code: ActionCode::InstallDrivers,
             description: "Install the driver this device needs with install_driver (ask the user first), then list the devices again."
+                .into(),
+        }
+    } else if cfg!(target_os = "linux") {
+        Action {
+            code: ActionCode::FixDevicePermissions,
+            description: "Add a udev rule that lets this user open the device with install_driver (ask the user first), then list the devices again."
                 .into(),
         }
     } else {

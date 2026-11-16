@@ -4818,7 +4818,7 @@
               ]
             },
             "driver": {
-              "description": "On Windows only: the driver the device needs for its board's\nprogrammer (the build's board when list_devices was given a\nbuild_folder, else its best match) and the one it has, for a board\nwhose programmer needs one. ready false means install_driver first.",
+              "description": "What the device needs for its board's programmer (the build's board\nwhen list_devices was given a build_folder, else its best match) and\nwhat it has: on Windows a driver, for a board whose programmer needs\none; on Linux a udev rule, for every device that fits a board. Never\non macOS. ready false means install_driver first.",
               "anyOf": [
                 {
                   "$ref": "#/$defs/DriverStatus"
@@ -4934,35 +4934,37 @@
           ]
         },
         "DriverStatus": {
-          "description": "The driver a device needs for a board's programmer on Windows, and the\none it has: in list_devices, on Windows only, for devices whose board\nneeds one.",
+          "description": "What a device needs for a board's programmer, and what it has: a driver\non Windows (for devices whose board's programmer needs one), a udev rule\non Linux (for every device that fits a board). Not on macOS.",
           "type": "object",
           "properties": {
             "needed": {
-              "description": "The driver the board's programmer needs: winusb.",
+              "description": "What the board's programmer needs: winusb (Windows) or udev-rule\n(Linux).",
               "type": "string"
             },
             "interface": {
-              "description": "The USB interface that needs it, such as 0 (an FTDI chip's first\nchannel; its other channels, such as a serial port, keep their\ndriver).",
-              "type": "integer",
+              "description": "On Windows, the USB interface that needs it, such as 0 (an FTDI\nchip's first channel; its other channels, such as a serial port,\nkeep their driver). Omitted on Linux: a rule is for the whole\ndevice.",
+              "type": [
+                "integer",
+                "null"
+              ],
               "maximum": 255,
               "minimum": 0
             },
             "current": {
-              "description": "The driver Windows has on that interface now, by its service name in\nlowercase, such as ftdibus (FTDI's), usbser or winusb. Omitted when\nit has none.",
+              "description": "On Windows, the driver Windows has on that interface now, by its\nservice name in lowercase, such as ftdibus (FTDI's), usbser or\nwinusb. On Linux, the file of Logix Engine's udev rule for the\ndevice's USB IDs, such as 70-logix-engine-0403-6010.rules, when\nthere is one (another rule may give access too). Omitted when there's\nnone.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "ready": {
-              "description": "Whether the programmer can use the interface as it is: true with\nWinUSB, and with libusbK or libusb0, which older guides installed.\nFalse means install_driver (WinUSB) first.",
+              "description": "Whether the programmer can use the device as it is. On Windows: true\nwith WinUSB, and with libusbK or libusb0, which older guides\ninstalled. On Linux: whether the engine can open the device. False\nmeans install_driver first.",
               "type": "boolean"
             }
           },
           "additionalProperties": false,
           "required": [
             "needed",
-            "interface",
             "ready"
           ]
         },
@@ -5014,7 +5016,7 @@
               "$ref": "#/$defs/Action"
             },
             "driver": {
-              "description": "On Windows only: the driver it needs for its board's programmer and\nthe one it has, as for devices.",
+              "description": "On Windows and Linux: what it needs for its board's programmer and\nwhat it has, as for devices.",
               "anyOf": [
                 {
                   "$ref": "#/$defs/DriverStatus"
@@ -5316,7 +5318,7 @@
               ]
             },
             "driver": {
-              "description": "On Windows only: the driver the device needs for its board's\nprogrammer (the build's board when list_devices was given a\nbuild_folder, else its best match) and the one it has, for a board\nwhose programmer needs one. ready false means install_driver first.",
+              "description": "What the device needs for its board's programmer (the build's board\nwhen list_devices was given a build_folder, else its best match) and\nwhat it has: on Windows a driver, for a board whose programmer needs\none; on Linux a udev rule, for every device that fits a board. Never\non macOS. ready false means install_driver first.",
               "anyOf": [
                 {
                   "$ref": "#/$defs/DriverStatus"
@@ -5432,35 +5434,37 @@
           ]
         },
         "DriverStatus": {
-          "description": "The driver a device needs for a board's programmer on Windows, and the\none it has: in list_devices, on Windows only, for devices whose board\nneeds one.",
+          "description": "What a device needs for a board's programmer, and what it has: a driver\non Windows (for devices whose board's programmer needs one), a udev rule\non Linux (for every device that fits a board). Not on macOS.",
           "type": "object",
           "properties": {
             "needed": {
-              "description": "The driver the board's programmer needs: winusb.",
+              "description": "What the board's programmer needs: winusb (Windows) or udev-rule\n(Linux).",
               "type": "string"
             },
             "interface": {
-              "description": "The USB interface that needs it, such as 0 (an FTDI chip's first\nchannel; its other channels, such as a serial port, keep their\ndriver).",
-              "type": "integer",
+              "description": "On Windows, the USB interface that needs it, such as 0 (an FTDI\nchip's first channel; its other channels, such as a serial port,\nkeep their driver). Omitted on Linux: a rule is for the whole\ndevice.",
+              "type": [
+                "integer",
+                "null"
+              ],
               "maximum": 255,
               "minimum": 0
             },
             "current": {
-              "description": "The driver Windows has on that interface now, by its service name in\nlowercase, such as ftdibus (FTDI's), usbser or winusb. Omitted when\nit has none.",
+              "description": "On Windows, the driver Windows has on that interface now, by its\nservice name in lowercase, such as ftdibus (FTDI's), usbser or\nwinusb. On Linux, the file of Logix Engine's udev rule for the\ndevice's USB IDs, such as 70-logix-engine-0403-6010.rules, when\nthere is one (another rule may give access too). Omitted when there's\nnone.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "ready": {
-              "description": "Whether the programmer can use the interface as it is: true with\nWinUSB, and with libusbK or libusb0, which older guides installed.\nFalse means install_driver (WinUSB) first.",
+              "description": "Whether the programmer can use the device as it is. On Windows: true\nwith WinUSB, and with libusbK or libusb0, which older guides\ninstalled. On Linux: whether the engine can open the device. False\nmeans install_driver first.",
               "type": "boolean"
             }
           },
           "additionalProperties": false,
           "required": [
             "needed",
-            "interface",
             "ready"
           ]
         },
@@ -5513,7 +5517,7 @@
   },
   {
     "name": "install_driver",
-    "description": "Windows only. Installs WinUSB, the driver the board's programmer needs, on the USB interface list_devices' driver names, for a device from list_devices (in devices or unreachable) whose driver isn't ready. Ask the user first: Windows then asks whether Logix Engine may make changes, and the user must answer Yes. Windows gives drivers by USB IDs and interface, not per board, so other connected devices with the same USB IDs get WinUSB too: the tool refuses while there are any, unless allow_same_ids is true (ask the user to unplug them, or to confirm). Vendor tools that use the interface (such as Vivado for a Digilent board) can't until uninstall_driver. Does nothing when the driver is ready already.",
+    "description": "Windows and Linux. For a device from list_devices (in devices or unreachable) whose driver isn't ready, gives it what list_devices' driver says it needs. Ask the user first, saying what changes. On Windows: installs WinUSB, the driver the board's programmer needs, on the USB interface driver names; Windows then asks whether Logix Engine may make changes, and the user must answer Yes. Windows gives drivers by USB IDs and interface, not per board, so other connected devices with the same USB IDs get WinUSB too: the tool refuses while there are any, unless allow_same_ids is true (ask the user to unplug them, or to confirm). Vendor tools that use the interface (such as Vivado for a Digilent board) can't until uninstall_driver. On Linux: adds a udev rule that lets the user open devices with the board's USB IDs; the desktop then asks for the user's password. Where it can't (such as over SSH), the error's details have the commands the user can run in a terminal instead. Does nothing when the driver is ready already.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "InstallDriverInput",
@@ -5541,7 +5545,7 @@
           "default": null
         },
         "allow_same_ids": {
-          "description": "Install even when other connected devices have the same USB IDs,\nwhich then get WinUSB too. Default false: refused, naming them.",
+          "description": "On Windows: install even when other connected devices have the same\nUSB IDs, which then get WinUSB too. Default false: refused, naming\nthem. Not needed on Linux, where the rule only gives access.",
           "type": "boolean",
           "default": false
         },
@@ -5625,7 +5629,7 @@
           "type": "boolean"
         },
         "same_ids": {
-          "description": "Other connected devices with the same USB IDs, which got WinUSB too\n(only with allow_same_ids).",
+          "description": "Other connected devices with the same USB IDs, which got WinUSB too\n(on Windows, only with allow_same_ids), or which the udev rule lets\nthe user open too (Linux).",
           "type": "array",
           "items": {
             "type": "string"
@@ -5640,35 +5644,37 @@
       ],
       "$defs": {
         "DriverStatus": {
-          "description": "The driver a device needs for a board's programmer on Windows, and the\none it has: in list_devices, on Windows only, for devices whose board\nneeds one.",
+          "description": "What a device needs for a board's programmer, and what it has: a driver\non Windows (for devices whose board's programmer needs one), a udev rule\non Linux (for every device that fits a board). Not on macOS.",
           "type": "object",
           "properties": {
             "needed": {
-              "description": "The driver the board's programmer needs: winusb.",
+              "description": "What the board's programmer needs: winusb (Windows) or udev-rule\n(Linux).",
               "type": "string"
             },
             "interface": {
-              "description": "The USB interface that needs it, such as 0 (an FTDI chip's first\nchannel; its other channels, such as a serial port, keep their\ndriver).",
-              "type": "integer",
+              "description": "On Windows, the USB interface that needs it, such as 0 (an FTDI\nchip's first channel; its other channels, such as a serial port,\nkeep their driver). Omitted on Linux: a rule is for the whole\ndevice.",
+              "type": [
+                "integer",
+                "null"
+              ],
               "maximum": 255,
               "minimum": 0
             },
             "current": {
-              "description": "The driver Windows has on that interface now, by its service name in\nlowercase, such as ftdibus (FTDI's), usbser or winusb. Omitted when\nit has none.",
+              "description": "On Windows, the driver Windows has on that interface now, by its\nservice name in lowercase, such as ftdibus (FTDI's), usbser or\nwinusb. On Linux, the file of Logix Engine's udev rule for the\ndevice's USB IDs, such as 70-logix-engine-0403-6010.rules, when\nthere is one (another rule may give access too). Omitted when there's\nnone.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "ready": {
-              "description": "Whether the programmer can use the interface as it is: true with\nWinUSB, and with libusbK or libusb0, which older guides installed.\nFalse means install_driver (WinUSB) first.",
+              "description": "Whether the programmer can use the device as it is. On Windows: true\nwith WinUSB, and with libusbK or libusb0, which older guides\ninstalled. On Linux: whether the engine can open the device. False\nmeans install_driver first.",
               "type": "boolean"
             }
           },
           "additionalProperties": false,
           "required": [
             "needed",
-            "interface",
             "ready"
           ]
         }
@@ -5682,7 +5688,7 @@
   },
   {
     "name": "uninstall_driver",
-    "description": "Windows only. Undoes install_driver for a device from list_devices: removes every driver package libwdi installed for the board's USB interface (by WinUSB, and by Zadig with libusbK or libusb0 from older guides; never Windows' or a vendor's), the certificates libwdi signed them with, then asks Windows to look for drivers again, so the device gets Windows' own choice back (such as FTDI's, for vendor tools). Ask the user first: Windows then asks whether Logix Engine may make changes. It applies to every device with the same USB IDs. Does nothing when there's no such package.",
+    "description": "Windows and Linux. Undoes install_driver for a device from list_devices. Ask the user first. On Windows: removes every driver package libwdi installed for the board's USB interface (by WinUSB, and by Zadig with libusbK or libusb0 from older guides; never Windows' or a vendor's), the certificates libwdi signed them with, then asks Windows to look for drivers again, so the device gets Windows' own choice back (such as FTDI's, for vendor tools); Windows asks whether Logix Engine may make changes. On Linux: removes Logix Engine's udev rule for the device's USB IDs (never another rule); the desktop asks for the user's password. It applies to every device with the same USB IDs. Does nothing when there's nothing of Logix Engine's to remove.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "UninstallDriverInput",
@@ -5785,7 +5791,7 @@
           "$ref": "#/$defs/DriverStatus"
         },
         "removed": {
-          "description": "The driver packages removed, by their names in Windows (oem<N>.inf).\nEmpty when there were none, so nothing was done.",
+          "description": "What was removed: on Windows, the driver packages, by their names in\nWindows (oem<N>.inf); on Linux, the udev rule's file. Empty when there\nwas nothing, so nothing was done.",
           "type": "array",
           "items": {
             "type": "string"
@@ -5800,35 +5806,37 @@
       ],
       "$defs": {
         "DriverStatus": {
-          "description": "The driver a device needs for a board's programmer on Windows, and the\none it has: in list_devices, on Windows only, for devices whose board\nneeds one.",
+          "description": "What a device needs for a board's programmer, and what it has: a driver\non Windows (for devices whose board's programmer needs one), a udev rule\non Linux (for every device that fits a board). Not on macOS.",
           "type": "object",
           "properties": {
             "needed": {
-              "description": "The driver the board's programmer needs: winusb.",
+              "description": "What the board's programmer needs: winusb (Windows) or udev-rule\n(Linux).",
               "type": "string"
             },
             "interface": {
-              "description": "The USB interface that needs it, such as 0 (an FTDI chip's first\nchannel; its other channels, such as a serial port, keep their\ndriver).",
-              "type": "integer",
+              "description": "On Windows, the USB interface that needs it, such as 0 (an FTDI\nchip's first channel; its other channels, such as a serial port,\nkeep their driver). Omitted on Linux: a rule is for the whole\ndevice.",
+              "type": [
+                "integer",
+                "null"
+              ],
               "maximum": 255,
               "minimum": 0
             },
             "current": {
-              "description": "The driver Windows has on that interface now, by its service name in\nlowercase, such as ftdibus (FTDI's), usbser or winusb. Omitted when\nit has none.",
+              "description": "On Windows, the driver Windows has on that interface now, by its\nservice name in lowercase, such as ftdibus (FTDI's), usbser or\nwinusb. On Linux, the file of Logix Engine's udev rule for the\ndevice's USB IDs, such as 70-logix-engine-0403-6010.rules, when\nthere is one (another rule may give access too). Omitted when there's\nnone.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "ready": {
-              "description": "Whether the programmer can use the interface as it is: true with\nWinUSB, and with libusbK or libusb0, which older guides installed.\nFalse means install_driver (WinUSB) first.",
+              "description": "Whether the programmer can use the device as it is. On Windows: true\nwith WinUSB, and with libusbK or libusb0, which older guides\ninstalled. On Linux: whether the engine can open the device. False\nmeans install_driver first.",
               "type": "boolean"
             }
           },
           "additionalProperties": false,
           "required": [
             "needed",
-            "interface",
             "ready"
           ]
         }

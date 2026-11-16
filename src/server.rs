@@ -39,10 +39,13 @@ const INSTRUCTIONS: &str = "Logix Engine builds and tests FPGA designs and progr
     must drive (requires) and its ai_hints. To show a build's resource use to people, prefer \
     build's report and report_summary text, and each resource's display_percent, over \
     numbers of your own: display_percent is \"0%\" only when none is used and \"100%\" only \
-    when all are used, and anything else is rounded up. On Windows, a board whose \
-    list_devices driver isn't ready needs WinUSB first: ask the user before calling \
-    install_driver (Windows then asks whether Logix Engine may make changes, and other \
-    connected devices with the same USB IDs get it too); uninstall_driver undoes it. \
+    when all are used, and anything else is rounded up. On Windows and Linux, a \
+    board whose list_devices driver isn't ready needs it first: ask the user before calling \
+    install_driver. On Windows it installs WinUSB (Windows then asks whether Logix Engine \
+    may make changes, and other connected devices with the same USB IDs get it too); on \
+    Linux it adds a udev rule for the board's USB IDs (the desktop asks for the user's \
+    password; without one, such as over SSH, the error's details have the commands for the \
+    user to run). uninstall_driver undoes it. \
     The engine needs no project file. If your session \
     has no other requirements and the project has no layout of its own, a suggested default \
     project model is: one folder with logix.json (board, board_variant, top_module), \

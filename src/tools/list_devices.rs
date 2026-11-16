@@ -87,11 +87,30 @@ pub fn run_with(
     scan: impl FnOnce() -> Result<Vec<Device>, ToolError>,
 ) -> Result<ListDevicesOutput, ToolError> {
     let lookup = |v: &str, p: &str, i: u8, c: bool| drivers::current_drivers(v, p, i, c);
-    run_with_drivers(
+    let mut out = run_with_drivers(
         input,
         scan,
         cfg!(windows).then_some(&lookup as DriverLookup),
-    )
+    )?;
+    if cfg!(target_os = "linux") {
+        add_udev_statuses(&mut out, &drivers::udev_rule);
+    }
+    Ok(out)
+}
+
+/// Logix Engine's udev rule for some USB IDs, by its file name, when it's
+/// there (drivers::udev_rule; a fake in tests).
+pub type RuleLookup<'a> = &'a dyn Fn(&str, &str) -> Option<String>;
+
+/// On Linux: every device that fits a board gets its udev rule status
+/// (drivers::udev_status), ready when the engine can open it.
+pub fn add_udev_statuses(out: &mut ListDevicesOutput, rule: RuleLookup) {
+    for d in out.devices.iter_mut().filter(|d| !d.boards.is_empty()) {
+        d.driver = Some(drivers::udev_status(true, rule(&d.vid, &d.pid)));
+    }
+    for d in &mut out.unreachable {
+        d.driver = Some(drivers::udev_status(false, rule(&d.vid, &d.pid)));
+    }
 }
 
 /// As run_with, with Windows' drivers from `drivers` (None: not on Windows,
@@ -274,7 +293,10 @@ pub fn locate(
         display_paths: None,
         build_folder,
     };
-    let out = run_with_drivers(input, move || Ok(scanned), Some(drivers))?;
+    let mut out = run_with_drivers(input, move || Ok(scanned), cfg!(windows).then_some(drivers))?;
+    if cfg!(target_os = "linux") {
+        add_udev_statuses(&mut out, &drivers::udev_rule);
+    }
     let (boards, driver) = match out.devices.iter().find(|d| same_device(&d.id, id)) {
         Some(d) => (d.boards.clone(), d.driver.clone()),
         None => match out.unreachable.iter().find(|d| same_device(&d.id, id)) {
@@ -348,7 +370,7 @@ mod tests {
         let (out, asked) = list_on_windows(vec![alhambra.clone()], Some("ftdibus"));
         let driver = out.devices[0].driver.clone().unwrap();
         assert_eq!(driver.needed, "winusb");
-        assert_eq!(driver.interface, 0);
+        assert_eq!(driver.interface, Some(0));
         assert_eq!(driver.current.as_deref(), Some("ftdibus"));
         assert!(!driver.ready);
         assert_eq!(asked, [("0403:6010".to_string(), 0, true)]);
@@ -382,13 +404,55 @@ mod tests {
     }
 
     #[test]
-    fn elsewhere_no_driver_is_reported() {
+    fn on_macos_no_driver_is_reported() {
         let out = list(
             json!({}),
             vec![device("0403", "6010", Some("Alhambra II v1.0A"), None, 2)],
         )
         .unwrap();
-        assert_eq!(out.devices[0].driver.is_some(), cfg!(windows));
+        assert_eq!(
+            out.devices[0].driver.is_some(),
+            cfg!(any(windows, target_os = "linux"))
+        );
+    }
+
+    // On Linux every device that fits a board gets its udev rule status,
+    // HID programmers' too (the iCESugar's iCELink), and no other device.
+    #[test]
+    fn on_linux_boards_get_their_udev_rule_status() {
+        let mut locked = device("0403", "6010", None, None, 5);
+        locked.reachable = false;
+        let devices = vec![
+            device("1d50", "602b", Some("CMSIS-DAP"), Some("0700ab"), 2),
+            locked,
+            device("05ac", "8262", Some("Keyboard"), None, 3),
+        ];
+        let input: ListDevicesInput = serde_json::from_value(json!({})).unwrap();
+        let mut out = run_with_drivers(input, move || Ok(devices), None).unwrap();
+        let rule = |v: &str, p: &str| (v == "1d50").then(|| drivers::udev_rule_name(v, p));
+        add_udev_statuses(&mut out, &rule);
+        let icesugar = out.devices.iter().find(|d| d.vid == "1d50").unwrap();
+        assert_eq!(
+            icesugar.driver,
+            Some(drivers::udev_status(
+                true,
+                Some("70-logix-engine-1d50-602b.rules".into())
+            ))
+        );
+        let keyboard = out.devices.iter().find(|d| d.vid == "05ac").unwrap();
+        assert_eq!(keyboard.driver, None);
+        let driver = out.unreachable[0].driver.clone().unwrap();
+        assert_eq!(
+            (
+                driver.needed.as_str(),
+                driver.interface,
+                driver.current,
+                driver.ready
+            ),
+            ("udev-rule", None, None, false)
+        );
+        let json = serde_json::to_value(&out.unreachable[0]).unwrap();
+        assert!(json["driver"].get("interface").is_none(), "{json}");
     }
 
     #[test]

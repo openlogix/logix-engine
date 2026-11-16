@@ -1,7 +1,8 @@
-//! The install_driver tool (docs/tool-api.md, install_driver): installs
-//! WinUSB on the interface a board's programmer opens, on Windows, with
-//! logix-core's wdi-simple, run as an administrator after Windows asks the
-//! user (src/elevated.rs).
+//! The install_driver tool (docs/tool-api.md, install_driver): what a
+//! board's USB device needs before its programmer can open it, run as an
+//! administrator after the system asks the user (src/elevated.rs). On
+//! Windows, WinUSB on the interface the programmer opens, with logix-core's
+//! wdi-simple; on Linux, Logix Engine's udev rule for the device's USB IDs.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -19,15 +20,19 @@ pub struct InstallDriver;
 
 impl EngineTool for InstallDriver {
     const NAME: &'static str = "install_driver";
-    const DESCRIPTION: &'static str = "Windows only. Installs WinUSB, the driver the board's \
-        programmer needs, on the USB interface list_devices' driver names, for a device from \
-        list_devices (in devices or unreachable) whose driver isn't ready. Ask the user first: \
-        Windows then asks whether Logix Engine may make changes, and the user must answer Yes. \
-        Windows gives drivers by USB IDs and interface, not per board, so other connected \
-        devices with the same USB IDs get WinUSB too: the tool refuses while there are any, \
-        unless allow_same_ids is true (ask the user to unplug them, or to confirm). Vendor \
-        tools that use the interface (such as Vivado for a Digilent board) can't until \
-        uninstall_driver. Does nothing when the driver is ready already.";
+    const DESCRIPTION: &'static str = "Windows and Linux. For a device from list_devices (in \
+        devices or unreachable) whose driver isn't ready, gives it what list_devices' driver \
+        says it needs. Ask the user first, saying what changes. On Windows: installs WinUSB, \
+        the driver the board's programmer needs, on the USB interface driver names; Windows \
+        then asks whether Logix Engine may make changes, and the user must answer Yes. Windows \
+        gives drivers by USB IDs and interface, not per board, so other connected devices with \
+        the same USB IDs get WinUSB too: the tool refuses while there are any, unless \
+        allow_same_ids is true (ask the user to unplug them, or to confirm). Vendor tools that \
+        use the interface (such as Vivado for a Digilent board) can't until uninstall_driver. \
+        On Linux: adds a udev rule that lets the user open devices with the board's USB IDs; \
+        the desktop then asks for the user's password. Where it can't (such as over SSH), the \
+        error's details have the commands the user can run in a terminal instead. Does nothing \
+        when the driver is ready already.";
     const READ_ONLY: bool = false;
     type Input = InstallDriverInput;
     type Output = InstallDriverOutput;
@@ -47,8 +52,9 @@ pub struct InstallDriverInput {
     /// with the same build_folder. Omitted means the device's best match.
     #[serde(default)]
     pub build_folder: Option<String>,
-    /// Install even when other connected devices have the same USB IDs,
-    /// which then get WinUSB too. Default false: refused, naming them.
+    /// On Windows: install even when other connected devices have the same
+    /// USB IDs, which then get WinUSB too. Default false: refused, naming
+    /// them. Not needed on Linux, where the rule only gives access.
     #[serde(default)]
     pub allow_same_ids: bool,
     /// How to name paths in what people read. Omitted means as given.
@@ -68,7 +74,8 @@ pub struct InstallDriverOutput {
     /// False when the driver was ready already, so nothing was done.
     pub installed: bool,
     /// Other connected devices with the same USB IDs, which got WinUSB too
-    /// (only with allow_same_ids).
+    /// (on Windows, only with allow_same_ids), or which the udev rule lets
+    /// the user open too (Linux).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub same_ids: Vec<String>,
 }
@@ -132,8 +139,11 @@ pub async fn run(
     input: InstallDriverInput,
     call: &Call,
 ) -> Result<InstallDriverOutput, ToolError> {
+    if cfg!(target_os = "linux") {
+        return run_linux(input, call).await;
+    }
     if !cfg!(windows) {
-        return Err(not_windows());
+        return Err(not_needed());
     }
     let find = lookup();
     let located = list_devices::locate(
@@ -185,7 +195,8 @@ pub async fn run(
     phases.start("Waiting for permission");
     call.output.message(&format!(
         "Installing WinUSB for {} (USB interface {}). Windows asks whether Logix Engine may make changes: answer Yes.",
-        located.who, driver.interface
+        located.who,
+        driver.interface.unwrap_or(0)
     ));
     let d = &located.device;
     // wdi-simple writes the driver package here; Windows keeps its own copy.
@@ -194,7 +205,7 @@ pub async fn run(
         wdi_simple,
         vid: d.vid.clone(),
         pid: d.pid.clone(),
-        interface: d.composite.then_some(driver.interface),
+        interface: d.composite.then_some(driver.interface.unwrap_or(0)),
         name: located.name.clone(),
         dest: dest.clone(),
     };
@@ -264,11 +275,102 @@ pub async fn run(
     }
 }
 
-/// The refusal on systems that need no drivers.
-pub fn not_windows() -> ToolError {
-    ToolError::request(
-        "Drivers are needed only on Windows: on this system the programmers use the board as it is.",
-    )
+/// install_driver on Linux: adds Logix Engine's udev rule for the device's
+/// USB IDs, through pkexec, then waits until the engine can open it.
+async fn run_linux(
+    input: InstallDriverInput,
+    call: &Call,
+) -> Result<InstallDriverOutput, ToolError> {
+    let find = lookup();
+    let located = list_devices::locate(
+        &input.device,
+        input.custom_boards_folder.clone(),
+        input.build_folder.clone(),
+        devices::scan,
+        &find,
+    )?;
+    let driver = located
+        .driver
+        .clone()
+        .unwrap_or_else(|| drivers::udev_status(located.device.reachable, None));
+    if driver.ready {
+        return Ok(InstallDriverOutput {
+            device: located.device.id.clone(),
+            driver,
+            installed: false,
+            same_ids: Vec::new(),
+        });
+    }
+    let d = &located.device;
+    let phases = std::sync::Arc::new(Phases::new(call.progress.clone(), 3));
+    phases.start("Waiting for permission");
+    call.output.message(&format!(
+        "Adding a udev rule that lets you program {} ({}:{}). Linux asks for your password: enter it to allow.",
+        located.who, d.vid, d.pid
+    ));
+    let request = Request::AddUdevRule {
+        vid: d.vid.clone(),
+        pid: d.pid.clone(),
+        name: located.name.clone(),
+    };
+    let (started, said) = (phases.clone(), call.output.clone());
+    let response = tokio::task::spawn_blocking(move || {
+        elevated::run_elevated(&request, || {
+            said.message("Permission given. Adding the rule.");
+            started.start("Adding rule")
+        })
+    })
+    .await
+    .map_err(|e| ToolError::engine(format!("Adding the rule stopped: {e}")))??;
+    elevated::report(&response, call.output.as_ref());
+    if let Some(e) = &response.error {
+        return Err(
+            ToolError::engine(format!("The helper refused: {e}")).with_details(response.details())
+        );
+    }
+    if response.steps.iter().any(|s| s.exit_code != Some(0)) {
+        return Err(ToolError::setup("Couldn't add the udev rule.")
+            .with_details(response.details())
+            .with_action(
+                ActionCode::FixDevicePermissions,
+                "Unplug the board, plug it in again and retry.",
+            ));
+    }
+
+    phases.start("Checking access");
+    call.output.message("Waiting for Linux to apply the rule.");
+    let (custom, build, id) = (
+        input.custom_boards_folder.clone(),
+        input.build_folder.clone(),
+        input.device.clone(),
+    );
+    let (device, driver) = tokio::task::spawn_blocking(move || {
+        let find = lookup();
+        settle(&id, custom, build, true, &find)
+    })
+    .await
+    .map_err(|e| ToolError::engine(format!("The access check stopped: {e}")))??;
+    match driver {
+        Some(driver) if driver.ready => Ok(InstallDriverOutput {
+            device: device.id,
+            driver,
+            installed: true,
+            same_ids: located.same_ids,
+        }),
+        _ => Err(ToolError::setup(
+            "The udev rule was added, but the device still can't be opened.",
+        )
+        .with_details(response.details())
+        .with_action(
+            ActionCode::FixDevicePermissions,
+            "Unplug the board, plug it in again and list the devices.",
+        )),
+    }
+}
+
+/// The refusal on systems that need nothing (macOS).
+pub fn not_needed() -> ToolError {
+    ToolError::request("Nothing is needed on this system: the programmers use the board as it is.")
 }
 
 #[cfg(test)]
@@ -297,11 +399,11 @@ mod tests {
         assert_eq!(err.action.unwrap().code, ActionCode::DisconnectDevices);
     }
 
-    // install_driver and uninstall_driver refuse at once elsewhere.
+    // install_driver and uninstall_driver refuse at once on macOS.
     #[test]
     fn elsewhere_it_is_refused() {
-        let err = not_windows();
+        let err = not_needed();
         assert_eq!(err.category, crate::errors::Category::Request);
-        assert!(err.message.contains("only on Windows"), "{}", err.message);
+        assert!(err.message.contains("Nothing is needed"), "{}", err.message);
     }
 }

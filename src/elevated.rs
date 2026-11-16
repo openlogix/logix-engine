@@ -1,7 +1,9 @@
-//! Driver changes that need administrator rights, on Windows (docs/tool-api.md,
+//! Device changes that need administrator rights (docs/tool-api.md,
 //! install_driver and uninstall_driver). The engine runs itself again as an
-//! administrator, through Windows' own permission prompt (UAC), which names
-//! Logix Engine, for exactly one of two operations:
+//! administrator for exactly one operation, through the system's own
+//! permission prompt.
+//!
+//! On Windows, through UAC, which names Logix Engine:
 //!
 //! - install WinUSB on a device's interface with logix-core's wdi-simple
 //!   (it must run elevated as a whole: libwdi signs the driver package it
@@ -9,6 +11,15 @@
 //! - remove driver packages libwdi installed (pnputil) and the
 //!   certificates it signed them with, then ask Windows to look for drivers
 //!   again.
+//!
+//! On Linux, through pkexec (polkit), whose password dialog the desktop
+//! shows, from Logix IDE and from Logix Engine under an AI client alike:
+//!
+//! - add Logix Engine's udev rule for a pair of USB IDs, or remove it, then
+//!   ask udev to apply its rules again to the devices.
+//!
+//! Without a desktop to ask (no polkit agent, such as over SSH) or without
+//! pkexec, it's a setup error with the commands the user can run instead.
 //!
 //! The request is a JSON file in a fresh temporary folder; the helper writes
 //! its result, with every program it ran, its exit code and output, beside
@@ -51,6 +62,17 @@ pub enum Request {
         /// libwdi's certificate subject, drivers::certificate_subject.
         certificate: String,
     },
+    /// Add Logix Engine's udev rule for these USB IDs (Linux). The helper
+    /// makes the file's name and text itself (drivers::udev_rule_name and
+    /// udev_rule_text).
+    AddUdevRule {
+        vid: String,
+        pid: String,
+        /// The board, for the rule's comment.
+        name: String,
+    },
+    /// Remove Logix Engine's udev rule for these USB IDs (Linux).
+    RemoveUdevRule { vid: String, pid: String },
 }
 
 /// One program the helper ran, or one step it took itself.
@@ -96,7 +118,7 @@ pub fn step_tool(command: &str) -> String {
     let name = first.rsplit(['/', '\\']).next().unwrap_or(first);
     let name = name.strip_suffix(".exe").unwrap_or(name);
     match name {
-        "wdi-simple" | "pnputil" => name.to_string(),
+        "wdi-simple" | "pnputil" | "udevadm" => name.to_string(),
         _ => "logix-engine".to_string(),
     }
 }
@@ -129,6 +151,12 @@ pub fn report(response: &Response, output: &dyn crate::progress::OutputSink) {
 /// The result file beside a request file.
 pub fn result_path(request: &Path) -> PathBuf {
     request.with_extension("result.json")
+}
+
+/// The file the helper writes first, beside the request: on Linux, the
+/// sign that the user gave permission and the helper runs.
+pub fn started_path(request: &Path) -> PathBuf {
+    request.with_extension("started")
 }
 
 /// Checks a request before anything runs: the helper never trusts it more
@@ -183,6 +211,19 @@ pub fn check(request: &Request) -> Result<(), String> {
                 return Err(format!("not a libwdi certificate: {certificate:?}"));
             }
         }
+        Request::AddUdevRule { vid, pid, name } => {
+            if !hex4(vid) || !hex4(pid) {
+                return Err(format!("not USB IDs: {vid}:{pid}"));
+            }
+            if name.is_empty() || name.chars().any(|c| c.is_control()) {
+                return Err(format!("not a device name: {name:?}"));
+            }
+        }
+        Request::RemoveUdevRule { vid, pid } => {
+            if !hex4(vid) || !hex4(pid) {
+                return Err(format!("not USB IDs: {vid}:{pid}"));
+            }
+        }
     }
     Ok(())
 }
@@ -191,6 +232,7 @@ pub fn check(request: &Request) -> Result<(), String> {
 /// runs it, writes the result. The exit code says only whether the result
 /// was written.
 pub fn helper_main(request_path: &Path) -> ExitCode {
+    let _ = std::fs::write(started_path(request_path), "");
     let response = match std::fs::read_to_string(request_path)
         .map_err(|e| e.to_string())
         .and_then(|t| serde_json::from_str::<Request>(&t).map_err(|e| e.to_string()))
@@ -215,7 +257,7 @@ pub fn helper_main(request_path: &Path) -> ExitCode {
 }
 
 /// Runs a program, capturing its output.
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
 fn step(program: &Path, args: &[std::ffi::OsString]) -> Step {
     let command = std::iter::once(program.display().to_string())
         .chain(args.iter().map(|a| a.to_string_lossy().into_owned()))
@@ -267,6 +309,9 @@ fn run(request: &Request) -> Response {
             );
             response.steps.push(step(wdi_simple, &args));
         }
+        Request::AddUdevRule { .. } | Request::RemoveUdevRule { .. } => {
+            response.error = Some("udev rules are changed only on Linux".into());
+        }
         Request::UninstallDriver {
             packages,
             certificate,
@@ -294,11 +339,85 @@ fn run(request: &Request) -> Response {
     response
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+fn run(request: &Request) -> Response {
+    use crate::drivers::{UDEV_RULES_FOLDER, udev_rule_name, udev_rule_text};
+    let mut response = Response::default();
+    let (vid, pid) = match request {
+        Request::AddUdevRule { vid, pid, name } => {
+            let path = Path::new(UDEV_RULES_FOLDER).join(udev_rule_name(vid, pid));
+            let written = std::fs::write(&path, udev_rule_text(vid, pid, name));
+            response.steps.push(Step {
+                command: format!("write {}", path.display()),
+                exit_code: Some(if written.is_ok() { 0 } else { 1 }),
+                output: written.err().map(|e| e.to_string()).unwrap_or_default(),
+            });
+            (vid, pid)
+        }
+        Request::RemoveUdevRule { vid, pid } => {
+            let path = Path::new(UDEV_RULES_FOLDER).join(udev_rule_name(vid, pid));
+            let removed = match std::fs::remove_file(&path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+                _ => Ok(()),
+            };
+            response.steps.push(Step {
+                command: format!("delete {}", path.display()),
+                exit_code: Some(if removed.is_ok() { 0 } else { 1 }),
+                output: removed.err().map(|e| e.to_string()).unwrap_or_default(),
+            });
+            (vid, pid)
+        }
+        _ => {
+            response.error = Some("drivers are changed only on Windows".into());
+            return response;
+        }
+    };
+    if response.steps.iter().any(|s| s.exit_code != Some(0)) {
+        return response;
+    }
+    let Some(udevadm) = [
+        "/usr/bin/udevadm",
+        "/bin/udevadm",
+        "/usr/sbin/udevadm",
+        "/sbin/udevadm",
+    ]
+    .iter()
+    .map(Path::new)
+    .find(|p| p.is_file()) else {
+        response.error = Some("udevadm wasn't found".into());
+        return response;
+    };
+    let os = |a: &[&str]| a.iter().map(std::ffi::OsString::from).collect::<Vec<_>>();
+    response
+        .steps
+        .push(step(udevadm, &os(&["control", "--reload-rules"])));
+    // The device itself (libusb's programmers), then the HID nodes (their
+    // own USB IDs are their parent's, which --attr-match can't see).
+    response.steps.push(step(
+        udevadm,
+        &os(&[
+            "trigger",
+            "--action=change",
+            "--subsystem-match=usb",
+            &format!("--attr-match=idVendor={vid}"),
+            &format!("--attr-match=idProduct={pid}"),
+        ]),
+    ));
+    response.steps.push(step(
+        udevadm,
+        &os(&["trigger", "--action=change", "--subsystem-match=hidraw"]),
+    ));
+    response
+        .steps
+        .push(step(udevadm, &os(&["settle", "--timeout=10"])));
+    response
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 fn run(_request: &Request) -> Response {
     Response {
         steps: Vec::new(),
-        error: Some("drivers are changed only on Windows".into()),
+        error: Some("nothing is changed on this system".into()),
     }
 }
 
@@ -320,7 +439,7 @@ pub fn run_elevated(request: &Request, on_started: impl FnOnce()) -> Result<Resp
     .map_err(|e| ToolError::engine(format!("Can't write the driver request: {e}")))?;
     let exe = std::env::current_exe()
         .map_err(|e| ToolError::engine(format!("Can't find the engine's own program: {e}")))?;
-    launch(&exe, &request_path, on_started)?;
+    launch(&exe, &request_path, request, on_started)?;
     let text = std::fs::read_to_string(result_path(&request_path))
         .map_err(|e| ToolError::engine(format!("The driver helper left no result: {e}")))?;
     let response: Response = serde_json::from_str(&text)
@@ -351,18 +470,160 @@ impl Drop for TempFolder {
 }
 
 /// How long a driver change may take: libwdi waits for Windows' own
-/// installation, which can be slow on a first install.
-#[cfg_attr(not(windows), allow(dead_code))]
+/// installation, which can be slow on a first install. On Linux, it
+/// includes the time the user takes to answer the password dialog.
+#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
 const TIMEOUT_MS: u32 = 10 * 60 * 1000;
 
 #[cfg(windows)]
-fn launch(exe: &Path, request: &Path, on_started: impl FnOnce()) -> Result<(), ToolError> {
-    windows::launch_elevated(exe, request, on_started)
+fn launch(
+    exe: &Path,
+    request_path: &Path,
+    _request: &Request,
+    on_started: impl FnOnce(),
+) -> Result<(), ToolError> {
+    windows::launch_elevated(exe, request_path, on_started)
 }
 
-#[cfg(not(windows))]
-fn launch(_exe: &Path, _request: &Path, _on_started: impl FnOnce()) -> Result<(), ToolError> {
-    Err(ToolError::request("Drivers are changed only on Windows."))
+#[cfg(target_os = "linux")]
+fn launch(
+    exe: &Path,
+    request_path: &Path,
+    request: &Request,
+    on_started: impl FnOnce(),
+) -> Result<(), ToolError> {
+    linux::launch_elevated(exe, request_path, request, on_started)
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+fn launch(
+    _exe: &Path,
+    _request_path: &Path,
+    _request: &Request,
+    _on_started: impl FnOnce(),
+) -> Result<(), ToolError> {
+    Err(ToolError::request("Nothing needs changing on this system."))
+}
+
+/// The setup error when Linux can't ask the user for permission (no pkexec,
+/// or no password dialog, such as over SSH): the commands that do the same
+/// in a terminal, in its message's details.
+pub fn no_prompt_error(request: &Request, why: &str) -> ToolError {
+    let commands = match request {
+        Request::AddUdevRule { vid, pid, name } => {
+            crate::drivers::udev_rule_commands(vid, pid, name)
+        }
+        Request::RemoveUdevRule { vid, pid } => format!(
+            "sudo rm {}/{}\nsudo udevadm control --reload-rules\nsudo udevadm trigger",
+            crate::drivers::UDEV_RULES_FOLDER,
+            crate::drivers::udev_rule_name(vid, pid)
+        ),
+        _ => String::new(),
+    };
+    ToolError::setup(format!(
+        "Linux can't ask for your password here ({why}). Run the commands in the details in a terminal instead."
+    ))
+    .with_details(commands)
+    .with_action(
+        crate::errors::ActionCode::FixDevicePermissions,
+        "Run the commands in the details in a terminal (sudo asks for the user's password), then list the devices again.",
+    )
+}
+
+#[cfg(target_os = "linux")]
+mod linux {
+    use std::path::Path;
+    use std::time::{Duration, Instant};
+
+    use super::{Request, TIMEOUT_MS, no_prompt_error, started_path};
+    use crate::errors::{ActionCode, ToolError};
+
+    /// Runs `exe OPTION request` as root through pkexec, which asks the
+    /// user with the desktop's password dialog, and waits for it.
+    /// `on_started` is called once the helper runs (it writes its started
+    /// file first), so after the user gave permission.
+    pub fn launch_elevated(
+        exe: &Path,
+        request_path: &Path,
+        request: &Request,
+        on_started: impl FnOnce(),
+    ) -> Result<(), ToolError> {
+        let Some(pkexec) = ["/usr/bin/pkexec", "/bin/pkexec"]
+            .iter()
+            .map(Path::new)
+            .find(|p| p.is_file())
+        else {
+            return Err(no_prompt_error(request, "pkexec isn't installed"));
+        };
+        let mut child = std::process::Command::new(pkexec)
+            .arg(exe)
+            .arg(super::OPTION)
+            .arg(request_path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| ToolError::setup(format!("Can't run pkexec: {e}")))?;
+        let start = Instant::now();
+        let mut on_started = Some(on_started);
+        let status = loop {
+            if on_started.is_some() && started_path(request_path).exists() {
+                (on_started.take().unwrap())();
+            }
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) => {}
+                Err(e) => return Err(ToolError::engine(format!("Can't wait for pkexec: {e}"))),
+            }
+            if start.elapsed() > Duration::from_millis(TIMEOUT_MS.into()) {
+                let _ = child.kill();
+                return Err(ToolError::setup(
+                    "The change took too long. Unplug the board, plug it in again and retry.",
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        };
+        let output = child
+            .wait_with_output()
+            .map(|o| {
+                format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&o.stdout),
+                    String::from_utf8_lossy(&o.stderr)
+                )
+            })
+            .unwrap_or_default();
+        log::info!("pkexec exited with {status}: {}", output.trim());
+        if started_path(request_path).exists() {
+            if let Some(f) = on_started.take() {
+                f();
+            }
+            return Ok(());
+        }
+        // pkexec: 126 when the user dismissed the dialog, 127 when they
+        // couldn't be asked (no polkit agent) or weren't authorized.
+        match status.code() {
+            Some(126) => Err(ToolError::setup(
+                "Linux didn't get permission to change the device's access.",
+            )
+            .with_action(
+                ActionCode::FixDevicePermissions,
+                "Try again, and enter your password when Linux asks for it.",
+            )),
+            Some(127) if output.contains("No authentication agent") => Err(no_prompt_error(
+                request,
+                "no password dialog, such as over SSH",
+            )),
+            _ => Err(ToolError::setup(format!(
+                "Linux didn't let Logix Engine change the device's access: {}",
+                output.trim()
+            ))
+            .with_action(
+                ActionCode::FixDevicePermissions,
+                "Try again, and enter your password when Linux asks for it.",
+            )),
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -559,12 +820,71 @@ mod tests {
     }
 
     #[test]
+    fn udev_requests_are_checked() {
+        let add = Request::AddUdevRule {
+            vid: "0403".into(),
+            pid: "6010".into(),
+            name: "the Alhambra II".into(),
+        };
+        let text = serde_json::to_string(&add).unwrap();
+        assert!(text.contains("\"op\":\"add-udev-rule\""), "{text}");
+        assert_eq!(check(&add), Ok(()));
+        let bad_ids = Request::RemoveUdevRule {
+            vid: "0403/..".into(),
+            pid: "6010".into(),
+        };
+        assert!(check(&bad_ids).is_err());
+        let bad_name = Request::AddUdevRule {
+            vid: "0403".into(),
+            pid: "6010".into(),
+            name: "x\nSUBSYSTEM==\"usb\", MODE=\"0666\"".into(),
+        };
+        assert!(check(&bad_name).is_err());
+    }
+
+    #[test]
+    fn without_a_password_dialog_the_commands_are_given() {
+        let add = Request::AddUdevRule {
+            vid: "0403".into(),
+            pid: "6010".into(),
+            name: "the Alhambra II".into(),
+        };
+        let err = no_prompt_error(&add, "no password dialog, such as over SSH");
+        assert_eq!(err.category, crate::errors::Category::Setup);
+        assert!(err.message.contains("over SSH"), "{}", err.message);
+        assert_eq!(
+            err.details,
+            crate::drivers::udev_rule_commands("0403", "6010", "the Alhambra II")
+        );
+        let remove = Request::RemoveUdevRule {
+            vid: "0403".into(),
+            pid: "6010".into(),
+        };
+        let err = no_prompt_error(&remove, "pkexec isn't installed");
+        assert!(
+            err.details
+                .starts_with("sudo rm /etc/udev/rules.d/70-logix-engine-0403-6010.rules\n"),
+            "{}",
+            err.details
+        );
+        assert_eq!(
+            err.action.unwrap().code,
+            crate::errors::ActionCode::FixDevicePermissions
+        );
+    }
+
+    #[test]
     fn steps_name_their_tools() {
         assert_eq!(
             step_tool(r"C:\\x\\wdi-simple\\wdi-simple.exe --vid 0x0403"),
             "wdi-simple"
         );
         assert_eq!(step_tool("pnputil /scan-devices"), "pnputil");
+        assert_eq!(step_tool("/usr/bin/udevadm settle"), "udevadm");
+        assert_eq!(
+            step_tool("write /etc/udev/rules.d/70-logix-engine-0403-6010.rules"),
+            "logix-engine"
+        );
         assert_eq!(
             step_tool("delete certificate \"x\" from Root"),
             "logix-engine"
