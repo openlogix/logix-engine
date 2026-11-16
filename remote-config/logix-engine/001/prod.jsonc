@@ -10,9 +10,14 @@
 
   // The FPGA tools: the YosysHQ OSS CAD Suite, openXC7, Verible and elkjs.
   // Pinned at the first promotion, 2026-11-13.
+  // 2026-11-16, the Windows promotion (Milestone 3): openXC7 runs with the
+  // suite's yosys and Python and verilator gets VERILATOR_ROOT on Windows,
+  // the Windows package has libwdi's wdi-simple for install_driver, and
+  // openXC7 2026-11-15 counts Xilinx resources right (apio#1192) and finds
+  // the suite's Python on Windows (apio#1194).
   "logix-core": {
     "repo": "openlogix/logix-core",
-    "release": "2026-11-11",
+    "release": "2026-11-15",
     "file": "logix-core-${PLATFORM}-${YYYYMMDD}.tgz"
   },
 
