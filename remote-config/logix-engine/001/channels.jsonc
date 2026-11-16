@@ -7,5 +7,6 @@
   "$schema": "https://www.openlogix.org/schemas/logix-channels-v1.json",
 
   // The first promotion, 2026-11-13.
-  "prod": ["2026-11-12"]
+  // 2026-11-16: Windows (Milestone 3) and the version tree (2026-11-15).
+  "prod": ["2026-11-12", "2026-11-15"]
 }
