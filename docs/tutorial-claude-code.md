@@ -60,14 +60,15 @@ each: choose yours once, and every tab follows. On Windows, the terminal is
 
 ## 1. Install the engine
 
-Open the engine's [Releases](https://github.com/openlogix/logix-engine/releases)
-page and find the release marked **Latest** (not necessarily the newest one:
-newer pre-releases are development builds).
+Always install the engine's [**Latest** release](https://github.com/openlogix/logix-engine/releases/latest). Newer pre-releases on
+the [releases page](https://github.com/openlogix/logix-engine/releases) are
+development builds.
 
 === "macOS"
 
-    Download its `logix-engine-darwin-arm64-<date>.tgz` to your **Downloads**
-    folder. Clear the download flag and unpack it:
+    From the [**Latest** release](https://github.com/openlogix/logix-engine/releases/latest), download
+    `logix-engine-darwin-arm64-<date>.tgz` to your **Downloads** folder.
+    Clear the download flag and unpack it:
 
     **Terminal:**
 
@@ -91,8 +92,9 @@ newer pre-releases are development builds).
 
 === "Windows"
 
-    Download its `logix-engine-windows-x86-64-<date>.tgz` to your
-    **Downloads** folder. Unblock it and unpack it:
+    From the [**Latest** release](https://github.com/openlogix/logix-engine/releases/latest), download
+    `logix-engine-windows-x86-64-<date>.tgz` to your **Downloads** folder.
+    Unblock it and unpack it:
 
     **PowerShell:**
 
@@ -118,8 +120,9 @@ newer pre-releases are development builds).
 
 === "Linux"
 
-    Download its `logix-engine-linux-x86-64-<date>.tgz` to your **Downloads**
-    folder, and unpack it:
+    From the [**Latest** release](https://github.com/openlogix/logix-engine/releases/latest), download
+    `logix-engine-linux-x86-64-<date>.tgz` to your **Downloads** folder, and
+    unpack it:
 
     **Terminal:**
 
