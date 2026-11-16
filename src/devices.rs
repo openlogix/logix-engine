@@ -257,12 +257,18 @@ pub struct Candidate<'a> {
 /// Lists the connected USB devices, the ones the engine can't open
 /// included, sorted by vendor, product, bus and device.
 pub fn scan() -> Result<Vec<Device>, ToolError> {
-    let list = rusb::devices().map_err(|e| {
-        ToolError::setup(format!("Can't list the USB devices: {e}")).with_action(
-            ActionCode::FixDevicePermissions,
-            "Check that this program may access USB devices.",
-        )
-    })?;
+    use rusb::UsbContext;
+    // A context of its own, not rusb's global one, whose start panics when
+    // libusb can't start (such as on Linux without /dev/bus/usb, in a
+    // container or a CI runner); this reports it.
+    let list = rusb::Context::new()
+        .and_then(|c| c.devices())
+        .map_err(|e| {
+            ToolError::setup(format!("Can't list the USB devices: {e}")).with_action(
+                ActionCode::FixDevicePermissions,
+                "Check that this program may access USB devices.",
+            )
+        })?;
     let timeout = Duration::from_millis(500);
     let mut out = Vec::new();
     for d in list.iter() {
@@ -434,7 +440,7 @@ pub fn same_ids(device: &Device, filter: &UsbFilter) -> bool {
 /// The device's bcdDevice, exactly as reported. rusb only offers it decoded
 /// as a decimal version, which loses values that aren't decimal digits,
 /// such as 0a00.
-fn raw_release(d: &rusb::Device<rusb::GlobalContext>) -> Option<String> {
+fn raw_release(d: &rusb::Device<rusb::Context>) -> Option<String> {
     let mut desc = std::mem::MaybeUninit::<rusb::ffi::libusb_device_descriptor>::uninit();
     // SAFETY: d is a valid device for the duration of the call, and libusb
     // fills the whole descriptor when it returns 0.
@@ -985,7 +991,18 @@ pub mod tests {
 
     #[test]
     fn scanning_works_here() {
-        // Just checks libusb starts; the list depends on the machine.
+        // On Linux without USB (/dev/bus/usb, as on CI runners) libusb can't
+        // start: a setup error, never a panic.
+        if cfg!(target_os = "linux") && !std::path::Path::new("/dev/bus/usb").exists() {
+            let e = scan().unwrap_err();
+            assert!(
+                e.message.starts_with("Can't list the USB devices"),
+                "{}",
+                e.message
+            );
+            return;
+        }
+        // Elsewhere, checks libusb starts; the list depends on the machine.
         let devices = scan().unwrap();
         for d in &devices {
             assert_eq!(d.vid.len(), 4);
