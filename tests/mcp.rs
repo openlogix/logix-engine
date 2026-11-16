@@ -149,11 +149,11 @@ async fn get_engine_info_reports_the_launch_settings() {
         })
     );
 
-    // At the top (no --log-folder), the engine's log is logix-engine.log in
+    // At the top (no --log-folder), the engine's log is engine.log in
     // its own session folder, <engine folder>/logs/<yyyymmdd>-<hhmmss>-<pid>,
     // after a separator line.
     let log_file = std::path::Path::new(out["log_file"].as_str().unwrap());
-    assert_eq!(log_file.file_name().unwrap(), "logix-engine.log");
+    assert_eq!(log_file.file_name().unwrap(), "engine.log");
     let session = log_file.parent().unwrap();
     assert_eq!(
         session.parent().unwrap(),
@@ -201,7 +201,7 @@ async fn under_a_host_the_engine_logs_in_its_session_folder_and_cleans_its_logs(
             "--log-folder",
             session.to_str().unwrap(),
             "--log-name",
-            "my-ide.logix-engine",
+            "my-ide.engine",
         ],
     )
     .await;
@@ -212,7 +212,7 @@ async fn under_a_host_the_engine_logs_in_its_session_folder_and_cleans_its_logs(
         .expect("structured content");
     assert_eq!(
         std::path::Path::new(out["log_file"].as_str().unwrap()),
-        session.join("my-ide.logix-engine.log")
+        session.join("my-ide.engine.log")
     );
     // Nothing in the engine folder's own logs: the host has them.
     assert!(!engine_folder.join("logs").exists());
@@ -229,7 +229,7 @@ async fn under_a_host_the_engine_logs_in_its_session_folder_and_cleans_its_logs(
         .clone()
         .expect("structured content");
     assert_eq!(out["deleted"], json!([old.to_str().unwrap()]));
-    assert!(session.join("my-ide.logix-engine.log").exists());
+    assert!(session.join("my-ide.engine.log").exists());
     assert!(logs.join("notes.txt").exists());
 
     // A folder not named logs is refused.

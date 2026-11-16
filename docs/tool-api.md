@@ -1188,7 +1188,7 @@ Output:
   "engine_folder": "/Users/user/.myhost/engine",
   "auto_download": true,
   "command_line": ["--engine-folder", "/Users/user/.myhost/engine"],
-  "log_file": "/Users/user/.myhost/logs/20261201-093000-4120/myhost.logix-engine.log",
+  "log_file": "/Users/user/.myhost/logs/20261201-093000-4120/myhost.engine.log",
   "packages": [
     { "name": "logix-catalog", "version": "2026.11.10", "status": "ready" },
     { "name": "logix-core", "version": "2026.11.10", "status": "ready", "components": [

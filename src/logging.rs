@@ -4,7 +4,7 @@
 //! named by its start time, `<yyyymmdd>-<hhmmss>-<pid>` (local time), and
 //! every program it starts, and each one those start, writes into that
 //! folder, one file per program, named by its chain of programs joined by
-//! dots (`logix-ide.logix-engine.log`). Each run appends to its file after a
+//! dots (`ide.engine.log`). Each run appends to its file after a
 //! separator line, so nothing is ever renamed. Only the top program deletes
 //! old session folders (`clean_sessions`, also the `clean_logs` tool for
 //! hosts).
@@ -26,7 +26,7 @@ use time::macros::format_description;
 use time::{OffsetDateTime, UtcOffset};
 
 /// The engine's own name in log file names.
-pub const PROGRAM: &str = "logix-engine";
+pub const PROGRAM: &str = "engine";
 /// Session folders kept by `clean_sessions`, the current ones included.
 pub const MAX_SESSIONS: usize = 10;
 /// The most the kept session folders may use in all.
@@ -102,7 +102,7 @@ pub fn is_log_name(name: &str) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogPlace {
     pub folder: PathBuf,
-    /// The chain of program names, such as `logix-ide.logix-engine`.
+    /// The chain of program names, such as `ide.engine`.
     pub name: String,
 }
 
@@ -211,7 +211,7 @@ pub fn place_for(
         && !is_log_name(name)
     {
         return Err(format!(
-            "--log-name must be lowercase letters, digits, - and . (such as my-ide.logix-engine), not {name:?}"
+            "--log-name must be lowercase letters, digits, - and . (such as my-ide.engine), not {name:?}"
         ));
     }
     match log_folder {
@@ -393,11 +393,7 @@ mod tests {
 
     #[test]
     fn log_names_are_chains_of_program_names() {
-        for good in [
-            "logix-engine",
-            "logix-ide.logix-engine",
-            "my-ide2.logix-engine",
-        ] {
+        for good in ["engine", "ide.engine", "my-ide2.engine"] {
             assert!(is_log_name(good), "{good}");
         }
         for bad in ["", ".x", "x.", "a..b", "Logix", "a/b", "a b"] {
@@ -405,12 +401,12 @@ mod tests {
         }
         let place = LogPlace {
             folder: PathBuf::from("/s"),
-            name: "logix-ide.logix-engine".into(),
+            name: "ide.engine".into(),
         };
-        assert_eq!(place.file(), Path::new("/s/logix-ide.logix-engine.log"));
+        assert_eq!(place.file(), Path::new("/s/ide.engine.log"));
         assert_eq!(
             place.child_file("gtkwave"),
-            Path::new("/s/logix-ide.logix-engine.gtkwave.log")
+            Path::new("/s/ide.engine.gtkwave.log")
         );
     }
 
@@ -421,15 +417,15 @@ mod tests {
         let engine = &base.join(".logix/claude-code/engine");
         let (place, top) = place_for(engine, None, None).unwrap();
         assert!(top);
-        assert_eq!(place.name, "logix-engine");
+        assert_eq!(place.name, "engine");
         assert!(place.folder.starts_with(engine.join("logs")));
         assert!(is_session_name(
             &place.folder.file_name().unwrap().to_string_lossy()
         ));
         let host = &base.join(".logix/ide/logs/20261115-171205-4412");
-        let (place, top) = place_for(engine, Some(host), Some("logix-ide.logix-engine")).unwrap();
+        let (place, top) = place_for(engine, Some(host), Some("ide.engine")).unwrap();
         assert!(!top);
-        assert_eq!(place.file(), host.join("logix-ide.logix-engine.log"));
+        assert_eq!(place.file(), host.join("ide.engine.log"));
         assert!(place_for(engine, None, Some("x")).is_err());
         assert!(place_for(engine, Some(Path::new("rel")), None).is_err());
         assert!(place_for(engine, Some(host), Some("Bad Name")).is_err());
@@ -461,7 +457,7 @@ mod tests {
     fn session(logs: &Path, name: &str, size: usize, age_days: u64) -> PathBuf {
         let dir = logs.join(name);
         fs::create_dir_all(&dir).unwrap();
-        let file = dir.join("logix-ide.log");
+        let file = dir.join("ide.log");
         fs::write(&file, vec![b'x'; size]).unwrap();
         let t = UNIX_EPOCH + Duration::from_secs(NOW - age_days * DAY);
         File::options()

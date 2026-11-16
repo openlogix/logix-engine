@@ -37,9 +37,9 @@ struct Args {
     log_folder: Option<String>,
 
     /// The engine's log name in the host's session folder, the chain of
-    /// programs that started it, such as my-ide.logix-engine (written to
-    /// my-ide.logix-engine.log). Needs --log-folder; defaults to
-    /// logix-engine.
+    /// programs that started it, such as my-ide.engine (written to
+    /// my-ide.engine.log). Needs --log-folder; defaults to
+    /// engine.
     #[arg(long, value_name = "name")]
     log_name: Option<String>,
 }

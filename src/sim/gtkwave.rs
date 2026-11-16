@@ -528,7 +528,7 @@ $end
             )
         };
         let (program, args) = shell(&script);
-        let log = tmp.path().join("logs/s/logix-engine.gtkwave.log");
+        let log = tmp.path().join("logs/s/engine.gtkwave.log");
         let start = Instant::now();
         launch_detached(
             &program,
