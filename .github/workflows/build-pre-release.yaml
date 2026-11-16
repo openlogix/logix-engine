@@ -81,10 +81,25 @@ jobs:
     uses: ./.github/workflows/build-windows-x86-64.yaml
     secrets: inherit
 
+  # Linux while it's being ported (Milestone 4): the pre-release goes out
+  # without it when it fails (the website repo's CLAUDE.md, Strict CI: a
+  # stated, temporary step). Make it required like the others once Linux
+  # works.
+  build-linux-x86-64:
+    needs: prepare
+    uses: ./.github/workflows/build-linux-x86-64.yaml
+    secrets: inherit
+
   # ----- Create the pre-release with the generated files.
 
   pre-release:
-    needs: [prepare, build-darwin-arm64, build-windows-x86-64]
+    needs: [prepare, build-darwin-arm64, build-windows-x86-64, build-linux-x86-64]
+    # Without Linux when its build failed (above); never without the others.
+    if: >-
+      always() &&
+      needs.prepare.result == 'success' &&
+      needs.build-darwin-arm64.result == 'success' &&
+      needs.build-windows-x86-64.result == 'success'
 
     runs-on: ubuntu-latest
     permissions:
@@ -160,11 +175,32 @@ jobs:
           else
             printf '%s\n\n%s\n\n' "### Windows (x64)" "Not in this build: it's being ported, and its build failed today." >> CONTENT.md
           fi
-          cat >> CONTENT.md <<EOF
+          # Linux while it's being ported (Milestone 4): when it built.
+          lin="logix-engine-linux-x86-64-${PACKAGE_TAG}.tgz"
+          if [[ -f "_artifacts/$lin" ]]; then
+            cat >> CONTENT.md <<EOF
           ### Linux (x64)
 
-          Not available yet: Linux is planned.
+          Logix Engine is being ported to Linux: this package is for testing only.
+
+          1. Download [$lin](${url}/$lin) to your **Downloads** folder.
+          2. In a terminal, unpack it:
+             \`\`\`
+             cd ~/Downloads
+             tar -xzf $lin
+             \`\`\`
+          3. Check that it runs: \`~/Downloads/logix-engine/logix-engine --version\` prints its version.
+          4. To use it with Claude Code:
+             \`\`\`
+             claude mcp add -s user logix-engine -- ~/Downloads/logix-engine/logix-engine --engine-folder ~/.logix/claude-code/engine
+             \`\`\`
+
+          On its first use, the engine downloads the FPGA tools it needs into its engine folder, which also holds its logs. To uninstall, delete the \`logix-engine\` folder and the engine folder (\`~/.logix/claude-code/engine\`).
           EOF
+            echo "FILES_LINUX=_artifacts/$lin" >> "$GITHUB_ENV"
+          else
+            printf '%s\n\n%s\n' "### Linux (x64)" "Not in this build: it's being ported, and its build failed today." >> CONTENT.md
+          fi
           cat -n CONTENT.md
 
       - name: Publish the pre-release
@@ -177,3 +213,4 @@ jobs:
           files: |
             _artifacts/logix-engine-darwin-arm64-${{ env.PACKAGE_TAG }}.tgz
             ${{ env.FILES_WINDOWS }}
+            ${{ env.FILES_LINUX }}

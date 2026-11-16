@@ -34,7 +34,7 @@ jobs:
       - name: Check the remote config
         uses: openlogix/.github/actions/check-remote-config@main
         with:
-          platforms: darwin-arm64 windows-x86-64
+          platforms: darwin-arm64 windows-x86-64 linux-x86-64
 
   # The channels the tests run on: one per config file in the newest version
   # folder (the website repo's CLAUDE.md, Remote updates, Channels): prod
@@ -62,13 +62,14 @@ jobs:
     # macOS version GitHub offers (all arm64), named explicitly: add a new
     # one when GitHub ships it (macos-latest isn't listed: it's one of these,
     # so it tested the same image twice). Windows x64 (Milestone 3), named
-    # explicitly too. Times each channel, so each config file's result shows
-    # on its own and one failing doesn't stop the other. Add Linux with
-    # Milestone 4.
+    # explicitly too. Linux x64 (Milestone 4): the oldest Ubuntu GitHub
+    # offers, which the Linux package is built on, and the newest. Times each
+    # channel, so each config file's result shows on its own and one failing
+    # doesn't stop the other.
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-26, windows-2025]
+        os: [macos-15, macos-26, windows-2025, ubuntu-22.04, ubuntu-24.04]
         channel: ${{ fromJSON(needs.channels.outputs.channels) }}
         # Windows is being ported (Milestone 3) and isn't offered on the
         # prod channel yet: its prod config names a logix-core from before
