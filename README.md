@@ -7,7 +7,7 @@
 
 [![License: MIT or Apache 2.0](https://img.shields.io/badge/License-MIT%20or%20Apache%202.0-blue)](#license)
 
-<img src="https://www.openlogix.org/brand/readme/macos.svg" height="40" alt="macOS (Apple Silicon)" title="macOS (Apple Silicon)">
+<img src="https://www.openlogix.org/brand/readme/macos.svg" height="40" alt="macOS (Apple Silicon)" title="macOS (Apple Silicon)"> <img src="https://www.openlogix.org/brand/readme/windows.svg" height="40" alt="Windows (x64)" title="Windows (x64)">
 
 [![engine-test](https://img.shields.io/github/actions/workflow/status/openlogix/logix-engine/test.yaml?branch=main&label=engine-test)](https://github.com/openlogix/logix-engine/actions/workflows/test.yaml)
 [![engine-build](https://img.shields.io/github/actions/workflow/status/openlogix/logix-engine/build-pre-release.yaml?branch=main&label=engine-build)](https://github.com/openlogix/logix-engine/actions/workflows/build-pre-release.yaml)
@@ -21,11 +21,11 @@ The engine is a single native executable, written in Rust, that offers FPGA oper
 
 ## Status
 
-In development: macOS on Apple Silicon, with Windows x64 and Linux x64 being ported.
+In development: macOS on Apple Silicon and Windows x64, with Linux x64 being ported.
 
 - **Milestone 1, done:** a proof of concept for iCE40 boards with seven tools: `get_engine_info`, `download_packages`, `get_catalog` (22 iCE40 boards), `build`, `clean_build`, `list_devices` and `program_board`. An AI agent, Claude Code, changed a design, built it and programmed an Alhambra II board through the engine alone.
 - **Milestone 2, done:** Logix IDE running on the engine, keeping every feature it had: lint, test, simulate, format, diagram, live tool output, and the same boards across the iCE40, ECP5, Gowin and Xilinx 7-series FPGA families. See [Acceptance and phasing](docs/requirements.md#acceptance-and-phasing).
-- **Milestone 3, in testing:** the engine and Logix IDE on Windows.
+- **Milestone 3, released (2026-11-16):** the engine and Logix IDE on Windows.
 - **Milestone 4, in progress:** the engine and Logix IDE on Linux.
 
 Daily development builds are on the [Releases](https://github.com/openlogix/logix-engine/releases) page.
