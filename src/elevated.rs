@@ -407,10 +407,67 @@ fn run(request: &Request) -> Response {
         udevadm,
         &os(&["trigger", "--action=change", "--subsystem-match=hidraw"]),
     ));
+    // Removing a rule takes away no access a plugged-in device already got,
+    // so reconnect it in software, as a replug does: it then gets only what
+    // the remaining rules give (the user's request, 2026-11-17).
+    if matches!(request, Request::RemoveUdevRule { .. }) {
+        for dir in usb_devices_with_ids(Path::new(SYSFS_USB_DEVICES), vid, pid) {
+            response.steps.extend(reconnect(&dir));
+        }
+    }
     response
         .steps
         .push(step(udevadm, &os(&["settle", "--timeout=10"])));
     response
+}
+
+/// Where Linux lists the USB devices, one folder each.
+#[cfg(target_os = "linux")]
+const SYSFS_USB_DEVICES: &str = "/sys/bus/usb/devices";
+
+/// Reconnects a USB device in software, as unplugging it and plugging it
+/// in again does: `authorized` 0, then 1. Its device files are made again,
+/// with only the access the current udev rules give.
+#[cfg(target_os = "linux")]
+fn reconnect(dir: &Path) -> Vec<Step> {
+    let authorized = dir.join("authorized");
+    let mut steps = Vec::new();
+    for value in ["0", "1"] {
+        let written = std::fs::write(&authorized, value);
+        steps.push(Step {
+            command: format!("write {value} to {}", authorized.display()),
+            exit_code: Some(if written.is_ok() { 0 } else { 1 }),
+            output: written.err().map(|e| e.to_string()).unwrap_or_default(),
+        });
+        if value == "0" {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    }
+    steps
+}
+
+/// The folders of the connected USB devices with these USB IDs, under
+/// `root` (`/sys/bus/usb/devices`; another folder in tests): those whose
+/// `idVendor` and `idProduct` files say so.
+pub fn usb_devices_with_ids(root: &Path, vid: &str, pid: &str) -> Vec<PathBuf> {
+    let read = |dir: &Path, file: &str| {
+        std::fs::read_to_string(dir.join(file))
+            .map(|s| s.trim().to_ascii_lowercase())
+            .unwrap_or_default()
+    };
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut out: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|dir| {
+            read(dir, "idVendor") == vid.to_ascii_lowercase()
+                && read(dir, "idProduct") == pid.to_ascii_lowercase()
+        })
+        .collect();
+    out.sort();
+    out
 }
 
 #[cfg(not(any(windows, target_os = "linux")))]
@@ -871,6 +928,26 @@ mod tests {
             err.action.unwrap().code,
             crate::errors::ActionCode::FixDevicePermissions
         );
+    }
+
+    #[test]
+    fn finds_usb_devices_by_their_ids() {
+        let tmp = tempfile::tempdir().unwrap();
+        for (name, vid, pid) in [
+            ("1-2", "0403", "6010"),
+            ("1-3", "1d50", "602b"),
+            ("1-4", "0403", "6010"),
+        ] {
+            let dir = tmp.path().join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("idVendor"), format!("{vid}\n")).unwrap();
+            std::fs::write(dir.join("idProduct"), format!("{pid}\n")).unwrap();
+        }
+        // An interface folder has no IDs of its own.
+        std::fs::create_dir_all(tmp.path().join("1-2:1.0")).unwrap();
+        let found = usb_devices_with_ids(tmp.path(), "0403", "6010");
+        assert_eq!(found, [tmp.path().join("1-2"), tmp.path().join("1-4")]);
+        assert!(usb_devices_with_ids(tmp.path(), "dead", "beef").is_empty());
     }
 
     #[test]

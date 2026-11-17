@@ -174,8 +174,8 @@ pub async fn run(
 }
 
 /// uninstall_driver on Linux: removes Logix Engine's udev rule for the
-/// device's USB IDs, through pkexec. The device may stay open to the user
-/// until it's plugged in again.
+/// device's USB IDs, through pkexec, and reconnects the device in software
+/// so the change takes effect at once.
 async fn run_linux(
     input: UninstallDriverInput,
     call: &Call,
@@ -226,7 +226,14 @@ async fn run_linux(
             ToolError::engine(format!("The helper refused: {e}")).with_details(response.details())
         );
     }
-    if response.steps.iter().any(|s| s.exit_code != Some(0)) {
+    // The reconnect (writes to `authorized`) only hurries the change up: a
+    // failure there leaves the rule removed, effective at the next replug.
+    let failed = response
+        .steps
+        .iter()
+        .filter(|s| !s.command.ends_with("/authorized"))
+        .any(|s| s.exit_code != Some(0));
+    if failed {
         return Err(ToolError::setup("Couldn't remove the udev rule.")
             .with_details(response.details())
             .with_action(ActionCode::FixDevicePermissions, "Retry."));
