@@ -943,8 +943,9 @@ mod tests {
             std::fs::write(dir.join("idVendor"), format!("{vid}\n")).unwrap();
             std::fs::write(dir.join("idProduct"), format!("{pid}\n")).unwrap();
         }
-        // An interface folder has no IDs of its own.
-        std::fs::create_dir_all(tmp.path().join("1-2:1.0")).unwrap();
+        // An interface folder has no IDs of its own (Linux names it
+        // "1-2:1.0"; a name Windows allows here, where the tests run too).
+        std::fs::create_dir_all(tmp.path().join("1-2.1.0")).unwrap();
         let found = usb_devices_with_ids(tmp.path(), "0403", "6010");
         assert_eq!(found, [tmp.path().join("1-2"), tmp.path().join("1-4")]);
         assert!(usb_devices_with_ids(tmp.path(), "dead", "beef").is_empty());
