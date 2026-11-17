@@ -129,6 +129,8 @@ jobs:
           cat > CONTENT.md <<EOF
           Logix Engine is a single program, \`logix-engine\`, that an app or an AI agent starts and talks to over MCP. People using Logix IDE get it with the app: these steps are for using it on its own, such as with Claude Code. It's in development and not ready for general use yet.
 
+          ---
+
           ### macOS (Apple Silicon)
 
           1. Download [logix-engine-darwin-arm64-${PACKAGE_TAG}.tgz](${url}/logix-engine-darwin-arm64-${PACKAGE_TAG}.tgz) to your **Downloads** folder.
@@ -151,6 +153,8 @@ jobs:
           win="logix-engine-windows-x86-64-${PACKAGE_TAG}.tgz"
           if [[ -f "_artifacts/$win" ]]; then
             cat >> CONTENT.md <<EOF
+          ---
+
           ### Windows (x64)
 
           1. Download [$win](${url}/$win) to your **Downloads** folder.
@@ -171,12 +175,14 @@ jobs:
           EOF
             echo "FILES_WINDOWS=_artifacts/$win" >> "$GITHUB_ENV"
           else
-            printf '%s\n\n%s\n\n' "### Windows (x64)" "Not in this build: its build failed today." >> CONTENT.md
+            printf '%s\n\n%s\n\n%s\n\n' "---" "### Windows (x64)" "Not in this build: its build failed today." >> CONTENT.md
           fi
           # Linux while it's being ported (Milestone 4): when it built.
           lin="logix-engine-linux-x86-64-${PACKAGE_TAG}.tgz"
           if [[ -f "_artifacts/$lin" ]]; then
             cat >> CONTENT.md <<EOF
+          ---
+
           ### Linux (x64)
 
           1. Download [$lin](${url}/$lin) to your **Downloads** folder.
@@ -195,8 +201,11 @@ jobs:
           EOF
             echo "FILES_LINUX=_artifacts/$lin" >> "$GITHUB_ENV"
           else
-            printf '%s\n\n%s\n' "### Linux (x64)" "Not in this build: its build failed today." >> CONTENT.md
+            printf '%s\n\n%s\n\n%s\n' "---" "### Linux (x64)" "Not in this build: its build failed today." >> CONTENT.md
           fi
+          # A line before, between and after the platforms' sections, so
+          # each is easy to find (the user's request, 2026-11-17).
+          printf '\n%s\n' "---" >> CONTENT.md
           cat -n CONTENT.md
 
       - name: Publish the pre-release
