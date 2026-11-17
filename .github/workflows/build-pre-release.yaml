@@ -10,10 +10,11 @@
 #
 # The shared parts are Open Logix actions in openlogix/.github (tested
 # there): start-pre-release, read-build-info and publish-pre-release, which
-# also writes the standard release text and applies the pre-release policy. macOS (Apple Silicon), and Windows (x64) while
-# it's being ported (Milestone 3). Both must build (Strict CI, in the
-# website repo's CLAUDE.md). Linux comes as another
-# build-<platform>.yaml workflow (Milestone 4).
+# also writes the standard release text and applies the pre-release policy.
+# One package per platform, macOS (Apple Silicon), Windows (x64) and Linux
+# (x64), each from its own build-<platform>.yaml; all must build (Strict
+# CI, in the website repo's CLAUDE.md; Linux since its promotion,
+# Milestone 4).
 
 name: build-pre-release
 
@@ -81,10 +82,6 @@ jobs:
     uses: ./.github/workflows/build-windows-x86-64.yaml
     secrets: inherit
 
-  # Linux while it's being ported (Milestone 4): the pre-release goes out
-  # without it when it fails (the website repo's CLAUDE.md, Strict CI: a
-  # stated, temporary step). Make it required like the others once Linux
-  # works.
   build-linux-x86-64:
     needs: prepare
     uses: ./.github/workflows/build-linux-x86-64.yaml
@@ -94,12 +91,6 @@ jobs:
 
   pre-release:
     needs: [prepare, build-darwin-arm64, build-windows-x86-64, build-linux-x86-64]
-    # Without Linux when its build failed (above); never without the others.
-    if: >-
-      always() &&
-      needs.prepare.result == 'success' &&
-      needs.build-darwin-arm64.result == 'success' &&
-      needs.build-windows-x86-64.result == 'success'
 
     runs-on: ubuntu-latest
     permissions:
@@ -149,10 +140,8 @@ jobs:
           On its first use, the engine downloads the FPGA tools it needs into its engine folder, which also holds its logs. To uninstall, delete the \`logix-engine\` folder and the engine folder (\`~/.logix/claude-code/engine\`).
 
           EOF
-          # Windows while it's being ported (Milestone 3): when it built.
           win="logix-engine-windows-x86-64-${PACKAGE_TAG}.tgz"
-          if [[ -f "_artifacts/$win" ]]; then
-            cat >> CONTENT.md <<EOF
+          cat >> CONTENT.md <<EOF
           ---
 
           ### Windows (x64)
@@ -173,14 +162,8 @@ jobs:
           On its first use, the engine downloads the FPGA tools it needs into its engine folder, which also holds its logs. To uninstall, delete the \`logix-engine\` folder and the engine folder (\`.logix\\claude-code\\engine\` in your user folder).
 
           EOF
-            echo "FILES_WINDOWS=_artifacts/$win" >> "$GITHUB_ENV"
-          else
-            printf '%s\n\n%s\n\n%s\n\n' "---" "### Windows (x64)" "Not in this build: its build failed today." >> CONTENT.md
-          fi
-          # Linux while it's being ported (Milestone 4): when it built.
           lin="logix-engine-linux-x86-64-${PACKAGE_TAG}.tgz"
-          if [[ -f "_artifacts/$lin" ]]; then
-            cat >> CONTENT.md <<EOF
+          cat >> CONTENT.md <<EOF
           ---
 
           ### Linux (x64)
@@ -199,10 +182,6 @@ jobs:
 
           On its first use, the engine downloads the FPGA tools it needs into its engine folder, which also holds its logs. To uninstall, delete the \`logix-engine\` folder and the engine folder (\`~/.logix/claude-code/engine\`).
           EOF
-            echo "FILES_LINUX=_artifacts/$lin" >> "$GITHUB_ENV"
-          else
-            printf '%s\n\n%s\n\n%s\n' "---" "### Linux (x64)" "Not in this build: its build failed today." >> CONTENT.md
-          fi
           # A line before, between and after the platforms' sections, so
           # each is easy to find (the user's request, 2026-11-17).
           printf '\n%s\n' "---" >> CONTENT.md
@@ -217,5 +196,5 @@ jobs:
           about-bullets: The release tag is also the engine version.
           files: |
             _artifacts/logix-engine-darwin-arm64-${{ env.PACKAGE_TAG }}.tgz
-            ${{ env.FILES_WINDOWS }}
-            ${{ env.FILES_LINUX }}
+            _artifacts/logix-engine-windows-x86-64-${{ env.PACKAGE_TAG }}.tgz
+            _artifacts/logix-engine-linux-x86-64-${{ env.PACKAGE_TAG }}.tgz
