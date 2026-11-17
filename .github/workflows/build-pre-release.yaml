@@ -153,8 +153,6 @@ jobs:
             cat >> CONTENT.md <<EOF
           ### Windows (x64)
 
-          Logix Engine is being ported to Windows: this package is for testing only.
-
           1. Download [$win](${url}/$win) to your **Downloads** folder.
           2. In **PowerShell**, unblock it and unpack it. The engine isn't signed yet, and \`Unblock-File\` tells Windows the file is yours to run:
              \`\`\`
@@ -173,15 +171,13 @@ jobs:
           EOF
             echo "FILES_WINDOWS=_artifacts/$win" >> "$GITHUB_ENV"
           else
-            printf '%s\n\n%s\n\n' "### Windows (x64)" "Not in this build: it's being ported, and its build failed today." >> CONTENT.md
+            printf '%s\n\n%s\n\n' "### Windows (x64)" "Not in this build: its build failed today." >> CONTENT.md
           fi
           # Linux while it's being ported (Milestone 4): when it built.
           lin="logix-engine-linux-x86-64-${PACKAGE_TAG}.tgz"
           if [[ -f "_artifacts/$lin" ]]; then
             cat >> CONTENT.md <<EOF
           ### Linux (x64)
-
-          Logix Engine is being ported to Linux: this package is for testing only.
 
           1. Download [$lin](${url}/$lin) to your **Downloads** folder.
           2. In a terminal, unpack it:
@@ -199,7 +195,7 @@ jobs:
           EOF
             echo "FILES_LINUX=_artifacts/$lin" >> "$GITHUB_ENV"
           else
-            printf '%s\n\n%s\n' "### Linux (x64)" "Not in this build: it's being ported, and its build failed today." >> CONTENT.md
+            printf '%s\n\n%s\n' "### Linux (x64)" "Not in this build: its build failed today." >> CONTENT.md
           fi
           cat -n CONTENT.md
 
