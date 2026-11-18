@@ -60,86 +60,16 @@ each: choose yours once, and every tab follows. On Windows, the terminal is
 
 ## 1. Install the engine
 
-Always install the engine's [**Latest** release](https://github.com/openlogix/logix-engine/releases/latest). Newer pre-releases on
-the [releases page](https://github.com/openlogix/logix-engine/releases) are
+Open the engine's [**Latest** release](https://github.com/openlogix/logix-engine/releases/latest)
+and follow the steps for your system on that page, up to checking that the
+engine runs. They say exactly what that release needs, such as a step for
+files that aren't signed yet. Newer pre-releases on the
+[releases page](https://github.com/openlogix/logix-engine/releases) are
 development builds.
 
-=== "macOS"
-
-    From the [**Latest** release](https://github.com/openlogix/logix-engine/releases/latest), download
-    `logix-engine-darwin-arm64-<date>.tgz` to your **Downloads** folder.
-    Clear the download flag and unpack it:
-
-    **Terminal:**
-
-    ```sh
-    cd ~/Downloads
-    xattr -c logix-engine-darwin-arm64-*.tgz
-    tar -xzf logix-engine-darwin-arm64-*.tgz
-    ```
-
-    > [!IMPORTANT]
-    > The engine isn't signed with an Apple Developer ID yet. `xattr -c` tells
-    > macOS to allow it; without it, macOS refuses to run the engine.
-
-    Check that it runs:
-
-    **Terminal:**
-
-    ```sh
-    ~/Downloads/logix-engine/logix-engine --version
-    ```
-
-=== "Windows"
-
-    From the [**Latest** release](https://github.com/openlogix/logix-engine/releases/latest), download
-    `logix-engine-windows-x86-64-<date>.tgz` to your **Downloads** folder.
-    Unblock it and unpack it:
-
-    **PowerShell:**
-
-    ```powershell
-    cd $HOME\Downloads
-    $PACKAGE = (Get-ChildItem logix-engine-windows-x86-64-*.tgz).Name
-    Unblock-File $PACKAGE
-    tar -xzf $PACKAGE
-    ```
-
-    > [!IMPORTANT]
-    > The engine isn't signed yet. `Unblock-File` tells Windows the file is
-    > yours to run. If you have several `logix-engine-windows-x86-64-*.tgz`
-    > files there, delete the older ones first.
-
-    Check that it runs:
-
-    **PowerShell:**
-
-    ```powershell
-    & $HOME\Downloads\logix-engine\logix-engine.exe --version
-    ```
-
-=== "Linux"
-
-    From the [**Latest** release](https://github.com/openlogix/logix-engine/releases/latest), download
-    `logix-engine-linux-x86-64-<date>.tgz` to your **Downloads** folder, and
-    unpack it:
-
-    **Terminal:**
-
-    ```sh
-    cd ~/Downloads
-    tar -xzf logix-engine-linux-x86-64-*.tgz
-    ```
-
-    Check that it runs:
-
-    **Terminal:**
-
-    ```sh
-    ~/Downloads/logix-engine/logix-engine --version
-    ```
-
-It prints the engine's version, a date such as `2026.11.09`.
+The check prints the engine's version, a date such as `2026.11.09`. The
+steps unpack the engine into a `logix-engine` folder in your **Downloads**
+folder, which the next step uses.
 
 ## 2. Connect Claude Code to the engine
 
