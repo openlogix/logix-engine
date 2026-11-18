@@ -411,8 +411,19 @@ fn run(request: &Request) -> Response {
     // so reconnect it in software, as a replug does: it then gets only what
     // the remaining rules give (the user's request, 2026-11-17).
     if matches!(request, Request::RemoveUdevRule { .. }) {
-        for dir in usb_devices_with_ids(Path::new(SYSFS_USB_DEVICES), vid, pid) {
-            response.steps.extend(reconnect(&dir));
+        let root = Path::new(SYSFS_USB_DEVICES);
+        let devices = usb_devices_with_ids(root, vid, pid);
+        for dir in &devices {
+            response.steps.extend(reconnect(dir));
+        }
+        if !devices.is_empty() {
+            response.steps.push(wait_for_devices(
+                root,
+                vid,
+                pid,
+                devices.len(),
+                std::time::Duration::from_secs(10),
+            ));
         }
     }
     response
@@ -426,24 +437,72 @@ fn run(request: &Request) -> Response {
 const SYSFS_USB_DEVICES: &str = "/sys/bus/usb/devices";
 
 /// Reconnects a USB device in software, as unplugging it and plugging it
-/// in again does: `authorized` 0, then 1. Its device files are made again,
-/// with only the access the current udev rules give.
+/// in again does: its hub port off, then on again (the port's `disable`
+/// file, Linux 4.20 and later). The kernel removes the device and finds it
+/// again under a new device number, so udev makes its device files again
+/// with only the access the current rules give. Its `authorized` file
+/// isn't enough: 0 then 1 only detaches and attaches its drivers, and its
+/// device file keeps the old mode, group and ACL (found on Ubuntu 22.04,
+/// 2026-11-18).
 #[cfg(target_os = "linux")]
 fn reconnect(dir: &Path) -> Vec<Step> {
-    let authorized = dir.join("authorized");
+    // Found now: the device's own folder goes while its port is off.
+    let disable = match std::fs::canonicalize(dir.join("port")) {
+        Ok(port) => port.join("disable"),
+        Err(e) => {
+            return vec![Step {
+                command: format!("find the hub port of {}", dir.display()),
+                exit_code: Some(1),
+                output: e.to_string(),
+            }];
+        }
+    };
     let mut steps = Vec::new();
-    for value in ["0", "1"] {
-        let written = std::fs::write(&authorized, value);
+    for value in ["1", "0"] {
+        let written = std::fs::write(&disable, value);
+        let ok = written.is_ok();
         steps.push(Step {
-            command: format!("write {value} to {}", authorized.display()),
-            exit_code: Some(if written.is_ok() { 0 } else { 1 }),
+            command: format!("write {value} to {}", disable.display()),
+            exit_code: Some(if ok { 0 } else { 1 }),
             output: written.err().map(|e| e.to_string()).unwrap_or_default(),
         });
-        if value == "0" {
-            std::thread::sleep(std::time::Duration::from_millis(500));
+        if !ok {
+            break;
+        }
+        if value == "1" {
+            std::thread::sleep(std::time::Duration::from_secs(1));
         }
     }
     steps
+}
+
+/// Waits until `count` devices with these USB IDs are connected again
+/// under `root`, after their ports were turned on again: the kernel finds
+/// a device a moment later. A step that fails after `timeout`.
+#[cfg(target_os = "linux")]
+fn wait_for_devices(
+    root: &Path,
+    vid: &str,
+    pid: &str,
+    count: usize,
+    timeout: std::time::Duration,
+) -> Step {
+    let start = std::time::Instant::now();
+    loop {
+        let found = usb_devices_with_ids(root, vid, pid).len();
+        if found >= count || start.elapsed() >= timeout {
+            return Step {
+                command: format!("wait for {count} {vid}:{pid} device(s) to reconnect"),
+                exit_code: Some(if found >= count { 0 } else { 1 }),
+                output: if found >= count {
+                    String::new()
+                } else {
+                    format!("{found} reconnected after {} s", timeout.as_secs())
+                },
+            };
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
 }
 
 /// The folders of the connected USB devices with these USB IDs, under
@@ -949,6 +1008,59 @@ mod tests {
         let found = usb_devices_with_ids(tmp.path(), "0403", "6010");
         assert_eq!(found, [tmp.path().join("1-2"), tmp.path().join("1-4")]);
         assert!(usb_devices_with_ids(tmp.path(), "dead", "beef").is_empty());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn reconnects_a_device_by_turning_its_port_off_and_on() {
+        let tmp = tempfile::tempdir().unwrap();
+        let port = tmp.path().join("1-3.4.3/1-3.4.3:1.0/1-3.4.3-port1");
+        std::fs::create_dir_all(&port).unwrap();
+        std::fs::write(port.join("disable"), "0\n").unwrap();
+        let device = tmp.path().join("1-3.4.3.1");
+        std::fs::create_dir_all(&device).unwrap();
+        std::os::unix::fs::symlink(&port, device.join("port")).unwrap();
+        let steps = reconnect(&device);
+        let disable = std::fs::canonicalize(&port).unwrap().join("disable");
+        let commands: Vec<_> = steps.iter().map(|s| s.command.clone()).collect();
+        assert_eq!(
+            commands,
+            [
+                format!("write 1 to {}", disable.display()),
+                format!("write 0 to {}", disable.display()),
+            ]
+        );
+        assert!(steps.iter().all(|s| s.exit_code == Some(0)));
+        assert_eq!(std::fs::read_to_string(&disable).unwrap(), "0");
+
+        // No port (a root hub, or a kernel without it): one failed step.
+        let other = tmp.path().join("1-5");
+        std::fs::create_dir_all(&other).unwrap();
+        let steps = reconnect(&other);
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0].exit_code, Some(1));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn waits_for_reconnected_devices() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("1-2");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("idVendor"), "0403\n").unwrap();
+        std::fs::write(dir.join("idProduct"), "6010\n").unwrap();
+        let short = std::time::Duration::from_millis(200);
+        assert_eq!(
+            wait_for_devices(tmp.path(), "0403", "6010", 1, short).exit_code,
+            Some(0)
+        );
+        let missing = wait_for_devices(tmp.path(), "0403", "6010", 2, short);
+        assert_eq!(missing.exit_code, Some(1));
+        assert!(
+            missing.output.contains("1 reconnected"),
+            "{}",
+            missing.output
+        );
     }
 
     #[test]
