@@ -422,8 +422,8 @@ Claude lists what's connected, and how well each device matches your board.
 
 === "Linux"
 
-    Linux lets only the administrator open most USB devices, so your board
-    needs a udev rule before the engine can program it. If Claude says it
+    On Linux, your board needs a udev rule that lets your user account open
+    it before the engine can program it. If Claude says it
     can't open the board, ask:
 
     **Claude Code:**
