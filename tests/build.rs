@@ -1031,7 +1031,7 @@ async fn program_board_checks_the_chosen_device() {
         let driver = driver.expect("a driver in data");
         assert_eq!(driver["needed"], "udev-rule");
         assert_eq!(driver["can_add"], true);
-        assert_eq!(driver["add"]["confirm"], "Add Rule");
+        assert_eq!(driver["add"]["confirm"], "Add udev Rule");
         assert!(err.data.as_ref().unwrap()["who"].is_string());
     } else if cfg!(target_os = "macos") {
         assert!(driver.is_none(), "{err:?}");

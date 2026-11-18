@@ -130,7 +130,7 @@ fn add_question(status: &DriverStatus, who: &str) -> Consent {
                 "Nothing else on your computer changes.".into(),
             ],
             note: Some("You can remove the rule later.".into()),
-            confirm: "Add Rule".into(),
+            confirm: "Add udev Rule".into(),
             busy: "Adding the board's udev rule…".into(),
             cancelled: "Cancelled: the udev rule wasn't added.".into(),
         };
@@ -168,7 +168,7 @@ fn remove_question(status: &DriverStatus, who: &str) -> Consent {
                 "To program the board again, add the rule again.".into(),
             ],
             note: None,
-            confirm: "Remove Rule".into(),
+            confirm: "Remove udev Rule".into(),
             busy: "Removing the board's udev rule…".into(),
             cancelled: "Cancelled: the udev rule wasn't removed.".into(),
         };
@@ -283,7 +283,7 @@ mod tests {
             add.lead,
             "To program the Alhambra II, Linux needs a udev rule that lets your user account use it."
         );
-        assert_eq!(add.confirm, "Add Rule");
+        assert_eq!(add.confirm, "Add udev Rule");
         assert_eq!(add.cancelled, "Cancelled: the udev rule wasn't added.");
         assert!(s.remove.is_none());
     }
