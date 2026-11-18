@@ -72,7 +72,7 @@ jobs:
         os: [macos-15, macos-26, windows-2025, ubuntu-22.04, ubuntu-24.04]
         channel: ${{ fromJSON(needs.channels.outputs.channels) }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     # Git's bash on Windows, as on macOS: the scripts are bash.
     defaults:
       run:
