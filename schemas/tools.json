@@ -5218,6 +5218,11 @@
               "description": "Other connected devices have the board's USB IDs, and the board's\nprogrammer can't tell them apart. Disconnect them and retry.",
               "type": "string",
               "const": "disconnect_devices"
+            },
+            {
+              "description": "install_driver (Windows): other connected devices have the same USB\nIDs and would get the driver too. Ask the user (the error's\ndata.consent), then unplug them, or retry with allow_same_ids.",
+              "type": "string",
+              "const": "confirm_same_ids"
             }
           ]
         }
@@ -5774,6 +5779,14 @@
           ],
           "default": null
         },
+        "board": {
+          "description": "The board the user has chosen, by ID, as for list_devices: names\nthe device in messages (who, summary) when it may be that board.\nOmitted means none.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
         "allow_same_ids": {
           "description": "On Windows: install even when other connected devices have the same\nUSB IDs, which then get WinUSB too. Default false: refused, naming\nthem. Not needed on Linux, where the rule only gives access.",
           "type": "boolean",
@@ -5850,6 +5863,11 @@
           "description": "The device's id now: it can change once the driver lets the engine\nread its serial number. Use it, or list the devices again.",
           "type": "string"
         },
+        "who": {
+          "description": "The device for people in a sentence, as list_devices' who.",
+          "type": "string",
+          "default": ""
+        },
         "driver": {
           "description": "The device's driver now (ready true).",
           "$ref": "#/$defs/DriverStatus"
@@ -5864,6 +5882,14 @@
           "items": {
             "type": "string"
           }
+        },
+        "summary": {
+          "description": "What was done, for people, a sentence each, such as \"Added a udev\nrule for the Alhambra II.\" or \"Removed the WinUSB driver for the\nAlhambra II.\" and \"Windows uses its original driver again.\".",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
         }
       },
       "additionalProperties": false,
@@ -6048,6 +6074,14 @@
           ],
           "default": null
         },
+        "board": {
+          "description": "The board the user has chosen, by ID, as for list_devices: names\nthe device in messages (who, summary) when it may be that board.\nOmitted means none.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
         "display_paths": {
           "description": "How to name paths in what people read. Omitted means as given.",
           "anyOf": [
@@ -6119,6 +6153,11 @@
           "description": "The device's id now (it can change with its driver).",
           "type": "string"
         },
+        "who": {
+          "description": "The device for people in a sentence, as list_devices' who.",
+          "type": "string",
+          "default": ""
+        },
         "driver": {
           "description": "The device's driver now, as Windows reports it after looking again;\nit may take a moment more to settle.",
           "$ref": "#/$defs/DriverStatus"
@@ -6129,6 +6168,14 @@
           "items": {
             "type": "string"
           }
+        },
+        "summary": {
+          "description": "What was done, for people, a sentence each, such as \"Added a udev\nrule for the Alhambra II.\" or \"Removed the WinUSB driver for the\nAlhambra II.\" and \"Windows uses its original driver again.\".",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
         }
       },
       "additionalProperties": false,

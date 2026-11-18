@@ -339,6 +339,7 @@ pub fn locate(
     id: &str,
     custom_boards_folder: Option<String>,
     build_folder: Option<String>,
+    board: Option<String>,
     scan: impl FnOnce() -> Result<Vec<Device>, ToolError>,
     drivers: DriverLookup,
 ) -> Result<Located, ToolError> {
@@ -366,7 +367,7 @@ pub fn locate(
         custom_boards_folder,
         display_paths: None,
         build_folder,
-        board: None,
+        board: board.clone(),
     };
     let mut out = run_with_drivers(input, move || Ok(scanned), cfg!(windows).then_some(drivers))?;
     if cfg!(target_os = "linux") {
@@ -397,7 +398,7 @@ pub fn locate(
     } else {
         device.label.clone()
     };
-    let who = who(&boards, None, &device.label, &board_name);
+    let who = who(&boards, board.as_deref(), &device.label, &board_name);
     Ok(Located {
         device,
         name,

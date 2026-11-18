@@ -51,6 +51,11 @@ pub struct UninstallDriverInput {
     /// the device's best match.
     #[serde(default)]
     pub build_folder: Option<String>,
+    /// The board the user has chosen, by ID, as for list_devices: names
+    /// the device in messages (who, summary) when it may be that board.
+    /// Omitted means none.
+    #[serde(default)]
+    pub board: Option<String>,
     /// How to name paths in what people read. Omitted means as given.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_paths: Option<crate::display_paths::DisplayPaths>,
@@ -62,6 +67,9 @@ pub struct UninstallDriverInput {
 pub struct UninstallDriverOutput {
     /// The device's id now (it can change with its driver).
     pub device: String,
+    /// The device for people in a sentence, as list_devices' who.
+    #[serde(default)]
+    pub who: String,
     /// The device's driver now, as Windows reports it after looking again;
     /// it may take a moment more to settle.
     pub driver: DriverStatus,
@@ -69,9 +77,26 @@ pub struct UninstallDriverOutput {
     /// Windows (oem<N>.inf); on Linux, the udev rule's file. Empty when there
     /// was nothing, so nothing was done.
     pub removed: Vec<String>,
+    /// What was done, for people, a sentence each, such as "Added a udev
+    /// rule for the Alhambra II." or "Removed the WinUSB driver for the
+    /// Alhambra II." and "Windows uses its original driver again.".
+    #[serde(default)]
+    pub summary: Vec<String>,
 }
 
 pub async fn run(
+    state: &EngineState,
+    input: UninstallDriverInput,
+    call: &Call,
+) -> Result<UninstallDriverOutput, ToolError> {
+    // What was done, for people (crate::driver_texts).
+    let mut out = run_inner(state, input, call).await?;
+    let udev = out.driver.needed == crate::driver_texts::UDEV_RULE;
+    out.summary = crate::driver_texts::removed_summary(udev, !out.removed.is_empty(), &out.who);
+    Ok(out)
+}
+
+async fn run_inner(
     _state: &EngineState,
     input: UninstallDriverInput,
     call: &Call,
@@ -87,6 +112,7 @@ pub async fn run(
         &input.device,
         input.custom_boards_folder.clone(),
         input.build_folder.clone(),
+        input.board.clone(),
         devices::scan,
         &find,
     )?;
@@ -103,6 +129,8 @@ pub async fn run(
     if packages.is_empty() {
         return Ok(UninstallDriverOutput {
             device: d.id.clone(),
+            who: located.who.clone(),
+            summary: Vec::new(),
             driver,
             removed: Vec::new(),
         });
@@ -164,6 +192,8 @@ pub async fn run(
     .map_err(|e| ToolError::engine(format!("The driver check stopped: {e}")))??;
     Ok(UninstallDriverOutput {
         device: device.id,
+        who: located.who.clone(),
+        summary: Vec::new(),
         driver: now.unwrap_or(DriverStatus {
             current: None,
             ready: false,
@@ -185,6 +215,7 @@ async fn run_linux(
         &input.device,
         input.custom_boards_folder.clone(),
         input.build_folder.clone(),
+        input.board.clone(),
         devices::scan,
         &find,
     )?;
@@ -196,6 +227,8 @@ async fn run_linux(
     let Some(rule) = drivers::udev_rule(&d.vid, &d.pid) else {
         return Ok(UninstallDriverOutput {
             device: d.id.clone(),
+            who: located.who.clone(),
+            summary: Vec::new(),
             driver,
             removed: Vec::new(),
         });
@@ -247,7 +280,7 @@ async fn run_linux(
     );
     let now = tokio::task::spawn_blocking(move || {
         let find = lookup();
-        list_devices::locate(&id, custom, build, devices::scan, &find)
+        list_devices::locate(&id, custom, build, None, devices::scan, &find)
     })
     .await
     .map_err(|e| ToolError::engine(format!("The access check stopped: {e}")))?;
@@ -269,6 +302,8 @@ async fn run_linux(
     };
     Ok(UninstallDriverOutput {
         device,
+        who: located.who.clone(),
+        summary: Vec::new(),
         driver,
         removed: vec![path],
     })

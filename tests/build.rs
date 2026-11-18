@@ -1010,6 +1010,32 @@ async fn program_board_checks_the_chosen_device() {
     assert_eq!(err.category, Category::Setup, "{err:?}");
     assert_eq!(err.action.as_ref().unwrap().code, ActionCode::ConnectBoard);
     assert!(err.details.contains("device not found"), "{err:?}");
+
+    // A device that can't be opened: refused, and on Windows and Linux with
+    // its driver (or udev rule) and the question to ask, to offer the fix.
+    let mut locked = usb("", None, 7);
+    locked.product = None;
+    locked.reachable = false;
+    let id = locked.id.clone();
+    let err = run(vec![locked], json!({"device": id})).await.unwrap_err();
+    let code = err.action.as_ref().unwrap().code;
+    assert!(
+        matches!(
+            code,
+            ActionCode::InstallDrivers | ActionCode::FixDevicePermissions
+        ),
+        "{err:?}"
+    );
+    let driver = err.data.as_ref().and_then(|d| d.get("driver"));
+    if cfg!(target_os = "linux") {
+        let driver = driver.expect("a driver in data");
+        assert_eq!(driver["needed"], "udev-rule");
+        assert_eq!(driver["can_add"], true);
+        assert_eq!(driver["add"]["confirm"], "Add Rule");
+        assert!(err.data.as_ref().unwrap()["who"].is_string());
+    } else if cfg!(target_os = "macos") {
+        assert!(driver.is_none(), "{err:?}");
+    }
 }
 
 #[tokio::test]

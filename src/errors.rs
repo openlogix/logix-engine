@@ -77,6 +77,10 @@ pub enum ActionCode {
     /// Other connected devices have the board's USB IDs, and the board's
     /// programmer can't tell them apart. Disconnect them and retry.
     DisconnectDevices,
+    /// install_driver (Windows): other connected devices have the same USB
+    /// IDs and would get the driver too. Ask the user (the error's
+    /// data.consent), then unplug them, or retry with allow_same_ids.
+    ConfirmSameIds,
 }
 
 /// A suggested action, with a code for the host and a description for people.
@@ -143,6 +147,15 @@ impl ToolError {
         self
     }
 
+    /// Adds `key` to the error's data, extra facts for the host.
+    pub fn with_data(mut self, key: &str, value: impl Serialize) -> Self {
+        let value = serde_json::to_value(value).unwrap_or(serde_json::Value::Null);
+        self.data
+            .get_or_insert_with(serde_json::Map::new)
+            .insert(key.to_string(), value);
+        self
+    }
+
     pub fn with_details(mut self, details: impl Into<String>) -> Self {
         self.details = crate::text::to_multiline_text(&details.into());
         self
@@ -202,6 +215,7 @@ mod tests {
             ActionCode::FixDevicePermissions,
             ActionCode::InstallDrivers,
             ActionCode::DisconnectDevices,
+            ActionCode::ConfirmSameIds,
         ]
         .iter()
         .map(|c| serde_json::to_value(c).unwrap())
@@ -213,7 +227,8 @@ mod tests {
                 "connect_board",
                 "fix_device_permissions",
                 "install_drivers",
-                "disconnect_devices"
+                "disconnect_devices",
+                "confirm_same_ids"
             ])
             .as_array()
             .unwrap()

@@ -190,6 +190,60 @@ fn remove_question(status: &DriverStatus, who: &str) -> Consent {
     }
 }
 
+/// `who` with its first letter capitalized, to start a sentence.
+fn sentence_start(who: &str) -> String {
+    let mut c = who.chars();
+    match c.next() {
+        Some(first) => first.to_uppercase().chain(c).collect(),
+        None => String::new(),
+    }
+}
+
+/// What install_driver did, for people, a sentence each.
+pub fn installed_summary(
+    udev: bool,
+    installed: bool,
+    who: &str,
+    same_ids: &[String],
+) -> Vec<String> {
+    let mut out = vec![match (udev, installed) {
+        (true, true) => format!("Added a udev rule for {who}."),
+        (false, true) => format!("Installed the WinUSB driver for {who}."),
+        (true, false) => format!("{} can be programmed already.", sentence_start(who)),
+        (false, false) => format!("{} has its driver already.", sentence_start(who)),
+    }];
+    if installed && !same_ids.is_empty() {
+        let others = same_ids.join(", ");
+        out.push(if udev {
+            format!("It lets your user account program these too: {others}.")
+        } else {
+            format!("These got it too: {others}.")
+        });
+    }
+    out
+}
+
+/// What uninstall_driver did, for people, a sentence each.
+pub fn removed_summary(udev: bool, removed: bool, who: &str) -> Vec<String> {
+    match (udev, removed) {
+        (true, true) => vec![
+            format!("Removed the udev rule for {who}."),
+            "Your user account can't program it now, unless another rule allows it.".into(),
+        ],
+        (false, true) => vec![
+            format!("Removed the WinUSB driver for {who}."),
+            "Windows uses its original driver again.".into(),
+        ],
+        (true, false) => vec![format!(
+            "{} has no udev rule of Logix Engine's.",
+            sentence_start(who)
+        )],
+        (false, false) => vec![format!(
+            "Logix Engine found no WinUSB driver it installed for {who}."
+        )],
+    }
+}
+
 /// What to do for a device the engine can't open, for people (the
 /// device's `action` says it for AI agents).
 pub fn fix() -> String {
@@ -273,6 +327,38 @@ mod tests {
         assert_eq!(
             winusb(None).state,
             "Driver: needs WinUSB on USB interface 0 to program the board (it has no driver now)."
+        );
+    }
+
+    #[test]
+    fn summaries_say_what_was_done() {
+        assert_eq!(
+            installed_summary(true, true, "the Alhambra II", &[]),
+            ["Added a udev rule for the Alhambra II."]
+        );
+        assert_eq!(
+            installed_summary(false, false, "the Alhambra II", &[]),
+            ["The Alhambra II has its driver already."]
+        );
+        assert_eq!(
+            installed_summary(
+                false,
+                true,
+                "the Alhambra II",
+                &["Alhambra II v1.0A (AlhambraBits, 0403:6010)".into()]
+            )[1],
+            "These got it too: Alhambra II v1.0A (AlhambraBits, 0403:6010)."
+        );
+        assert_eq!(
+            removed_summary(false, true, "the Alhambra II"),
+            [
+                "Removed the WinUSB driver for the Alhambra II.",
+                "Windows uses its original driver again."
+            ]
+        );
+        assert_eq!(
+            removed_summary(true, false, "USB device (0403:6010)"),
+            ["USB device (0403:6010) has no udev rule of Logix Engine's."]
         );
     }
 

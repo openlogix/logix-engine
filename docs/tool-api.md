@@ -211,9 +211,10 @@ On success, a tool returns its output object as structured content. On failure, 
 | --- | --- |
 | `download_packages` | Required packages are missing or broken and weren't downloaded automatically, because auto-download is off or the download failed |
 | `connect_board` | No matching board is connected |
-| `fix_device_permissions` | A device was found but cannot be opened |
-| `install_drivers` | A driver required by the board is missing (Windows): `install_driver` installs it, after asking the user |
+| `fix_device_permissions` | A device was found but cannot be opened. On Linux, `install_driver` adds the udev rule it needs, after asking the user; from `program_board`, the error's `data` has the device's `who` and `driver`, as for `install_drivers`. When Linux can't ask for the password, `data.terminal_commands` are the commands to run in a terminal instead, a line each |
+| `install_drivers` | A driver required by the board is missing (Windows): `install_driver` installs it, after asking the user. From `program_board`, the error's `data` has the device's `who` and `driver`, as in Table 13, with the question to ask |
 | `disconnect_devices` | Other connected devices have the board's USB IDs and its programmer can't tell them apart; disconnect them and retry |
+| `confirm_same_ids` | `install_driver` (Windows): other connected devices have the same USB IDs and would get the driver too. Ask the user with the error's `data.consent` (as `driver`'s questions in Table 13), then they unplug them, or retry with `allow_same_ids` |
 
 ### Presentation
 
@@ -861,7 +862,7 @@ Programs a bitstream into the board it was built for, on the device the host cho
 | `programmer` | catalog ID | The programmer that was used, such as `openfpgaloader`, or `custom` when `programmer_command` was given |
 | `commands` | list of commands | The programs this call ran, in order, so they can be run again without the engine. See Commands |
 
-**Errors:** setup errors with `connect_board` when the chosen device isn't connected anymore or another device is on its port (list the devices again), when the connected FPGA isn't the build's (see Wrong FPGA), or when the programmer doesn't find it (for a dfu-util board, also when it isn't in its bootloader mode), or when the board stops answering while it's being written (such as unplugged): a programmer that repeats the same lines 200 times in a row is stopped, and its repeats past the first 10 aren't in the live output; `disconnect_devices` when the command can't name the device and other connected devices have its USB IDs (icesprog, openFPGALoader with only `--board` or `-c`, such as for USB-Blaster and CMSIS-DAP adapters), or when the programmer itself can't tell them apart; `fix_device_permissions` or `install_drivers` when the device can't be opened. Request errors when `device` isn't a device ID, when the device doesn't match the board's USB filter, when the build folder has no build record, for an invalid custom board, or when the build's board isn't the same anymore. Other request errors, tool failures, engine errors and cancellation.
+**Errors:** setup errors with `connect_board` when the chosen device isn't connected anymore or another device is on its port (list the devices again), when the connected FPGA isn't the build's (see Wrong FPGA), or when the programmer doesn't find it (for a dfu-util board, also when it isn't in its bootloader mode), or when the board stops answering while it's being written (such as unplugged): a programmer that repeats the same lines 200 times in a row is stopped, and its repeats past the first 10 aren't in the live output; `disconnect_devices` when the command can't name the device and other connected devices have its USB IDs (icesprog, openFPGALoader with only `--board` or `-c`, such as for USB-Blaster and CMSIS-DAP adapters), or when the programmer itself can't tell them apart; `fix_device_permissions` or `install_drivers` when the device can't be opened, with its `who` and `driver` (as in Table 13, with the question to ask) in `data` on Windows and Linux. Request errors when `device` isn't a device ID, when the device doesn't match the board's USB filter, when the build folder has no build record, for an invalid custom board, or when the build's board isn't the same anymore. Other request errors, tool failures, engine errors and cancellation.
 
 ## list_devices tool
 
@@ -954,7 +955,7 @@ Windows and Linux. For a device whose `driver` isn't `ready`: on Windows, instal
 
 **Other devices with the same USB IDs.** Windows gives drivers by USB IDs and interface, not per board, and libwdi installs on every connected device with those IDs (such as another FTDI board with the same chip). So while other such devices are connected, the tool refuses with a request error naming them and `disconnect_devices`: unplug them, or retry with `allow_same_ids` when the user agrees that they get WinUSB too. A device with the same IDs plugged in later may keep its driver: Windows chooses then. Only the interface the programmer needs changes, so an FTDI chip's other channel, such as the board's serial port, keeps its driver. Vendor tools that use that interface (such as Vivado for a Digilent board) can't until `uninstall_driver`.
 
-**On Linux.** Ask the user first, as on Windows, saying that the board's USB IDs get a udev rule. The engine runs itself again as root through `pkexec`, so the desktop shows its password dialog (polkit's), from a host's window or from an AI client in a terminal alike; the rule's file is made by the engine, never from the request. Then it asks udev to apply its rules again (`udevadm control --reload-rules`, `udevadm trigger` for the device and its HID nodes, `udevadm settle`) and lists the devices again until the engine can open the device. Its phases are "Waiting for permission", "Adding rule" and "Checking access", with messages as on Windows. A dismissed password dialog is a setup error with `fix_device_permissions`. Where Linux can't ask (no `pkexec`, or no password dialog, such as over SSH), it's a setup error whose `details` are the `sudo` commands that do the same in a terminal, for the user to run. Other devices with the same USB IDs aren't refused, since a rule only gives access: they're listed in `same_ids`.
+**On Linux.** Ask the user first, as on Windows, saying that the board's USB IDs get a udev rule. The engine runs itself again as root through `pkexec`, so the desktop shows its password dialog (polkit's), from a host's window or from an AI client in a terminal alike; the rule's file is made by the engine, never from the request. Then it asks udev to apply its rules again (`udevadm control --reload-rules`, `udevadm trigger` for the device and its HID nodes, `udevadm settle`) and lists the devices again until the engine can open the device. Its phases are "Waiting for permission", "Adding rule" and "Checking access", with messages as on Windows. A dismissed password dialog is a setup error with `fix_device_permissions`. Where Linux can't ask (no `pkexec`, or no password dialog, such as over SSH), it's a setup error whose `data.terminal_commands` are the `sudo` commands that do the same in a terminal, a line each, for the user to run. Other devices with the same USB IDs aren't refused, since a rule only gives access: they're listed in `same_ids`.
 
 **Table 39.** install_driver tool inputs
 
@@ -965,17 +966,20 @@ Windows and Linux. For a device whose `driver` isn't `ready`: on Windows, instal
 | `build_folder` | build folder path | No | A successful build's folder: the driver is the one the build's board and board variant need, as `list_devices`' `driver` with the same `build_folder`. Omitted means the device's best match |
 | `allow_same_ids` | boolean | No | On Windows, install even when other connected devices have the same USB IDs, which then get WinUSB too. Default false. Not used on Linux |
 | `display_paths` | display paths | No | How to name paths in what people read. Omitted means as the request gave them |
+| `board` | board ID | No | The board the user has chosen, as for `list_devices`: names the device in `who` and `summary` when it may be that board. Omitted means none |
 
 **Table 40.** install_driver tool outputs
 
 | Field | Type | Description |
 | --- | --- | --- |
 | `device` | text | The device's `id` now: it can change once the driver lets the engine read its serial number |
+| `who` | text | The device for people in a sentence, as in Table 13 |
+| `summary` | list of text | What was done, for people, a sentence each, such as "Added a udev rule for the Alhambra II." or "Removed the WinUSB driver for the Alhambra II." and "Windows uses its original driver again.". The same for every frontend, naming none |
 | `driver` | object | The device's `driver` now, as in Table 13 (`ready` true) |
 | `installed` | boolean | False when the driver was `ready` already, so nothing was done |
 | `same_ids` | list of text | Optional, omitted when empty. Other connected devices with the same USB IDs, which got WinUSB too (on Windows, only with `allow_same_ids`), or which the rule lets the user open too (Linux) |
 
-**Errors:** request errors on macOS, for a device that is no known board (or not the build's), for one whose programmer needs no driver, and on Windows while other devices have the same USB IDs (`disconnect_devices`). On Linux, setup errors with `fix_device_permissions` when the user didn't give permission, when Linux can't ask (the `sudo` commands in `details`), when the rule couldn't be added, or when the device still can't be opened. Setup errors with `install_drivers` when the user didn't give permission, when the installation failed (with libwdi's reason, and every step's output in `details`), or when Windows still doesn't give the device WinUSB; with `connect_board` when the device isn't connected anymore; with `download_packages` when the FPGA tools package has no `wdi-simple`. Engine errors.
+**Errors:** request errors on macOS, for a device that is no known board (or not the build's), for one whose programmer needs no driver, and on Windows while other devices have the same USB IDs (`confirm_same_ids`, with the question in `data.consent`). On Linux, setup errors with `fix_device_permissions` when the user didn't give permission, when Linux can't ask (the `sudo` commands in `data.terminal_commands`, a line each), when the rule couldn't be added, or when the device still can't be opened. Setup errors with `install_drivers` when the user didn't give permission, when the installation failed (with libwdi's reason, and every step's output in `details`), or when Windows still doesn't give the device WinUSB; with `connect_board` when the device isn't connected anymore; with `download_packages` when the FPGA tools package has no `wdi-simple`. Engine errors.
 
 ## uninstall_driver tool
 
@@ -991,16 +995,19 @@ Windows and Linux. Undoes `install_driver` for a device. On Linux, it removes Lo
 | `custom_boards_folder` | custom boards folder | No | The host's own boards, as for `list_devices`. Omitted means none |
 | `build_folder` | build folder path | No | A successful build's folder, as for `install_driver`. Omitted means the device's best match |
 | `display_paths` | display paths | No | How to name paths in what people read. Omitted means as the request gave them |
+| `board` | board ID | No | The board the user has chosen, as for `list_devices`: names the device in `who` and `summary` when it may be that board. Omitted means none |
 
 **Table 42.** uninstall_driver tool outputs
 
 | Field | Type | Description |
 | --- | --- | --- |
 | `device` | text | The device's `id` now (it can change with its driver) |
+| `who` | text | The device for people in a sentence, as in Table 13 |
+| `summary` | list of text | What was done, for people, a sentence each, such as "Added a udev rule for the Alhambra II." or "Removed the WinUSB driver for the Alhambra II." and "Windows uses its original driver again.". The same for every frontend, naming none |
 | `driver` | object | The device's `driver` now, as in Table 13, after Windows looked again; it may take a moment more to settle |
 | `removed` | list of text | What was removed: on Windows, the driver packages, by their names in Windows (`oem<N>.inf`); on Linux, the udev rule's file. Empty when there was nothing, so nothing was done |
 
-**Errors:** request errors on macOS, for a device that is no known board, and for one whose programmer needs no driver. On Linux, setup errors with `fix_device_permissions` when the user didn't give permission, when Linux can't ask (the `sudo` commands in `details`) or when the rule couldn't be removed. Setup errors with `install_drivers` when the user didn't give permission or a package couldn't be removed (every step's output in `details`); with `connect_board` when the device isn't connected anymore. Engine errors.
+**Errors:** request errors on macOS, for a device that is no known board, and for one whose programmer needs no driver. On Linux, setup errors with `fix_device_permissions` when the user didn't give permission, when Linux can't ask (the `sudo` commands in `data.terminal_commands`, a line each) or when the rule couldn't be removed. Setup errors with `install_drivers` when the user didn't give permission or a package couldn't be removed (every step's output in `details`); with `connect_board` when the device isn't connected anymore. Engine errors.
 
 ## get_catalog tool
 
