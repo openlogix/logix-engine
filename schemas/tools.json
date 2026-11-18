@@ -4628,7 +4628,7 @@
   },
   {
     "name": "list_devices",
-    "description": "Lists the USB devices connected to this computer, with their USB IDs, names and serial numbers, and for each the boards it may be: catalog boards and the request's custom_boards_folder, best first, each with the variants it fits and how well it matches: strong (very likely this board), possible (a few other boards look the same) or weak (many boards fit). Show the level as it is: how the engine decides it is internal and changes without notice. program_board needs the id of one of these devices. Given a build_folder, it lists only the devices that fit that build's board and variant, best first, each with its build_match: program the only one, or ask the user when there are several. Devices that need a driver or permissions first are listed apart, under unreachable, with the fix. On Windows, a device whose board's programmer needs a driver has driver: the one it needs (WinUSB), on which USB interface, the one it has and whether it's ready.",
+    "description": "Lists the USB devices connected to this computer, with their USB IDs, names and serial numbers, and for each the boards it may be: catalog boards and the request's custom_boards_folder, best first, each with the variants it fits and how well it matches: strong (very likely this board), possible (a few other boards look the same) or weak (many boards fit). Show the level as it is: how the engine decides it is internal and changes without notice. program_board needs the id of one of these devices. Given a build_folder, it lists only the devices that fit that build's board and variant, best first, each with its build_match: program the only one, or ask the user when there are several. Devices that need a driver or permissions first are listed apart, under unreachable, with the fix. On Windows, a device whose board's programmer needs a driver has driver: the one it needs (WinUSB), on which USB interface, the one it has and whether it's ready; on Linux, every device that fits a board has driver: its udev rule's state. Each device has who, its name for people, and driver has texts for people: its state, and the question to ask before install_driver (add) or uninstall_driver (remove). Give board, the user's chosen board, to name devices by it and list its devices first.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "ListDevicesInput",
@@ -4656,6 +4656,14 @@
         },
         "build_folder": {
           "description": "The build folder of a successful build, as an absolute path. When\ngiven, only devices that fit the build's board in its variant are\nlisted (in devices and unreachable), each with build_match, best\nfirst: the devices program_board can program that build into. The\nbuild's board comes from its build record, custom boards included.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "board": {
+          "description": "The board the user has chosen, by ID, such as the one selected in a\nfrontend's toolbar (a catalog board, or one in\ncustom_boards_folder). When given, a device that may be it is named\nas it in who and in the driver texts, and devices are listed in\nthis order: those that may be this board, then those that may be\nother boards, then the rest (USB order within each). Without\nbuild_folder only: with it, devices are listed best match first.\nOmitted means no board.",
           "type": [
             "string",
             "null"
@@ -4749,6 +4757,10 @@
             },
             "label": {
               "description": "The device for people: its product name (else its manufacturer's\nname, else \"USB device\"), then its manufacturer and USB IDs, such\nas \"Alhambra II v1.0A (AlhambraBits, 0403:6010)\".",
+              "type": "string"
+            },
+            "who": {
+              "description": "The device for people in a sentence, for messages: \"the Alhambra\nII\" when it may be only one board (or the request's board, when it\nmay be that one), else its label. Never the first of several boards\nwith its USB IDs.",
               "type": "string"
             },
             "vid": {
@@ -4960,12 +4972,115 @@
             "ready": {
               "description": "Whether the programmer can use the device as it is. On Windows: true\nwith WinUSB, and with libusbK or libusb0, which older guides\ninstalled. On Linux: whether the engine can open the device. False\nmeans install_driver first.",
               "type": "boolean"
+            },
+            "label": {
+              "description": "For people, what the device needs, in a sentence: \"the WinUSB\ndriver\" or \"a udev rule\". The texts below are for people too, the\nsame for every frontend; none names a frontend, its menus or its\nbuttons (crate::driver_texts).",
+              "type": "string"
+            },
+            "state": {
+              "description": "The device's state, such as \"Driver: needs WinUSB on USB interface 0\nto program the board (it has FTDI's driver now).\" or \"Access: ready\nto program the board.\".",
+              "type": "string"
+            },
+            "tag": {
+              "description": "A short tag while it isn't ready, for a list: \"no driver yet\" or \"no\nudev rule yet\".",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "current_label": {
+              "description": "On Windows, current's driver for people, such as \"FTDI's driver\".",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "can_add": {
+              "description": "Whether install_driver has something to do: the device isn't ready.",
+              "type": "boolean",
+              "default": false
+            },
+            "can_remove": {
+              "description": "Whether uninstall_driver may have something to remove: on Linux,\nLogix Engine's rule is there (current); on Windows, the device has a\nlibusb driver (uninstall_driver says when none was libwdi's).",
+              "type": "boolean",
+              "default": false
+            },
+            "add": {
+              "description": "When can_add: the question to ask before install_driver, and its\nstatus and cancel lines.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Consent"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remove": {
+              "description": "When can_remove: the same before uninstall_driver.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Consent"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false,
           "required": [
             "needed",
             "ready"
+          ]
+        },
+        "Consent": {
+          "description": "A question to ask the user before a change (adding or removing a\ndriver or udev rule), and the lines to show around it: a frontend shows\nit in its own dialog, with its own Cancel.",
+          "type": "object",
+          "properties": {
+            "title": {
+              "description": "The question's title, such as \"Install the board's USB driver?\".",
+              "type": "string"
+            },
+            "lead": {
+              "description": "One sentence: what it's for, naming the board.",
+              "type": "string"
+            },
+            "steps": {
+              "description": "What happens, a short sentence each, such as Windows' or Linux's own\npermission prompt.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "note": {
+              "description": "An optional last line, such as that it can be undone.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "confirm": {
+              "description": "The label of the button that agrees, such as \"Install Driver\".",
+              "type": "string"
+            },
+            "busy": {
+              "description": "A status line while the change runs, such as \"Installing the\nboard's driver…\".",
+              "type": "string"
+            },
+            "cancelled": {
+              "description": "The line to show when the user declines, such as \"Cancelled: the\ndriver wasn't installed.\".",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "lead",
+            "steps",
+            "confirm",
+            "busy",
+            "cancelled"
           ]
         },
         "UnreachableDevice": {
@@ -4982,6 +5097,10 @@
             },
             "label": {
               "description": "The device for people, such as \"USB device (0403:6010)\": its names\ncan't be read.",
+              "type": "string"
+            },
+            "who": {
+              "description": "The device for people in a sentence, as for devices.",
               "type": "string"
             },
             "vid": {
@@ -5014,6 +5133,10 @@
             "action": {
               "description": "What makes the device usable, such as fix_device_permissions.",
               "$ref": "#/$defs/Action"
+            },
+            "fix": {
+              "description": "What to do, for people, such as \"Add a udev rule for it, so it can\nbe programmed and its name read.\" (action says it for AI agents).",
+              "type": "string"
             },
             "driver": {
               "description": "On Windows and Linux: what it needs for its board's programmer and\nwhat it has, as for devices.",
@@ -5251,6 +5374,10 @@
               "description": "The device for people: its product name (else its manufacturer's\nname, else \"USB device\"), then its manufacturer and USB IDs, such\nas \"Alhambra II v1.0A (AlhambraBits, 0403:6010)\".",
               "type": "string"
             },
+            "who": {
+              "description": "The device for people in a sentence, for messages: \"the Alhambra\nII\" when it may be only one board (or the request's board, when it\nmay be that one), else its label. Never the first of several boards\nwith its USB IDs.",
+              "type": "string"
+            },
             "vid": {
               "description": "USB vendor ID, four lowercase hex digits.",
               "type": "string"
@@ -5460,12 +5587,115 @@
             "ready": {
               "description": "Whether the programmer can use the device as it is. On Windows: true\nwith WinUSB, and with libusbK or libusb0, which older guides\ninstalled. On Linux: whether the engine can open the device. False\nmeans install_driver first.",
               "type": "boolean"
+            },
+            "label": {
+              "description": "For people, what the device needs, in a sentence: \"the WinUSB\ndriver\" or \"a udev rule\". The texts below are for people too, the\nsame for every frontend; none names a frontend, its menus or its\nbuttons (crate::driver_texts).",
+              "type": "string"
+            },
+            "state": {
+              "description": "The device's state, such as \"Driver: needs WinUSB on USB interface 0\nto program the board (it has FTDI's driver now).\" or \"Access: ready\nto program the board.\".",
+              "type": "string"
+            },
+            "tag": {
+              "description": "A short tag while it isn't ready, for a list: \"no driver yet\" or \"no\nudev rule yet\".",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "current_label": {
+              "description": "On Windows, current's driver for people, such as \"FTDI's driver\".",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "can_add": {
+              "description": "Whether install_driver has something to do: the device isn't ready.",
+              "type": "boolean",
+              "default": false
+            },
+            "can_remove": {
+              "description": "Whether uninstall_driver may have something to remove: on Linux,\nLogix Engine's rule is there (current); on Windows, the device has a\nlibusb driver (uninstall_driver says when none was libwdi's).",
+              "type": "boolean",
+              "default": false
+            },
+            "add": {
+              "description": "When can_add: the question to ask before install_driver, and its\nstatus and cancel lines.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Consent"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remove": {
+              "description": "When can_remove: the same before uninstall_driver.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Consent"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false,
           "required": [
             "needed",
             "ready"
+          ]
+        },
+        "Consent": {
+          "description": "A question to ask the user before a change (adding or removing a\ndriver or udev rule), and the lines to show around it: a frontend shows\nit in its own dialog, with its own Cancel.",
+          "type": "object",
+          "properties": {
+            "title": {
+              "description": "The question's title, such as \"Install the board's USB driver?\".",
+              "type": "string"
+            },
+            "lead": {
+              "description": "One sentence: what it's for, naming the board.",
+              "type": "string"
+            },
+            "steps": {
+              "description": "What happens, a short sentence each, such as Windows' or Linux's own\npermission prompt.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "note": {
+              "description": "An optional last line, such as that it can be undone.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "confirm": {
+              "description": "The label of the button that agrees, such as \"Install Driver\".",
+              "type": "string"
+            },
+            "busy": {
+              "description": "A status line while the change runs, such as \"Installing the\nboard's driver…\".",
+              "type": "string"
+            },
+            "cancelled": {
+              "description": "The line to show when the user declines, such as \"Cancelled: the\ndriver wasn't installed.\".",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "lead",
+            "steps",
+            "confirm",
+            "busy",
+            "cancelled"
           ]
         },
         "CommandRecord": {
@@ -5670,12 +5900,115 @@
             "ready": {
               "description": "Whether the programmer can use the device as it is. On Windows: true\nwith WinUSB, and with libusbK or libusb0, which older guides\ninstalled. On Linux: whether the engine can open the device. False\nmeans install_driver first.",
               "type": "boolean"
+            },
+            "label": {
+              "description": "For people, what the device needs, in a sentence: \"the WinUSB\ndriver\" or \"a udev rule\". The texts below are for people too, the\nsame for every frontend; none names a frontend, its menus or its\nbuttons (crate::driver_texts).",
+              "type": "string"
+            },
+            "state": {
+              "description": "The device's state, such as \"Driver: needs WinUSB on USB interface 0\nto program the board (it has FTDI's driver now).\" or \"Access: ready\nto program the board.\".",
+              "type": "string"
+            },
+            "tag": {
+              "description": "A short tag while it isn't ready, for a list: \"no driver yet\" or \"no\nudev rule yet\".",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "current_label": {
+              "description": "On Windows, current's driver for people, such as \"FTDI's driver\".",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "can_add": {
+              "description": "Whether install_driver has something to do: the device isn't ready.",
+              "type": "boolean",
+              "default": false
+            },
+            "can_remove": {
+              "description": "Whether uninstall_driver may have something to remove: on Linux,\nLogix Engine's rule is there (current); on Windows, the device has a\nlibusb driver (uninstall_driver says when none was libwdi's).",
+              "type": "boolean",
+              "default": false
+            },
+            "add": {
+              "description": "When can_add: the question to ask before install_driver, and its\nstatus and cancel lines.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Consent"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remove": {
+              "description": "When can_remove: the same before uninstall_driver.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Consent"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false,
           "required": [
             "needed",
             "ready"
+          ]
+        },
+        "Consent": {
+          "description": "A question to ask the user before a change (adding or removing a\ndriver or udev rule), and the lines to show around it: a frontend shows\nit in its own dialog, with its own Cancel.",
+          "type": "object",
+          "properties": {
+            "title": {
+              "description": "The question's title, such as \"Install the board's USB driver?\".",
+              "type": "string"
+            },
+            "lead": {
+              "description": "One sentence: what it's for, naming the board.",
+              "type": "string"
+            },
+            "steps": {
+              "description": "What happens, a short sentence each, such as Windows' or Linux's own\npermission prompt.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "note": {
+              "description": "An optional last line, such as that it can be undone.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "confirm": {
+              "description": "The label of the button that agrees, such as \"Install Driver\".",
+              "type": "string"
+            },
+            "busy": {
+              "description": "A status line while the change runs, such as \"Installing the\nboard's driver…\".",
+              "type": "string"
+            },
+            "cancelled": {
+              "description": "The line to show when the user declines, such as \"Cancelled: the\ndriver wasn't installed.\".",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "lead",
+            "steps",
+            "confirm",
+            "busy",
+            "cancelled"
           ]
         }
       }
@@ -5832,12 +6165,115 @@
             "ready": {
               "description": "Whether the programmer can use the device as it is. On Windows: true\nwith WinUSB, and with libusbK or libusb0, which older guides\ninstalled. On Linux: whether the engine can open the device. False\nmeans install_driver first.",
               "type": "boolean"
+            },
+            "label": {
+              "description": "For people, what the device needs, in a sentence: \"the WinUSB\ndriver\" or \"a udev rule\". The texts below are for people too, the\nsame for every frontend; none names a frontend, its menus or its\nbuttons (crate::driver_texts).",
+              "type": "string"
+            },
+            "state": {
+              "description": "The device's state, such as \"Driver: needs WinUSB on USB interface 0\nto program the board (it has FTDI's driver now).\" or \"Access: ready\nto program the board.\".",
+              "type": "string"
+            },
+            "tag": {
+              "description": "A short tag while it isn't ready, for a list: \"no driver yet\" or \"no\nudev rule yet\".",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "current_label": {
+              "description": "On Windows, current's driver for people, such as \"FTDI's driver\".",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "can_add": {
+              "description": "Whether install_driver has something to do: the device isn't ready.",
+              "type": "boolean",
+              "default": false
+            },
+            "can_remove": {
+              "description": "Whether uninstall_driver may have something to remove: on Linux,\nLogix Engine's rule is there (current); on Windows, the device has a\nlibusb driver (uninstall_driver says when none was libwdi's).",
+              "type": "boolean",
+              "default": false
+            },
+            "add": {
+              "description": "When can_add: the question to ask before install_driver, and its\nstatus and cancel lines.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Consent"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remove": {
+              "description": "When can_remove: the same before uninstall_driver.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Consent"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false,
           "required": [
             "needed",
             "ready"
+          ]
+        },
+        "Consent": {
+          "description": "A question to ask the user before a change (adding or removing a\ndriver or udev rule), and the lines to show around it: a frontend shows\nit in its own dialog, with its own Cancel.",
+          "type": "object",
+          "properties": {
+            "title": {
+              "description": "The question's title, such as \"Install the board's USB driver?\".",
+              "type": "string"
+            },
+            "lead": {
+              "description": "One sentence: what it's for, naming the board.",
+              "type": "string"
+            },
+            "steps": {
+              "description": "What happens, a short sentence each, such as Windows' or Linux's own\npermission prompt.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "note": {
+              "description": "An optional last line, such as that it can be undone.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "confirm": {
+              "description": "The label of the button that agrees, such as \"Install Driver\".",
+              "type": "string"
+            },
+            "busy": {
+              "description": "A status line while the change runs, such as \"Installing the\nboard's driver…\".",
+              "type": "string"
+            },
+            "cancelled": {
+              "description": "The line to show when the user declines, such as \"Cancelled: the\ndriver wasn't installed.\".",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "lead",
+            "steps",
+            "confirm",
+            "busy",
+            "cancelled"
           ]
         }
       }
