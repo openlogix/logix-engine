@@ -636,14 +636,17 @@ pub fn no_prompt_error(request: &Request, why: &str) -> ToolError {
         ),
         _ => String::new(),
     };
+    // The commands apart from the explanation (data.terminal_commands), so
+    // a frontend can show them as commands, one per line.
+    let lines: Vec<String> = commands.lines().map(String::from).collect();
     ToolError::setup(format!(
-        "Linux can't ask for your password here ({why}). Run the commands in the details in a terminal instead."
+        "Linux can't ask for your password here ({why}). Run these commands in a terminal instead: sudo asks for your password."
     ))
-    .with_details(commands)
     .with_action(
         crate::errors::ActionCode::FixDevicePermissions,
-        "Run the commands in the details in a terminal (sudo asks for the user's password), then list the devices again.",
+        "Run data.terminal_commands in a terminal (sudo asks for the user's password), then list the devices again.",
     )
+    .with_data("terminal_commands", lines)
 }
 
 #[cfg(target_os = "linux")]
@@ -968,20 +971,25 @@ mod tests {
         let err = no_prompt_error(&add, "no password dialog, such as over SSH");
         assert_eq!(err.category, crate::errors::Category::Setup);
         assert!(err.message.contains("over SSH"), "{}", err.message);
-        assert_eq!(
-            err.details,
+        // The commands, a line each, apart from the explanation.
+        let commands = |err: &ToolError| -> Vec<String> {
+            serde_json::from_value(err.data.as_ref().unwrap()["terminal_commands"].clone()).unwrap()
+        };
+        let expected: Vec<String> =
             crate::drivers::udev_rule_commands("0403", "6010", "the Alhambra II")
-        );
+                .lines()
+                .map(String::from)
+                .collect();
+        assert_eq!(commands(&err), expected);
+        assert!(err.details.is_empty());
         let remove = Request::RemoveUdevRule {
             vid: "0403".into(),
             pid: "6010".into(),
         };
         let err = no_prompt_error(&remove, "pkexec isn't installed");
-        assert!(
-            err.details
-                .starts_with("sudo rm /etc/udev/rules.d/70-logix-engine-0403-6010.rules\n"),
-            "{}",
-            err.details
+        assert_eq!(
+            commands(&err)[0],
+            "sudo rm /etc/udev/rules.d/70-logix-engine-0403-6010.rules"
         );
         assert_eq!(
             err.action.unwrap().code,

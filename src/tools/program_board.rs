@@ -110,6 +110,43 @@ pub fn read_build(
     Ok((folder, record))
 }
 
+/// A refusal of a device that needs its driver (Windows) or a udev rule
+/// (Linux) first, with what the frontend needs to offer the fix: the
+/// device's who and driver (its texts and the question to ask, see
+/// list_devices), in data. Other errors as they are.
+fn with_driver(
+    error: ToolError,
+    input: &ProgramBoardInput,
+    connected: &[devices::Device],
+) -> ToolError {
+    use crate::errors::ActionCode;
+    let fixable = matches!(
+        error.action.as_ref().map(|a| a.code),
+        Some(ActionCode::InstallDrivers | ActionCode::FixDevicePermissions)
+    );
+    if !fixable {
+        return error;
+    }
+    let scanned = connected.to_vec();
+    let find = super::install_driver::lookup();
+    match super::list_devices::locate(
+        &input.device,
+        input.custom_boards_folder.clone(),
+        Some(input.build_folder.clone()),
+        None,
+        move || Ok(scanned),
+        &find,
+    ) {
+        Ok(located) => match located.driver {
+            Some(driver) => error
+                .with_data("who", &located.who)
+                .with_data("driver", driver),
+            None => error,
+        },
+        Err(_) => error,
+    }
+}
+
 pub async fn run_with(
     state: &EngineState,
     input: ProgramBoardInput,
@@ -169,7 +206,10 @@ pub async fn run_with_programmers(
     }
     phases.start("Finding device");
     let connected = scan()?;
-    let device = devices::find(&connected, &input.device, &board.name)?;
+    let device = match devices::find(&connected, &input.device, &board.name) {
+        Ok(d) => d,
+        Err(e) => return Err(with_driver(e, &input, &connected)),
+    };
     if !devices::matches(&device, &variant.usb) {
         return Err(ToolError::request(format!(
             "device: {} isn't a {}: it doesn't match the board's USB filter. Choose a device whose boards in list_devices include the build's board.",

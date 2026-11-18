@@ -29,6 +29,12 @@ pub struct Device {
     /// name, else "USB device"), then its manufacturer and USB IDs, such
     /// as "Alhambra II v1.0A (AlhambraBits, 0403:6010)".
     pub label: String,
+    /// The device for people in a sentence, for messages: "the Alhambra
+    /// II" when it may be only one board (or the request's board, when it
+    /// may be that one), else its label. Never the first of several boards
+    /// with its USB IDs.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub who: String,
     /// USB vendor ID, four lowercase hex digits.
     pub vid: String,
     /// USB product ID, four lowercase hex digits.
@@ -223,6 +229,9 @@ pub struct UnreachableDevice {
     /// The device for people, such as "USB device (0403:6010)": its names
     /// can't be read.
     pub label: String,
+    /// The device for people in a sentence, as for devices.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub who: String,
     /// USB vendor ID, four lowercase hex digits.
     pub vid: String,
     /// USB product ID, four lowercase hex digits.
@@ -236,6 +245,10 @@ pub struct UnreachableDevice {
     pub boards: Vec<BoardMatch>,
     /// What makes the device usable, such as fix_device_permissions.
     pub action: Action,
+    /// What to do, for people, such as "Add a udev rule for it, so it can
+    /// be programmed and its name read." (action says it for AI agents).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fix: String,
     /// On Windows and Linux: what it needs for its board's programmer and
     /// what it has, as for devices.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -361,6 +374,8 @@ impl Device {
             id,
             kind: DeviceKind::Usb,
             label: label(manufacturer.as_deref(), product.as_deref(), &vid, &pid),
+            // Named by list_devices, once it knows the boards it may be.
+            who: String::new(),
             vid,
             pid,
             manufacturer,

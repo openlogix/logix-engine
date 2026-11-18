@@ -59,7 +59,7 @@ fn is_cmsis_dap(args: &str) -> bool {
 /// What a device needs for a board's programmer, and what it has: a driver
 /// on Windows (for devices whose board's programmer needs one), a udev rule
 /// on Linux (for every device that fits a board). Not on macOS.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DriverStatus {
     /// What the board's programmer needs: winusb (Windows) or udev-rule
@@ -84,6 +84,39 @@ pub struct DriverStatus {
     /// installed. On Linux: whether the engine can open the device. False
     /// means install_driver first.
     pub ready: bool,
+    /// For people, what the device needs, in a sentence: "the WinUSB
+    /// driver" or "a udev rule". The texts below are for people too, the
+    /// same for every frontend; none names a frontend, its menus or its
+    /// buttons (crate::driver_texts).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub label: String,
+    /// The device's state, such as "Driver: needs WinUSB on USB interface 0
+    /// to program the board (it has FTDI's driver now)." or "Access: ready
+    /// to program the board.".
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub state: String,
+    /// A short tag while it isn't ready, for a list: "no driver yet" or "no
+    /// udev rule yet".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    /// On Windows, current's driver for people, such as "FTDI's driver".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_label: Option<String>,
+    /// Whether install_driver has something to do: the device isn't ready.
+    #[serde(default)]
+    pub can_add: bool,
+    /// Whether uninstall_driver may have something to remove: on Linux,
+    /// Logix Engine's rule is there (current); on Windows, the device has a
+    /// libusb driver (uninstall_driver says when none was libwdi's).
+    #[serde(default)]
+    pub can_remove: bool,
+    /// When can_add: the question to ask before install_driver, and its
+    /// status and cancel lines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub add: Option<crate::driver_texts::Consent>,
+    /// When can_remove: the same before uninstall_driver.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remove: Option<crate::driver_texts::Consent>,
 }
 
 /// The drivers libusb can use, by service name.
@@ -115,6 +148,7 @@ pub fn status(interface: u8, current: &[Option<String>]) -> DriverStatus {
         interface: Some(interface),
         ready: !current.is_empty() && current.iter().all(ready),
         current: shown,
+        ..Default::default()
     }
 }
 
@@ -381,6 +415,7 @@ pub fn udev_status(reachable: bool, rule: Option<String>) -> DriverStatus {
         interface: None,
         current: rule,
         ready: reachable,
+        ..Default::default()
     }
 }
 

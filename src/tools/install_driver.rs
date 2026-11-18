@@ -52,6 +52,11 @@ pub struct InstallDriverInput {
     /// with the same build_folder. Omitted means the device's best match.
     #[serde(default)]
     pub build_folder: Option<String>,
+    /// The board the user has chosen, by ID, as for list_devices: names
+    /// the device in messages (who, summary) when it may be that board.
+    /// Omitted means none.
+    #[serde(default)]
+    pub board: Option<String>,
     /// On Windows: install even when other connected devices have the same
     /// USB IDs, which then get WinUSB too. Default false: refused, naming
     /// them. Not needed on Linux, where the rule only gives access.
@@ -69,6 +74,9 @@ pub struct InstallDriverOutput {
     /// The device's id now: it can change once the driver lets the engine
     /// read its serial number. Use it, or list the devices again.
     pub device: String,
+    /// The device for people in a sentence, as list_devices' who.
+    #[serde(default)]
+    pub who: String,
     /// The device's driver now (ready true).
     pub driver: DriverStatus,
     /// False when the driver was ready already, so nothing was done.
@@ -78,6 +86,11 @@ pub struct InstallDriverOutput {
     /// the user open too (Linux).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub same_ids: Vec<String>,
+    /// What was done, for people, a sentence each, such as "Added a udev
+    /// rule for the Alhambra II." or "Removed the WinUSB driver for the
+    /// Alhambra II." and "Windows uses its original driver again.".
+    #[serde(default)]
+    pub summary: Vec<String>,
 }
 
 /// The driver lookup on this system.
@@ -94,8 +107,24 @@ pub fn same_ids_error(located: &Located) -> ToolError {
         located.same_ids.join(", ")
     ))
     .with_action(
-        ActionCode::DisconnectDevices,
-        "Unplug the other devices and retry, or retry with allow_same_ids if the user agrees that they get WinUSB too.",
+        ActionCode::ConfirmSameIds,
+        "Ask the user (data.consent): unplug the other devices and retry, or retry with allow_same_ids if the user agrees that they get WinUSB too.",
+    )
+    .with_data(
+        "consent",
+        crate::driver_texts::Consent {
+            title: "Other devices of the same kind are connected".into(),
+            lead: format!(
+                "Other connected devices have the same USB IDs as {} and would get the WinUSB driver too: {}.",
+                located.who,
+                located.same_ids.join(", ")
+            ),
+            steps: Vec::new(),
+            note: Some("Unplug them and try again, or continue: they get the same driver too.".into()),
+            confirm: "Continue for All".into(),
+            busy: "Installing the board's driver…".into(),
+            cancelled: "Cancelled: the driver wasn't installed.".into(),
+        },
     )
 }
 
@@ -117,6 +146,7 @@ pub fn settle(
             id,
             input_custom.clone(),
             input_build.clone(),
+            None,
             devices::scan,
             lookup,
         ) {
@@ -139,6 +169,19 @@ pub async fn run(
     input: InstallDriverInput,
     call: &Call,
 ) -> Result<InstallDriverOutput, ToolError> {
+    // What was done, for people (crate::driver_texts).
+    let mut out = run_inner(state, input, call).await?;
+    let udev = out.driver.needed == crate::driver_texts::UDEV_RULE;
+    out.summary =
+        crate::driver_texts::installed_summary(udev, out.installed, &out.who, &out.same_ids);
+    Ok(out)
+}
+
+async fn run_inner(
+    state: &EngineState,
+    input: InstallDriverInput,
+    call: &Call,
+) -> Result<InstallDriverOutput, ToolError> {
     if cfg!(target_os = "linux") {
         return run_linux(input, call).await;
     }
@@ -150,6 +193,7 @@ pub async fn run(
         &input.device,
         input.custom_boards_folder.clone(),
         input.build_folder.clone(),
+        input.board.clone(),
         devices::scan,
         &find,
     )?;
@@ -162,6 +206,8 @@ pub async fn run(
     if driver.ready {
         return Ok(InstallDriverOutput {
             device: located.device.id.clone(),
+            who: located.who.clone(),
+            summary: Vec::new(),
             driver,
             installed: false,
             same_ids: Vec::new(),
@@ -257,6 +303,8 @@ pub async fn run(
     match driver {
         Some(driver) if driver.ready => Ok(InstallDriverOutput {
             device: device.id,
+            who: located.who.clone(),
+            summary: Vec::new(),
             driver,
             installed: true,
             same_ids: located.same_ids,
@@ -286,6 +334,7 @@ async fn run_linux(
         &input.device,
         input.custom_boards_folder.clone(),
         input.build_folder.clone(),
+        input.board.clone(),
         devices::scan,
         &find,
     )?;
@@ -296,6 +345,8 @@ async fn run_linux(
     if driver.ready {
         return Ok(InstallDriverOutput {
             device: located.device.id.clone(),
+            who: located.who.clone(),
+            summary: Vec::new(),
             driver,
             installed: false,
             same_ids: Vec::new(),
@@ -353,6 +404,8 @@ async fn run_linux(
     match driver {
         Some(driver) if driver.ready => Ok(InstallDriverOutput {
             device: device.id,
+            who: located.who.clone(),
+            summary: Vec::new(),
             driver,
             installed: true,
             same_ids: located.same_ids,
@@ -396,7 +449,8 @@ mod tests {
         assert_eq!(err.category, crate::errors::Category::Request);
         assert!(err.message.contains("0403:6010"), "{}", err.message);
         assert!(err.message.contains("Dual RS232-HS"), "{}", err.message);
-        assert_eq!(err.action.unwrap().code, ActionCode::DisconnectDevices);
+        assert_eq!(err.action.clone().unwrap().code, ActionCode::ConfirmSameIds);
+        assert_eq!(err.data.unwrap()["consent"]["confirm"], "Continue for All");
     }
 
     // install_driver and uninstall_driver refuse at once on macOS.

@@ -25,7 +25,11 @@ impl EngineTool for ListDevices {
         build_match: program the only one, or ask the user when there are several. \
         Devices that need a driver or permissions first are listed apart, under unreachable, \
         with the fix. On Windows, a device whose board's programmer needs a driver has driver: \
-        the one it needs (WinUSB), on which USB interface, the one it has and whether it's ready.";
+        the one it needs (WinUSB), on which USB interface, the one it has and whether it's ready; \
+        on Linux, every device that fits a board has driver: its udev rule's state. Each device has \
+        who, its name for people, and driver has texts for people: its state, and the question to \
+        ask before install_driver (add) or uninstall_driver (remove). Give board, the user's \
+        chosen board, to name devices by it and list its devices first.";
     const READ_ONLY: bool = true;
     type Input = ListDevicesInput;
     type Output = ListDevicesOutput;
@@ -61,6 +65,16 @@ pub struct ListDevicesInput {
     /// build's board comes from its build record, custom boards included.
     #[serde(default)]
     pub build_folder: Option<String>,
+    /// The board the user has chosen, by ID, such as the one selected in a
+    /// frontend's toolbar (a catalog board, or one in
+    /// custom_boards_folder). When given, a device that may be it is named
+    /// as it in who and in the driver texts, and devices are listed in
+    /// this order: those that may be this board, then those that may be
+    /// other boards, then the rest (USB order within each). Without
+    /// build_folder only: with it, devices are listed best match first.
+    /// Omitted means no board.
+    #[serde(default)]
+    pub board: Option<String>,
 }
 
 /// The connected devices.
@@ -103,13 +117,18 @@ pub fn run_with(
 pub type RuleLookup<'a> = &'a dyn Fn(&str, &str) -> Option<String>;
 
 /// On Linux: every device that fits a board gets its udev rule status
-/// (drivers::udev_status), ready when the engine can open it.
+/// (drivers::udev_status), ready when the engine can open it, with its texts
+/// for people (named by the device's who).
 pub fn add_udev_statuses(out: &mut ListDevicesOutput, rule: RuleLookup) {
     for d in out.devices.iter_mut().filter(|d| !d.boards.is_empty()) {
-        d.driver = Some(drivers::udev_status(true, rule(&d.vid, &d.pid)));
+        let mut status = drivers::udev_status(true, rule(&d.vid, &d.pid));
+        crate::driver_texts::fill(&mut status, &d.who);
+        d.driver = Some(status);
     }
     for d in &mut out.unreachable {
-        d.driver = Some(drivers::udev_status(false, rule(&d.vid, &d.pid)));
+        let mut status = drivers::udev_status(false, rule(&d.vid, &d.pid));
+        crate::driver_texts::fill(&mut status, &d.who);
+        d.driver = Some(status);
     }
 }
 
@@ -182,12 +201,14 @@ pub fn run_with_drivers(
                 id: d.id,
                 kind: d.kind,
                 label: devices::label(None, None, &d.vid, &d.pid),
+                who: String::new(),
                 vid: d.vid,
                 pid: d.pid,
                 bus: d.bus,
                 device: d.device,
                 boards: matches,
                 action: devices::unreachable_action(),
+                fix: crate::driver_texts::fix(),
                 driver,
                 build_match,
             });
@@ -197,8 +218,61 @@ pub fn run_with_drivers(
         // Best first; the sort is stable, so equal ones keep the USB order.
         out.devices
             .sort_by_key(|d| std::cmp::Reverse(d.build_match));
+    } else if let Some(board) = input.board.as_deref() {
+        // The chosen board's devices first, then other boards', then the
+        // rest (stable: USB order within each).
+        let rank = |boards: &[BoardMatch]| {
+            if boards.iter().any(|b| b.board == board) {
+                0
+            } else if !boards.is_empty() {
+                1
+            } else {
+                2
+            }
+        };
+        out.devices.sort_by_key(|d| rank(&d.boards));
+        out.unreachable.sort_by_key(|d| rank(&d.boards));
+    }
+    // Names and texts for people.
+    let name = |id: &str| {
+        known
+            .get(id)
+            .map(|b| b.description.to_string())
+            .unwrap_or_else(|| id.to_string())
+    };
+    let chosen = input.board.as_deref();
+    for d in &mut out.devices {
+        d.who = who(&d.boards, chosen, &d.label, &name);
+        if let Some(driver) = &mut d.driver {
+            crate::driver_texts::fill(driver, &d.who);
+        }
+    }
+    for d in &mut out.unreachable {
+        d.who = who(&d.boards, chosen, &d.label, &name);
+        if let Some(driver) = &mut d.driver {
+            crate::driver_texts::fill(driver, &d.who);
+        }
     }
     Ok(out)
+}
+
+/// A device for people in a sentence: "the <board>" when it may be the
+/// chosen board, or when it may be only one board, else its label. Never
+/// the first of several boards with its USB IDs, which named a Tang Nano
+/// 9k "the Alchitry Au" (the user's report, 2026-11-14).
+pub fn who(
+    boards: &[BoardMatch],
+    chosen: Option<&str>,
+    label: &str,
+    name: &dyn Fn(&str) -> String,
+) -> String {
+    if let Some(board) = chosen.filter(|c| boards.iter().any(|b| b.board == *c)) {
+        return format!("the {}", name(board));
+    }
+    match boards {
+        [only] => format!("the {}", name(&only.board)),
+        _ => label.to_string(),
+    }
 }
 
 /// The driver a device needs for its board's programmer, on Windows, and the
@@ -265,6 +339,7 @@ pub fn locate(
     id: &str,
     custom_boards_folder: Option<String>,
     build_folder: Option<String>,
+    board: Option<String>,
     scan: impl FnOnce() -> Result<Vec<Device>, ToolError>,
     drivers: DriverLookup,
 ) -> Result<Located, ToolError> {
@@ -292,6 +367,7 @@ pub fn locate(
         custom_boards_folder,
         display_paths: None,
         build_folder,
+        board: board.clone(),
     };
     let mut out = run_with_drivers(input, move || Ok(scanned), cfg!(windows).then_some(drivers))?;
     if cfg!(target_os = "linux") {
@@ -311,15 +387,18 @@ pub fn locate(
         )));
     };
     let known = crate::board::known_boards(&custom);
-    let (name, who) = if boards.len() == 1 {
-        let board = known
-            .get(best.board.as_str())
+    let board_name = |id: &str| {
+        known
+            .get(id)
             .map(|b| b.description.to_string())
-            .unwrap_or_else(|| best.board.clone());
-        (board.clone(), format!("the {board}"))
-    } else {
-        (device.label.clone(), device.label.clone())
+            .unwrap_or_else(|| id.to_string())
     };
+    let name = if boards.len() == 1 {
+        board_name(&best.board)
+    } else {
+        device.label.clone()
+    };
+    let who = who(&boards, board.as_deref(), &device.label, &board_name);
     Ok(Located {
         device,
         name,
@@ -432,12 +511,27 @@ mod tests {
         let rule = |v: &str, p: &str| (v == "1d50").then(|| drivers::udev_rule_name(v, p));
         add_udev_statuses(&mut out, &rule);
         let icesugar = out.devices.iter().find(|d| d.vid == "1d50").unwrap();
+        let driver = icesugar.driver.clone().unwrap();
         assert_eq!(
-            icesugar.driver,
-            Some(drivers::udev_status(
-                true,
-                Some("70-logix-engine-1d50-602b.rules".into())
-            ))
+            (
+                driver.needed.as_str(),
+                driver.current.as_deref(),
+                driver.ready
+            ),
+            ("udev-rule", Some("70-logix-engine-1d50-602b.rules"), true)
+        );
+        // With its texts for people, named by the device.
+        assert_eq!(icesugar.who, "the iCESugar v1.5");
+        assert!(driver.can_remove && !driver.can_add);
+        assert_eq!(
+            driver.remove.unwrap().lead,
+            "This removes Logix Engine's udev rule for the iCESugar v1.5."
+        );
+        // Unreachable: a fix for people, and the rule to add.
+        assert_eq!(out.unreachable[0].fix, crate::driver_texts::fix());
+        assert_eq!(
+            out.unreachable[0].driver.as_ref().unwrap().tag.as_deref(),
+            Some("no udev rule yet")
         );
         let keyboard = out.devices.iter().find(|d| d.vid == "05ac").unwrap();
         assert_eq!(keyboard.driver, None);
@@ -453,6 +547,31 @@ mod tests {
         );
         let json = serde_json::to_value(&out.unreachable[0]).unwrap();
         assert!(json["driver"].get("interface").is_none(), "{json}");
+    }
+
+    // The chosen board names a device that may be it, and its devices come
+    // first, then other boards', then the rest.
+    #[test]
+    fn the_chosen_board_names_its_devices_and_comes_first() {
+        let devices = || {
+            vec![
+                device("05ac", "8262", Some("Keyboard"), None, 1),
+                device("0403", "6010", Some("Alhambra II v1.0A"), None, 2),
+                device("1d50", "602b", Some("CMSIS-DAP"), Some("0700ab"), 3),
+            ]
+        };
+        let out = list(json!({}), devices()).unwrap();
+        let order: Vec<&str> = out.devices.iter().map(|d| d.vid.as_str()).collect();
+        // Without a board: the scan's order. The iCESugar's iCELink is one
+        // board: its name.
+        assert_eq!(order, ["05ac", "0403", "1d50"]);
+        let icesugar = out.devices.iter().find(|d| d.vid == "1d50").unwrap();
+        assert_eq!(icesugar.who, "the iCESugar v1.5");
+
+        let out = list(json!({"board": "alhambra-ii"}), devices()).unwrap();
+        let order: Vec<&str> = out.devices.iter().map(|d| d.vid.as_str()).collect();
+        assert_eq!(order, ["0403", "1d50", "05ac"]);
+        assert_eq!(out.devices[0].who, "the Alhambra II");
     }
 
     #[test]

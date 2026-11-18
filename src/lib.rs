@@ -13,6 +13,7 @@ pub mod custom_boards;
 pub mod devices;
 pub mod diagram;
 pub mod display_paths;
+pub mod driver_texts;
 pub mod drivers;
 pub mod elevated;
 pub mod errors;
