@@ -122,7 +122,7 @@ pub fn same_ids_error(located: &Located) -> ToolError {
             steps: Vec::new(),
             note: Some("Unplug them and try again, or continue: they get the same driver too.".into()),
             confirm: "Continue for All".into(),
-            busy: "Installing the board's driver…".into(),
+            busy: "Installing the board's driver, which may take a minute or two…".into(),
             cancelled: "Cancelled: the driver wasn't installed.".into(),
         },
     )

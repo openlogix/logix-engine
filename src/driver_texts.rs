@@ -150,7 +150,7 @@ fn add_question(status: &DriverStatus, who: &str) -> Consent {
         ],
         note: Some("You can remove the driver later.".into()),
         confirm: "Install Driver".into(),
-        busy: "Installing the board's driver…".into(),
+        busy: "Installing the board's driver, which may take a minute or two…".into(),
         cancelled: "Cancelled: the driver wasn't installed.".into(),
     }
 }
