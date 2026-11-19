@@ -495,13 +495,12 @@ impl Sessions {
         };
         // No flush: it waits until every byte has left (tcdrain), which a
         // monitor doesn't need.
-        p.write_all(text.as_bytes())
-            .map_err(|e| {
-                ToolError::setup(format!(
-                    "Can't send to {}: {e}",
-                    s.port_name.lock().unwrap()
-                ))
-            })?;
+        p.write_all(text.as_bytes()).map_err(|e| {
+            ToolError::setup(format!(
+                "Can't send to {}: {e}",
+                s.port_name.lock().unwrap()
+            ))
+        })?;
         Ok(text.len())
     }
 
@@ -687,7 +686,9 @@ mod tests {
         let name = computer.name().expect("the pty's name");
         computer.set_timeout(READ_SLICE).unwrap();
         let s = sessions();
-        let (id, _) = s.start(&name, Box::new(computer), 115_200, None, None).unwrap();
+        let (id, _) = s
+            .start(&name, Box::new(computer), 115_200, None, None)
+            .unwrap();
         // The board talks: read it, waiting for the whole line.
         board.write_all(b"Hello from your FPGA board\r\n").unwrap();
         let r = s
