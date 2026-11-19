@@ -52,7 +52,11 @@ pub struct CustomBoard {
     pub requires: crate::resources::Requires,
     /// What the board wires to FPGA pins, by port name, as in the catalog,
     /// such as its clock and LEDs. Optional.
-    #[serde(default, skip_serializing_if = "indexmap::IndexMap::is_empty")]
+    #[serde(
+        default,
+        deserialize_with = "crate::resources::deserialize_in_type_order",
+        skip_serializing_if = "indexmap::IndexMap::is_empty"
+    )]
     pub resources: catalog::Resources,
     /// Hints for AI agents, and people, writing designs for the board: only
     /// what its other fields can't express. Advice to weigh, not

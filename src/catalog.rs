@@ -215,7 +215,11 @@ pub struct BoardDefinition {
     /// as a blinky. Facts only: builds never use them. Boards list what is
     /// known; a type a board doesn't list is unknown, unless the board has an
     /// unclassified resource, which lists every wired pin.
-    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    #[serde(
+        default,
+        deserialize_with = "crate::resources::deserialize_in_type_order",
+        skip_serializing_if = "IndexMap::is_empty"
+    )]
     pub resources: Resources,
     /// Hints for AI agents, and people, writing designs for the board: only
     /// what its other fields can't express. Advice to weigh, not
@@ -1607,6 +1611,42 @@ mod tests {
         let mut b = ok;
         first(&mut b).selector.memory = "eeprom".into();
         assert!(b.validate().unwrap_err().contains("flash, ram"));
+    }
+
+    #[test]
+    fn resources_in_type_order() {
+        // Every board lists its resources by type, clocks first, whatever
+        // its file's order.
+        let types = |b: &BoardDefinition| -> Vec<String> {
+            b.resources
+                .values()
+                .map(|r| {
+                    serde_json::to_value(r).unwrap()["type"]
+                        .as_str()
+                        .unwrap()
+                        .to_string()
+                })
+                .collect()
+        };
+        let order = [
+            "clock",
+            "leds",
+            "rgb_led",
+            "led_matrix",
+            "buttons",
+            "switches",
+            "uart",
+            "pmod",
+            "header",
+            "unclassified",
+        ];
+        for (id, b) in &get().boards {
+            let ranks: Vec<usize> = types(b)
+                .iter()
+                .map(|t| order.iter().position(|o| o == t).unwrap())
+                .collect();
+            assert!(ranks.is_sorted(), "{id}: {:?}", types(b));
+        }
     }
 
     #[test]

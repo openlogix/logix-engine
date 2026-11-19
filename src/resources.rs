@@ -11,10 +11,30 @@ use serde::{Deserialize, Serialize};
 
 use crate::catalog::{Family, Toolchain};
 
-/// A board's resources: port name to resource, in the board file's order.
-/// The name is the port a design uses, a Verilog identifier: one pin gives a
-/// plain port, several a vector, bit 0 first.
+/// A board's resources: port name to resource, by type in `Resource`'s
+/// order (clocks first), each type in the board file's order. The order
+/// means nothing to tools; it's for people reading a board, the same in
+/// every frontend. The name is the port a design uses, a Verilog
+/// identifier: one pin gives a plain port, several a vector, bit 0 first.
 pub type Resources = IndexMap<String, Resource>;
+
+/// Reads a board's resources and puts them in type order (`in_type_order`),
+/// for `#[serde(deserialize_with)]` wherever a board is read.
+pub fn deserialize_in_type_order<'de, D>(d: D) -> Result<Resources, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(in_type_order(Resources::deserialize(d)?))
+}
+
+/// The resources by type, in the order `Resource` declares its types:
+/// clocks, LEDs, RGB LEDs, LED matrices, buttons, switches, UARTs, PMODs,
+/// other headers, unclassified pins. A stable sort: each type keeps the
+/// board file's order.
+pub fn in_type_order(mut resources: Resources) -> Resources {
+    resources.sort_by(|_, a, _, b| a.rank().cmp(&b.rank()));
+    resources
+}
 
 /// The logic level that turns something on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -307,7 +327,8 @@ resource_type!(
     }
 );
 
-/// What a board wires to FPGA pins, by type.
+/// What a board wires to FPGA pins, by type. The variants' order is the
+/// order of a board's resources (`in_type_order`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Resource {
@@ -335,6 +356,22 @@ pub enum Resource {
 }
 
 impl Resource {
+    /// Its type's place in a board's resources: the order the enum declares.
+    fn rank(&self) -> u8 {
+        match self {
+            Resource::Clock(_) => 0,
+            Resource::Leds(_) => 1,
+            Resource::RgbLed(_) => 2,
+            Resource::LedMatrix(_) => 3,
+            Resource::Buttons(_) => 4,
+            Resource::Switches(_) => 5,
+            Resource::Uart(_) => 6,
+            Resource::Pmod(_) => 7,
+            Resource::Header(_) => 8,
+            Resource::Unclassified(_) => 9,
+        }
+    }
+
     /// Its pins as (field, pin), in order, nulls left out.
     pub fn pins(&self) -> Vec<(String, &str)> {
         fn list<'a>(name: &str, ps: &'a [String]) -> Vec<(String, &'a str)> {
@@ -607,6 +644,22 @@ fn io_standard_problem(std: Option<IoStandard>, family: Option<Family>) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn in_type_order_is_stable() {
+        // A board file's own order: an LED, a PMOD, a clock, another LED.
+        let r: Resources = serde_json::from_str(
+            r#"{
+                "led_a": {"type": "leds", "pins": ["1"]},
+                "pmod": {"type": "pmod", "pins": ["2", "3", "4", "5", "6", "7", "8", "9"]},
+                "clk": {"type": "clock", "pin": "10", "mhz": 12},
+                "led_b": {"type": "leds", "pins": ["11"]}
+            }"#,
+        )
+        .unwrap();
+        let names: Vec<_> = in_type_order(r).into_keys().collect();
+        assert_eq!(names, ["clk", "led_a", "led_b", "pmod"]);
+    }
 
     fn res(v: serde_json::Value) -> Resources {
         serde_json::from_value(v).unwrap()
