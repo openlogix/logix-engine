@@ -1416,6 +1416,8 @@ Four tools give frontends and AI agents a board's serial port, such as its UART 
 
 **Reading.** `read_serial` returns at once, or with `wait_ms` waits up to that long for something to arrive: a Serial Monitor calls it in a loop with a wait (such as 1000 ms), and an agent can wait `until` a text, such as a line the design prints. Text is UTF-8, with a character split between reads kept for the next; other bytes become U+FFFD. The format is always 8 data bits, no parity, 1 stop bit (8N1).
 
+**A frontend's own serial code.** The serial tools are optional: a frontend may take the port from `list_devices` (`serial_port`) and open it with its own code. It then closes its port around its own uploads, since `program_board` pauses only the engine's sessions; and a port is open in one program at a time (on Windows always, and the engine asks for exclusive use on macOS and Linux), so it and an engine session can't share one.
+
 **Linux.** Serial ports (`/dev/ttyUSB*`, `/dev/ttyACM*`) need the board's udev rule, as programming does (udev rules on Linux, under list_devices): without it only the `dialout` group may open them.
 
 **Table 45.** open_serial tool inputs
