@@ -151,7 +151,7 @@ pub async fn run_with(
     state: &EngineState,
     input: ProgramBoardInput,
     call: &Call,
-    scan: impl FnOnce() -> Result<Vec<Device>, ToolError>,
+    scan: impl Fn() -> Result<Vec<Device>, ToolError> + Sync,
 ) -> Result<ProgramBoardOutput, ToolError> {
     run_with_programmers(state, input, call, scan, None).await
 }
@@ -162,7 +162,7 @@ pub async fn run_with_programmers(
     state: &EngineState,
     input: ProgramBoardInput,
     call: &Call,
-    scan: impl FnOnce() -> Result<Vec<Device>, ToolError>,
+    scan: impl Fn() -> Result<Vec<Device>, ToolError> + Sync,
     programmers: Option<&std::path::Path>,
 ) -> Result<ProgramBoardOutput, ToolError> {
     let (folder, record) = read_build(&input.build_folder)?;
@@ -277,7 +277,35 @@ pub async fn run_with_programmers(
         .command(&tool_name, &command_line(&program, &args));
     call.commands
         .push(crate::commands::record(&program, &args, &folder, &bin));
-    let run = run_tool_with(&program, &args, &folder, &bin, &stop, &on_line).await;
+    // While it runs, the device is watched: unplugged, the programmer is
+    // stopped (program::DeviceWatch).
+    let unplugged = std::sync::atomic::AtomicBool::new(false);
+    let finished = tokio_util::sync::CancellationToken::new();
+    let programming = async {
+        let run = run_tool_with(&program, &args, &folder, &bin, &stop, &on_line).await;
+        finished.cancel();
+        run
+    };
+    let watching = async {
+        if !program::watches_device(variant, custom.is_some()) {
+            return;
+        }
+        let mut watch = program::DeviceWatch::default();
+        loop {
+            tokio::select! {
+                _ = finished.cancelled() => return,
+                _ = tokio::time::sleep(program::DeviceWatch::EVERY) => {}
+            }
+            let listing = scan().ok();
+            if watch.seen(&device, listing.as_deref(), std::time::Instant::now()) {
+                log::info!("{} is gone: stopping {tool_name}", device.id);
+                unplugged.store(true, std::sync::atomic::Ordering::SeqCst);
+                stop.cancel();
+                return;
+            }
+        }
+    };
+    let (run, ()) = tokio::join!(programming, watching);
     match run {
         Ok(r) if r.status.success() => {
             if custom.is_none()
@@ -297,6 +325,9 @@ pub async fn run_with_programmers(
             &r.output,
             &r.status.to_string(),
         )),
+        Err(RunError::Cancelled) if unplugged.load(std::sync::atomic::Ordering::SeqCst) => {
+            Err(program::unplugged(&board.name))
+        }
         Err(RunError::Cancelled) if ran_away.load(std::sync::atomic::Ordering::SeqCst) => {
             Err(program::runaway(&tool_name, &board.name))
         }

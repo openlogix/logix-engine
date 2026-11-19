@@ -447,6 +447,68 @@ pub fn runaway(programmer: &str, board_name: &str) -> ToolError {
     )
 }
 
+/// Watches the chosen device while a programmer runs: unplugged, the board
+/// can't be programmed, and some programmers hang or loop with changing
+/// lines instead of failing (the runaway guard catches only repeats). The
+/// device counts as there while a device with its USB location and IDs is
+/// connected (its ID, without the bus address, which changes when it
+/// reconnects); missing for `GRACE`, it's gone and the programmer is
+/// stopped. Programmers that make the device leave and come back on purpose
+/// aren't watched (`watches_device`).
+#[derive(Default)]
+pub struct DeviceWatch {
+    missing_since: Option<std::time::Instant>,
+}
+
+impl DeviceWatch {
+    /// How often the devices are listed.
+    pub const EVERY: std::time::Duration = std::time::Duration::from_secs(1);
+    /// How long the device may be missing before it's gone: a board that
+    /// resets or reconnects briefly isn't stopped.
+    pub const GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+
+    /// Takes one listing of the devices, at `now`: whether the device is
+    /// gone. A listing that failed (`None`) says nothing.
+    pub fn seen(
+        &mut self,
+        device: &Device,
+        listing: Option<&[Device]>,
+        now: std::time::Instant,
+    ) -> bool {
+        let Some(devices) = listing else {
+            return false;
+        };
+        if devices
+            .iter()
+            .any(|d| d.location == device.location && d.vid == device.vid && d.pid == device.pid)
+        {
+            self.missing_since = None;
+            return false;
+        }
+        let since = *self.missing_since.get_or_insert(now);
+        now.duration_since(since) >= Self::GRACE
+    }
+}
+
+/// Whether program_board watches the device while the programmer runs: not
+/// for a custom command (it may do anything, such as reset the board), nor
+/// for dfu-util, whose boards leave USB and come back as their bootloader
+/// or their design on purpose.
+pub fn watches_device(variant: &Variant, custom: bool) -> bool {
+    !custom && variant.programmer != "dfu-util"
+}
+
+/// The error for a programmer stopped because its device went away.
+pub fn unplugged(board_name: &str) -> ToolError {
+    ToolError::setup(format!(
+        "The {board_name} was disconnected while it was being programmed, so programming was stopped. The board may hold a partly written design."
+    ))
+    .with_action(
+        ActionCode::ConnectBoard,
+        format!("Connect the {board_name} by USB, then upload again."),
+    )
+}
+
 /// Turns a failed programmer run into an error, by what its output says.
 pub fn failure(programmer: &str, board_name: &str, output: &str, status: &str) -> ToolError {
     let lower = output.to_lowercase();
@@ -515,6 +577,29 @@ pub fn failure(programmer: &str, board_name: &str, output: &str, status: &str) -
 mod tests {
     use super::*;
     use crate::devices::tests::device;
+
+    #[test]
+    fn device_watch_waits_for_the_grace() {
+        use std::time::{Duration, Instant};
+        let d = device("0403", "6010", Some("Alhambra II"), Some("A1"), 3);
+        let mut other = d.clone();
+        other.location = "elsewhere".into();
+        let t = Instant::now();
+        let mut w = DeviceWatch::default();
+        assert!(!w.seen(&d, Some(std::slice::from_ref(&d)), t));
+        // Missing, but not for long enough; a failed listing says nothing.
+        assert!(!w.seen(&d, Some(std::slice::from_ref(&other)), t));
+        assert!(!w.seen(&d, None, t + Duration::from_secs(4)));
+        // Back in time: the grace starts again.
+        assert!(!w.seen(
+            &d,
+            Some(std::slice::from_ref(&d)),
+            t + Duration::from_secs(4)
+        ));
+        assert!(!w.seen(&d, Some(&[]), t + Duration::from_secs(5)));
+        assert!(!w.seen(&d, Some(&[]), t + Duration::from_secs(9)));
+        assert!(w.seen(&d, Some(&[]), t + Duration::from_secs(10)));
+    }
 
     #[test]
     fn a_flood_of_the_same_lines_is_a_runaway() {

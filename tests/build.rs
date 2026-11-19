@@ -972,14 +972,17 @@ async fn program_board_checks_the_chosen_device() {
     let run = |devices: Vec<Device>, extra: Value| {
         let state = state.clone();
         let input = program_input(&folder, extra);
-        async move { program_board::run_with(&state, input, &call(), move || Ok(devices)).await }
+        async move { program_board::run_with(&state, input, &call(), move || Ok(devices.clone())).await }
     };
 
     // Not connected anymore.
     let err = run(vec![other()], json!({"device": alhambra().id}))
         .await
         .unwrap_err();
-    assert_eq!(err.action.unwrap().code, ActionCode::ConnectBoard);
+    assert_eq!(
+        err.action.unwrap().code,
+        logix_engine::errors::ActionCode::ConnectBoard
+    );
 
     // Not an ID, and a device that isn't the board.
     let err = run(vec![alhambra()], json!({"device": "alhambra"}))
@@ -1218,6 +1221,63 @@ async fn live_output_marks_progress_redraws() {
     );
 }
 
+/// A board unplugged while it's programmed: program_board stops the
+/// programmer once the device has been missing for the grace, with a
+/// connect_board error. Uses a fake openFPGALoader that never ends; the device is
+/// there for the first listings, then gone.
+// Unix only: a stopped .cmd leaves its child running on Windows; the
+// watch's own logic is tested on every platform (program::tests).
+#[cfg(unix)]
+#[tokio::test]
+async fn program_board_stops_when_the_board_is_unplugged() {
+    let state = engine().await;
+    let (tmp, src) = project();
+    let folder = src.join("_build");
+    build_it(&state, &src, json!({})).await.unwrap();
+    let bin = tmp.path().join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    fake_program(&bin, "openFPGALoader", "exec sleep 60\n", "");
+    let alhambra = usb("Alhambra II v2.0", Some("A1"), 3);
+    let listings = std::sync::atomic::AtomicUsize::new(0);
+    let scan = || {
+        // Finding the device, then two seconds of watching: there.
+        let n = listings.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(if n < 3 {
+            vec![alhambra.clone()]
+        } else {
+            vec![]
+        })
+    };
+    let started = std::time::Instant::now();
+    let err = program_board::run_with_programmers(
+        &state,
+        program_input(&folder, json!({"device": alhambra.id})),
+        &call(),
+        scan,
+        Some(&bin),
+    )
+    .await
+    .unwrap_err();
+    let took = started.elapsed();
+    assert_eq!(err.category, Category::Setup, "{}", err.message);
+    assert!(
+        err.message
+            .contains("was disconnected while it was being programmed"),
+        "{}",
+        err.message
+    );
+    assert_eq!(
+        err.action.unwrap().code,
+        logix_engine::errors::ActionCode::ConnectBoard
+    );
+    // Two seconds there, then the grace: well before the fake would end.
+    assert!(
+        took >= logix_engine::program::DeviceWatch::GRACE
+            && took < std::time::Duration::from_secs(20),
+        "{took:?}"
+    );
+}
+
 /// Before programming over JTAG, program_board reads the connected FPGA's ID
 /// code with openFPGALoader --detect, and refuses another FPGA before
 /// anything is written. Uses a fake openFPGALoader.
@@ -1268,7 +1328,7 @@ async fn program_board_refuses_a_board_with_another_fpga() {
                 state,
                 input,
                 &call(),
-                move || Ok(devices),
+                move || Ok(devices.clone()),
                 Some(&bin),
             )
             .await
@@ -1333,7 +1393,7 @@ async fn program_board_refuses_a_board_with_another_fpga() {
                 state,
                 input,
                 &call(),
-                move || Ok(devices),
+                move || Ok(devices.clone()),
                 Some(&bin),
             )
             .await
