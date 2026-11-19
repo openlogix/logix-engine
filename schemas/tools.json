@@ -1222,7 +1222,7 @@
           ]
         },
         "Resource": {
-          "description": "What a board wires to FPGA pins, by type.",
+          "description": "What a board wires to FPGA pins, by type. The variants' order is the\norder of a board's resources (`in_type_order`).",
           "oneOf": [
             {
               "description": "An oscillator: pin, mhz.",
