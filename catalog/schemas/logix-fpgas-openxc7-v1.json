@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://www.openlogix.org/schemas/logix-fpgas-openxc7-v1.json",
   "title": "Logix Catalog Xilinx 7-series FPGAs",
-  "description": "The Xilinx 7-series FPGAs of Logix Catalog (www.openlogix.org/catalog/): the schema of fpgas/artix7.json, fpgas/spartan7.json and fpgas/zynq7000.json, one file per family, each mapping FPGA IDs to their facts. A file's name gives its FPGAs' family.",
+  "description": "The Xilinx 7-series FPGAs of Logix Catalog (github.com/openlogix/logix-catalog): the schema of fpgas/artix7.json, fpgas/spartan7.json and fpgas/zynq7000.json, one file per family, each mapping FPGA IDs to their facts. A file's name gives its FPGAs' family.",
   "type": "object",
   "properties": {
     "$schema": {

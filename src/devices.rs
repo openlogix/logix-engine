@@ -97,6 +97,21 @@ pub struct Device {
     #[serde(skip)]
     #[schemars(skip)]
     pub composite: bool,
+    /// The device's serial ports, such as COM5, /dev/cu.usbserial-A10 or
+    /// /dev/ttyUSB1, each with the USB interface it's on when the system
+    /// says, by interface: for open_serial. Empty when it has none, or
+    /// when another connected device with its USB IDs and no serial number
+    /// makes them impossible to tell apart.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub serial_ports: Vec<crate::serial::DevicePort>,
+    /// The serial port of its board's UART, the one a Serial Monitor
+    /// opens: on the UART's usb_interface when the board's data gives it,
+    /// else the device's only serial port. The board is the build's
+    /// (build_folder), else board when the device may be it, else its only
+    /// likely board. Omitted when it can't be told: then ask the user, from
+    /// serial_ports.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub serial_port: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -392,6 +407,8 @@ impl Device {
             driver: None,
             dfu_interface: None,
             composite: false,
+            serial_ports: Vec::new(),
+            serial_port: None,
         }
     }
 }

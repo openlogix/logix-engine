@@ -16,6 +16,7 @@ pub mod install_driver;
 pub mod lint;
 pub mod list_devices;
 pub mod program_board;
+pub mod serial;
 pub mod simulate;
 pub mod test;
 pub mod uninstall_driver;
@@ -137,6 +138,10 @@ pub fn all_definitions() -> Vec<Tool> {
         definition::<program_board::ProgramBoard>(),
         definition::<install_driver::InstallDriver>(),
         definition::<uninstall_driver::UninstallDriver>(),
+        definition::<serial::OpenSerial>(),
+        definition::<serial::ReadSerial>(),
+        definition::<serial::WriteSerial>(),
+        definition::<serial::CloseSerial>(),
     ]
 }
 
@@ -216,6 +221,7 @@ pub async fn call(
     use lint::Lint;
     use list_devices::ListDevices;
     use program_board::ProgramBoard;
+    use serial::{CloseSerial, OpenSerial, ReadSerial, WriteSerial};
     use simulate::Simulate;
     use test::Test;
     use uninstall_driver::UninstallDriver;
@@ -243,12 +249,16 @@ pub async fn call(
     // error from needing_download; one that doesn't, such as get_catalog
     // with a local catalog folder, works anyway. download_packages and
     // check_updates read it themselves (they may use the network even with
-    // automatic download off), and get_engine_info, clean_build and clean_logs use no
-    // packages.
+    // automatic download off), and get_engine_info, clean_build, clean_logs and the
+    // serial tools use no packages.
     if ![
         GetEngineInfo::NAME,
         CleanBuild::NAME,
         CleanLogs::NAME,
+        OpenSerial::NAME,
+        ReadSerial::NAME,
+        WriteSerial::NAME,
+        CloseSerial::NAME,
         DownloadPackages::NAME,
         CheckUpdates::NAME,
     ]
@@ -428,6 +438,25 @@ pub async fn call(
                 },
                 call,
             ),
+        ),
+        OpenSerial::NAME => to_call_result(
+            display,
+            parse_input::<OpenSerial>(arguments).and_then(serial::open),
+        ),
+        ReadSerial::NAME => to_call_result(
+            display,
+            match parse_input::<ReadSerial>(arguments) {
+                Ok(input) => serial::read(input).await,
+                Err(e) => Err(e),
+            },
+        ),
+        WriteSerial::NAME => to_call_result(
+            display,
+            parse_input::<WriteSerial>(arguments).and_then(serial::write),
+        ),
+        CloseSerial::NAME => to_call_result(
+            display,
+            parse_input::<CloseSerial>(arguments).and_then(serial::close),
         ),
         _ => return None,
     };

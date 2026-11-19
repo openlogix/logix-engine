@@ -277,7 +277,11 @@ pub async fn run_with_programmers(
         .command(&tool_name, &command_line(&program, &args));
     call.commands
         .push(crate::commands::record(&program, &args, &folder, &bin));
+    // Serial sessions on this board close while it's written, and reopen
+    // after (crate::serial).
+    let pause = crate::serial::sessions().pause(&device);
     let run = run_tool_with(&program, &args, &folder, &bin, &stop, &on_line).await;
+    drop(pause);
     match run {
         Ok(r) if r.status.success() => {
             if custom.is_none()

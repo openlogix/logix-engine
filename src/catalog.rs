@@ -1664,7 +1664,12 @@ mod tests {
             serde_json::to_value(&c.boards["alhambra-ii"].resources).unwrap(),
             serde_json::json!({
                 "sys_clk": {"type": "clock", "pin": "49", "mhz": 12.0},
-                "leds": {"type": "leds", "pins": ["45", "44", "43", "42", "41", "39", "38", "37"], "active": "high"}
+                "leds": {"type": "leds", "pins": ["45", "44", "43", "42", "41", "39", "38", "37"], "active": "high"},
+                "uart": {
+                    "type": "uart", "tx": "61", "rx": "62", "usb_interface": 1,
+                    "source": {"kind": "maker", "ref": "github.com/FPGAwars/Alhambra-II-FPGA examples/picorv32/picosoc/demo.pcf"},
+                    "user_notes": "The FTDI chip's second channel, USB interface 1, over the board's USB cable: computers list two serial ports for the board, and this is the one for interface 1 (interface 0 programs the board)."
+                }
             })
         );
         // A clock that needs a jumper says so.

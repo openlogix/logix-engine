@@ -23,6 +23,9 @@ reqwest = "0.13"
 rquickjs = "0.9"
 rmcp = { version = "3.8", features = ["server", "transport-io"] }
 rusb = { version = "0.9", features = ["vendored"] }
+# Serial ports: finding a board's UART and reading and writing it (the
+# Serial Monitor). Without libudev: no system library needed on Linux.
+serialport = { version = "4.10", default-features = false, features = ["usbportinfo-interface"] }
 schemars = { version = "1", features = ["indexmap2"] }
 indexmap = { version = "2", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }

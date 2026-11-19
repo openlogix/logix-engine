@@ -884,7 +884,7 @@ Hosts show the level, in their own words, and compare levels (weak < possible < 
 
 **Drivers on Windows.** The programmers reach most boards through libusb, which on Windows can use only a USB interface that has WinUSB (or libusbK or libusb0), not the driver Windows picks by itself, such as FTDI's. Which interface needs it follows from the board variant's programmer: interface 0 for FTDI chips (iceprog, openFPGALoader's FTDI cables and the boards it knows by name, such as Digilent's, Alchitry's, the Tang Nanos and the ULX3S), the DFU interface for `dfu-util` (a board's bootloader), and none for `icesprog` (the iCESugar's iCELink) and CMSIS-DAP adapters, which Windows' own HID driver serves. On Windows, `list_devices` gives each such device its `driver`, from the drivers Windows has on the present devices with its USB IDs and interface (Windows gives drivers by USB IDs and interface, not by serial number, so such devices normally share it; `ready` only when every one is). A device that isn't `ready` needs WinUSB first: `install_driver` installs it, and `uninstall_driver` undoes it.
 
-**udev rules on Linux.** On Linux only root may open a USB device until a udev rule lets others, for every programmer (HID ones, such as `icesprog` and CMSIS-DAP adapters, too). So on Linux, `list_devices` gives every device that fits a board its `driver`, with `needed` `udev-rule`: `ready` when the engine can open it, and `current` the file of Logix Engine's own rule for its USB IDs when there is one (another rule, such as a board maker's or openFPGALoader's, may give access too). A device that isn't `ready` needs a rule: `install_driver` adds Logix Engine's, `/etc/udev/rules.d/70-logix-engine-<vid>-<pid>.rules`, which lets the user at the computer (systemd's `uaccess`) and the `plugdev` group open devices with those USB IDs, the USB device and its HID nodes; `uninstall_driver` removes it (never another rule). On macOS nothing is reported: the programmers open the board as it is.
+**udev rules on Linux.** On Linux only root may open a USB device until a udev rule lets others, for every programmer (HID ones, such as `icesprog` and CMSIS-DAP adapters, too). So on Linux, `list_devices` gives every device that fits a board its `driver`, with `needed` `udev-rule`: `ready` when the engine can open it, and `current` the file of Logix Engine's own rule for its USB IDs when there is one (another rule, such as a board maker's or openFPGALoader's, may give access too). A device that isn't `ready` needs a rule: `install_driver` adds Logix Engine's, `/etc/udev/rules.d/70-logix-engine-<vid>-<pid>.rules`, which lets the user at the computer (systemd's `uaccess`) and the `plugdev` group open devices with those USB IDs: the USB device, its HID nodes, and its serial ports (`tty`, for the serial tools; added 2026-11-19: a rule added before lacks it, so its serial ports may need `uninstall_driver` then `install_driver`); `uninstall_driver` removes it (never another rule). On macOS nothing is reported: the programmers open the board as it is.
 
 **Device IDs.** An `id` names the device on this computer for a short time: it is made from where the device is plugged in and what it is, so it stays valid while the device stays on the same USB port, even when it is plugged in again, and survives an engine restart. IDs differ between platforms and computers. Hosts must treat them as opaque, never parse or build them, and list the devices again before asking the user to choose.
 
@@ -920,6 +920,8 @@ Hosts show the level, in their own words, and compare levels (weak < possible < 
 | `boards` | list of objects | Optional, omitted when empty. The boards the device may be, best first, each with `board` (its ID), `custom` (true for a board from the custom boards folder, omitted otherwise) and `variants` (the board's variants this device fits, in the board's order, each with its `selector` and its own `match` level) |
 | `likely_boards` | list of board IDs | Optional, omitted when empty. The boards the device most likely is, best first: those at its strongest match level, unless that is `weak` (many boards fit, so none is likely). Use it to name what a device probably is; `boards` has every candidate |
 | `driver` | object | Optional, on Windows and Linux. On Windows, for a device whose board's programmer needs a driver (see Drivers on Windows): the board variant is the build's with `build_folder`, else the first variant of its best match. `needed` (`winusb`), `interface` (the USB interface that needs it, such as 0, an FTDI chip's first channel; its other channels, such as a serial port, keep their driver), `current` (the driver Windows has on that interface now, by its service name in lowercase, such as `ftdibus`, `usbser` or `winusb`; omitted when it has none) and `ready` (whether the programmer can use it as it is: true with WinUSB, and with libusbK or libusb0, which older guides installed). On Linux, for every device that fits a board (see udev rules on Linux): `needed` (`udev-rule`), `current` (the file of Logix Engine's rule for its USB IDs, such as `70-logix-engine-0403-6010.rules`; omitted when there's none) and `ready` (whether the engine can open the device); no `interface` |. Texts for people, the same for every frontend and naming none (no frontend, menus or buttons): `label` (what it needs, in a sentence: "the WinUSB driver" or "a udev rule"), `state` (such as "Driver: needs WinUSB on USB interface 0 to program the board (it has FTDI's driver now)." or "Access: ready to program the board, with Logix Engine's udev rule (70-logix-engine-0403-6010.rules)."), `tag` (while not ready, short, for a list: "no driver yet" or "no udev rule yet"), `current_label` (Windows: `current` for people, such as "FTDI's driver"), `can_add` (whether `install_driver` has something to do: not ready), `can_remove` (whether `uninstall_driver` may: on Linux, Logix Engine's rule is there; on Windows, the device has a libusb driver), and when they're true `add` and `remove`: the question to ask the user first, with `title`, `lead` (naming the device by `who`), `steps`, an optional `note`, `confirm` (the agreeing button's label, such as "Install Driver"), `busy` (a status line while it runs, such as "Adding the board's udev rule…") and `cancelled` (the line when the user declines, such as "Cancelled: the driver wasn't installed."). A frontend shows them as they are and adds its own words around them (such as where to undo it)
+| `serial_ports` | list of objects | Optional, omitted when empty. The device's serial ports, for `open_serial`: `port` (such as `COM5` on Windows, `/dev/cu.usbserial-FTATANKC1` on macOS, `/dev/ttyUSB1` on Linux) and `interface` (the USB interface it's on, such as 1 for an FTDI chip's second channel, when the system says). Found by the device's USB IDs and serial number; empty when another connected device has its USB IDs and no serial number, since they can't be told apart. On Windows a port appears only while its interface has a serial driver (FTDI's or Windows' own): WinUSB on a programming interface leaves the other channels' ports alone |
+| `serial_port` | text | Optional. The serial port of the device's board's UART, the one a Serial Monitor opens: the port on the UART's `usb_interface` (the board's data; Logix Catalog's model) when the board gives it, else the device's only serial port. The board is the build's with `build_folder`, else `board` when the device may be it, else its only likely board. Omitted when it can't be told: then let the user choose from `serial_ports` |
 
 **Errors:** setup errors with `install_drivers` or `fix_device_permissions` when devices cannot be scanned. Request errors for an invalid custom board, or a build folder without a build record from a successful build. Engine errors.
 
@@ -1402,6 +1404,78 @@ Output:
 { "deleted": ["/home/user/.myhost/logs/20261020-081500-3311"] }
 ```
 
+## Serial ports
+
+Four tools give frontends and AI agents a board's serial port, such as its UART over its USB cable: for a Serial Monitor, or for an agent checking what a design prints. `open_serial` opens a port and returns a session; `read_serial` returns what arrived since the last read; `write_serial` sends; `close_serial` ends it.
+
+**Sessions are the engine's one state between requests** (decided 2026-11-19). A port stays open between calls, so a session lives in the engine until `close_serial` or until the engine exits; every other tool stays stateless. A thread per session reads the port into a buffer of up to 1 MB (the oldest is dropped beyond, with an `overflow` event), which `read_serial` empties. A port is open in at most one session.
+
+**Which port.** `list_devices` gives each device its `serial_ports` and, when it can tell, its board's UART as `serial_port` (Table 13). Open that, and give the device's `id` too, so the session knows its board.
+
+**Upload and unplugging** (with `device`). While `program_board` writes the board, its sessions close their ports (a `paused` event) and reopen them after (`resumed`), by themselves. When the port goes away, such as when the board is unplugged, the session reports `disconnected` and tries again every 0.3 s; when the board is back it reopens the port, found again by the device's USB IDs, serial number and USB interface, even under another name (`reconnected`). Without `device` the session waits for the same port name.
+
+**Reading.** `read_serial` returns at once, or with `wait_ms` waits up to that long for something to arrive: a Serial Monitor calls it in a loop with a wait (such as 1000 ms), and an agent can wait `until` a text, such as a line the design prints. Text is UTF-8, with a character split between reads kept for the next; other bytes become U+FFFD. The format is always 8 data bits, no parity, 1 stop bit (8N1).
+
+**Linux.** Serial ports (`/dev/ttyUSB*`, `/dev/ttyACM*`) need the board's udev rule, as programming does (udev rules on Linux, under list_devices): without it only the `dialout` group may open them.
+
+**Table 45.** open_serial tool inputs
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `port` | text | Yes | The port: a device's `serial_port`, or one of its `serial_ports` |
+| `baud` | integer | No | Bits per second, 50 to 4000000. Defaults to 115200 |
+| `device` | device ID | No | The device the port is on, from `list_devices`: the session then pauses while `program_board` writes it, and finds its port again after it's unplugged. Omitted means the port alone |
+
+**Table 46.** open_serial tool outputs
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `session` | text | The session's ID, such as `serial-1`, for the other serial tools |
+| `port` | text | The port opened |
+| `baud` | integer | Its speed |
+
+**Table 47.** read_serial tool inputs
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `session` | text | Yes | The session, from `open_serial` |
+| `wait_ms` | integer | No | How long to wait for something to arrive, at most 60000 ms. Defaults to 0: return what there is now |
+| `until` | text | No | Wait until the text received contains this (or `wait_ms` ends) |
+
+**Table 48.** read_serial tool outputs
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `text` | text | What arrived, line endings as sent. Empty when nothing did |
+| `events` | list of objects | Optional, omitted when none. What happened to the port, in order: `kind` (`paused`, `resumed`, `disconnected`, `reconnected` or `overflow`) and `message`, the same for people, such as "The serial port was closed while the board is programmed." |
+| `open` | boolean | Whether the port is open now (false while paused or unplugged) |
+| `port` | text | The port's name now: it may change when the board comes back |
+
+**Table 49.** write_serial tool inputs
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `session` | text | Yes | The session |
+| `text` | text | Yes | What to send, as UTF-8, exactly as given: add the line ending the device expects |
+
+**Table 50.** write_serial tool outputs
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `bytes` | integer | How many bytes were sent |
+
+`close_serial` takes `session` and returns an empty object; what wasn't read is dropped.
+
+**Errors:** request errors for an unknown session, a port that's open in another session, or a bad `baud` or `wait_ms`. Setup errors when a port can't be opened (`connect_board` when it isn't there; on Linux `fix_device_permissions` when permission is denied) and when `write_serial` finds the port closed (paused or unplugged): nothing is sent, so send again once `read_serial` reports `open`.
+
+**Example**
+
+```json
+{ "port": "/dev/ttyUSB1", "device": "usb:1-1:0403:6010:FTATANKC" }
+```
+
+`open_serial` returns `{"session": "serial-1", "port": "/dev/ttyUSB1", "baud": 115200}`; then `read_serial` with `{"session": "serial-1", "wait_ms": 1000}` returns `{"text": "Hello from your FPGA board\r\n", "open": true, "port": "/dev/ttyUSB1"}`.
+
 ## Default project model
 
 The Logix Engine doesn't impose a project model: each frontend organizes designs its own way, and requests name every folder and file. The engine doesn't need a project file, in JSON or any other format, and never reads one.
@@ -1494,6 +1568,10 @@ On Windows, a device whose `driver` isn't `ready` (in `devices` or `unreachable`
 ### Format an unsaved editor buffer
 
 Requests never carry source text. Write the buffer to a file in a scratch folder, call `format` on it, and read the result back into the editor.
+
+### Show a Serial Monitor
+
+List the devices with the board (`list_devices` `board`), take the chosen device's `serial_port` (else let the user pick from its `serial_ports`), and `open_serial` it with the device's `id` and the baud rate. Then call `read_serial` in a loop with `wait_ms` (such as 1000) and show `text` as it comes, and each event's `message`; send what the user types with `write_serial`, adding their chosen line ending. Upload needs nothing more: the session pauses and resumes by itself. `close_serial` when the monitor closes or the project changes. Logix IDE's Serial Monitor does this ([`src-tauri/src/engine/serial.rs`](https://github.com/openlogix/logix-ide/blob/main/src-tauri/src/engine/serial.rs)).
 
 ### Show system info
 
