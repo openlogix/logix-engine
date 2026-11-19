@@ -196,7 +196,8 @@ struct Session {
     /// interface the port is on: how to find the port again.
     device: Option<DeviceKey>,
     interface: Option<u8>,
-    /// The open port; None while paused or gone.
+    /// The open port's handle for writing (the reader has its own); None
+    /// while paused or gone.
     port: Mutex<Option<Box<dyn serialport::SerialPort>>>,
     inbox: Mutex<Inbox>,
     /// Bytes at the end of the last read that start a character not yet
@@ -261,14 +262,25 @@ fn open_port(name: &str, baud: u32) -> serialport::Result<Box<dyn serialport::Se
 
 /// The reader: moves what arrives into the inbox, closes the port while
 /// paused, and reopens it when the pause ends or the port comes back.
-fn read_loop(s: Arc<Session>) {
+///
+/// It reads its own handle to the port (`reader`), and write_serial uses
+/// another (`Session::port`, a clone): with one handle under one lock, a
+/// write waited for the reader to let go, and on macOS (whose locks don't
+/// queue) that took a second or more per keystroke (the user's report,
+/// 2026-11-19).
+fn read_loop(s: Arc<Session>, mut reader: Option<Box<dyn serialport::SerialPort>>) {
     let mut buf = [0u8; 4096];
     // Why the port is closed, if it is: paused or gone.
     let mut paused = false;
     let mut gone = false;
+    let close = |s: &Session, reader: &mut Option<Box<dyn serialport::SerialPort>>| {
+        reader.take();
+        s.port.lock().unwrap().take();
+    };
     while !s.closed.load(Ordering::SeqCst) {
         if s.pauses.load(Ordering::SeqCst) > 0 {
-            if s.port.lock().unwrap().take().is_some() {
+            if reader.is_some() {
+                close(&s, &mut reader);
                 s.push_event(
                     SerialEventKind::Paused,
                     "The serial port was closed while the board is programmed.",
@@ -278,11 +290,12 @@ fn read_loop(s: Arc<Session>) {
             std::thread::sleep(READ_SLICE);
             continue;
         }
-        if !s.is_open() {
+        let Some(port) = reader.as_mut() else {
             let name = s.current_name();
-            match open_port(&name, s.baud) {
-                Ok(p) => {
-                    *s.port.lock().unwrap() = Some(p);
+            match open_port(&name, s.baud).and_then(|p| Ok((p.try_clone()?, p))) {
+                Ok((writer, p)) => {
+                    *s.port.lock().unwrap() = Some(writer);
+                    reader = Some(p);
                     if gone {
                         s.push_event(
                             SerialEventKind::Reconnected,
@@ -297,26 +310,17 @@ fn read_loop(s: Arc<Session>) {
                     paused = false;
                     gone = false;
                 }
-                Err(_) => {
-                    std::thread::sleep(RETRY);
-                    continue;
-                }
+                Err(_) => std::thread::sleep(RETRY),
             }
-        }
-        let result = {
-            let mut port = s.port.lock().unwrap();
-            match port.as_mut() {
-                Some(p) => p.read(&mut buf),
-                None => continue,
-            }
+            continue;
         };
-        match result {
+        match port.read(&mut buf) {
             Ok(0) => std::thread::sleep(READ_SLICE),
             Ok(n) => s.push_bytes(&buf[..n]),
             Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {}
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
             Err(e) => {
-                s.port.lock().unwrap().take();
+                close(&s, &mut reader);
                 gone = true;
                 s.push_event(
                     SerialEventKind::Disconnected,
@@ -327,7 +331,7 @@ fn read_loop(s: Arc<Session>) {
             }
         }
     }
-    s.port.lock().unwrap().take();
+    close(&s, &mut reader);
 }
 
 /// The engine's serial sessions.
@@ -396,6 +400,10 @@ impl Sessions {
         device: Option<DeviceKey>,
         interface: Option<u8>,
     ) -> Result<(String, String), ToolError> {
+        // The writer's own handle (read_loop says why).
+        let writer = port
+            .try_clone()
+            .map_err(|e| ToolError::engine(format!("Can't use the serial port {name}: {e}")))?;
         let id = format!("serial-{}", self.next.fetch_add(1, Ordering::SeqCst));
         let session = Arc::new(Session {
             id: id.clone(),
@@ -403,17 +411,17 @@ impl Sessions {
             port_name: Mutex::new(name.to_string()),
             device,
             interface,
-            port: Mutex::new(Some(port)),
+            port: Mutex::new(Some(writer)),
             inbox: Mutex::new(Inbox::default()),
             partial: Mutex::new(Vec::new()),
             arrived: tokio::sync::Notify::new(),
             pauses: AtomicUsize::new(0),
             closed: AtomicBool::new(false),
         });
-        let reader = session.clone();
+        let session_for_reader = session.clone();
         std::thread::Builder::new()
             .name(format!("serial {id}"))
-            .spawn(move || read_loop(reader))
+            .spawn(move || read_loop(session_for_reader, Some(port)))
             .map_err(|e| ToolError::engine(format!("Can't start reading {name}: {e}")))?;
         self.sessions.lock().unwrap().insert(id.clone(), session);
         log::info!("Serial session {id}: opened {name} at {baud} baud");
@@ -706,6 +714,20 @@ mod tests {
         // Nothing more: an empty read after the wait.
         let r = s.read(&id, Duration::from_millis(50), None).await.unwrap();
         assert_eq!(r.text, "");
+        // Writing never waits for the reader: keys typed one by one go out
+        // at once (each took a second or more when the two shared a lock).
+        for _ in 0..20 {
+            let started = std::time::Instant::now();
+            s.write(&id, "k").unwrap();
+            assert!(
+                started.elapsed() < Duration::from_millis(100),
+                "{:?}",
+                started.elapsed()
+            );
+        }
+        let mut keys = [0u8; 20];
+        board.read_exact(&mut keys).unwrap();
+        assert_eq!(&keys, b"kkkkkkkkkkkkkkkkkkkk");
         // The same port can't be opened twice.
         assert!(s.open(&name, 115_200, None, None).is_err());
         s.close(&id).unwrap();
