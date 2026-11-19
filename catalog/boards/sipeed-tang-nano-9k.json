@@ -15,6 +15,14 @@
   ],
   "resources": {
     "sys_clk": {"type": "clock", "pin": "52", "mhz": 27, "io_standard": "LVCMOS33"},
-    "led": {"type": "leds", "pins": ["10"], "active": "low"}
+    "led": {"type": "leds", "pins": ["10"], "active": "low"},
+    "uart": {
+      "type": "uart",
+      "tx": "17",
+      "rx": "18",
+      "io_standard": "LVCMOS33",
+      "source": {"kind": "maker", "ref": "github.com/sipeed/TangNano-9K-example uart/src/top.cst"},
+      "user_notes": "The on-board BL702's USB serial port, over the USB-C cable."
+    }
   }
 }

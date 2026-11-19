@@ -32,6 +32,14 @@
   ],
   "resources": {
     "sys_clk": {"type": "clock", "pin": "P6", "mhz": 25, "io_standard": "LVCMOS33"},
-    "led": {"type": "leds", "pins": ["A11"], "active": "low", "io_standard": "LVCMOS33"}
+    "led": {"type": "leds", "pins": ["A11"], "active": "low", "io_standard": "LVCMOS33"},
+    "uart": {
+      "type": "uart",
+      "tx": "B9",
+      "rx": "A9",
+      "io_standard": "LVCMOS33",
+      "source": {"kind": "maker", "ref": "github.com/wuxx/icesugar-pro src/uart_tx/top.lpf"},
+      "user_notes": "The on-board iCELink's USB serial port, over the USB-C cable."
+    }
   }
 }

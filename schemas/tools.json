@@ -1728,6 +1728,15 @@
                     "null"
                   ]
                 },
+                "usb_interface": {
+                  "description": "The USB interface that carries this serial port on the board's\nUSB device (the one its variants' usb filters match), such as 1\nfor an FTDI chip's second channel, whose first programs the\nboard: how list_devices finds the board's serial port when the\ndevice has several. Omitted when unknown.",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "maximum": 255,
+                  "minimum": 0
+                },
                 "io_standard": {
                   "description": "The pins' I/O standard, such as LVCMOS33, when known and\nthe FPGA family's pin files name one (not iCE40).",
                   "anyOf": [
@@ -4839,6 +4848,20 @@
                   "type": "null"
                 }
               ]
+            },
+            "serial_ports": {
+              "description": "The device's serial ports, such as COM5, /dev/cu.usbserial-A10 or\n/dev/ttyUSB1, each with the USB interface it's on when the system\nsays, by interface: for open_serial. Empty when it has none, or\nwhen another connected device with its USB IDs and no serial number\nmakes them impossible to tell apart.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/DevicePort"
+              }
+            },
+            "serial_port": {
+              "description": "The serial port of its board's UART, the one a Serial Monitor\nopens: on the UART's usb_interface when the board's data gives it,\nelse the device's only serial port. The board is the build's\n(build_folder), else board when the device may be it, else its only\nlikely board. Omitted when it can't be told: then ask the user, from\nserial_ports.",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "additionalProperties": false,
@@ -5081,6 +5104,29 @@
             "confirm",
             "busy",
             "cancelled"
+          ]
+        },
+        "DevicePort": {
+          "description": "One serial port of a connected USB device.",
+          "type": "object",
+          "properties": {
+            "port": {
+              "description": "The port's name, to pass to open_serial: such as COM5 on Windows,\n/dev/cu.usbserial-A10 on macOS, /dev/ttyUSB1 on Linux.",
+              "type": "string"
+            },
+            "interface": {
+              "description": "The USB interface it's on, when the system says, such as 1 for an\nFTDI chip's second channel.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "maximum": 255,
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "port"
           ]
         },
         "UnreachableDevice": {
@@ -5459,6 +5505,20 @@
                   "type": "null"
                 }
               ]
+            },
+            "serial_ports": {
+              "description": "The device's serial ports, such as COM5, /dev/cu.usbserial-A10 or\n/dev/ttyUSB1, each with the USB interface it's on when the system\nsays, by interface: for open_serial. Empty when it has none, or\nwhen another connected device with its USB IDs and no serial number\nmakes them impossible to tell apart.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/DevicePort"
+              }
+            },
+            "serial_port": {
+              "description": "The serial port of its board's UART, the one a Serial Monitor\nopens: on the UART's usb_interface when the board's data gives it,\nelse the device's only serial port. The board is the build's\n(build_folder), else board when the device may be it, else its only\nlikely board. Omitted when it can't be told: then ask the user, from\nserial_ports.",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "additionalProperties": false,
@@ -5701,6 +5761,29 @@
             "confirm",
             "busy",
             "cancelled"
+          ]
+        },
+        "DevicePort": {
+          "description": "One serial port of a connected USB device.",
+          "type": "object",
+          "properties": {
+            "port": {
+              "description": "The port's name, to pass to open_serial: such as COM5 on Windows,\n/dev/cu.usbserial-A10 on macOS, /dev/ttyUSB1 on Linux.",
+              "type": "string"
+            },
+            "interface": {
+              "description": "The USB interface it's on, when the system says, such as 1 for an\nFTDI chip's second channel.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "maximum": 255,
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "port"
           ]
         },
         "CommandRecord": {
@@ -6324,6 +6407,254 @@
           ]
         }
       }
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "open_serial",
+    "description": "Opens a serial port, such as a board's UART over its USB cable, for a Serial Monitor or an AI agent checking what a design prints, and returns a session: read it with read_serial, send with write_serial, end with close_serial. Take the port from list_devices: a device's serial_port is its board's UART (else choose from its serial_ports). Give device too (its id): then the session pauses while program_board writes that board and reopens after, and reopens the port when the board is plugged in again, even under another name. The format is 8 data bits, no parity, 1 stop bit; baud defaults to 115200. The session stays open until close_serial or the engine exits.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "OpenSerialInput",
+      "description": "The port to open.",
+      "type": "object",
+      "properties": {
+        "port": {
+          "description": "The port, such as COM5, /dev/cu.usbserial-A10 or /dev/ttyUSB1: a\ndevice's serial_port or one of its serial_ports from list_devices.",
+          "type": "string"
+        },
+        "baud": {
+          "description": "Bits per second. Defaults to 115200.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "default": null,
+          "minimum": 0
+        },
+        "device": {
+          "description": "The device the port belongs to, by its id from list_devices, so the\nsession pauses while program_board writes it and finds the port\nagain after it's unplugged. Omitted means the port alone.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "port"
+      ]
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "OpenSerialOutput",
+      "description": "The new session.",
+      "type": "object",
+      "properties": {
+        "session": {
+          "description": "The session's ID, for the other serial tools.",
+          "type": "string"
+        },
+        "port": {
+          "description": "The port opened.",
+          "type": "string"
+        },
+        "baud": {
+          "description": "Its speed, bits per second.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "session",
+        "port",
+        "baud"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "read_serial",
+    "description": "Returns what a serial session received since the last read, as text, and what happened to its port meanwhile (paused for program_board, resumed, disconnected, reconnected). With wait_ms it waits up to that long for something to arrive (with until, for that text, such as a line a testbench or design prints); without, it returns at once. A Serial Monitor calls it in a loop with a wait, such as 1000 ms. Up to 1 MB is kept unread; beyond, the oldest is dropped (an overflow event).",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "ReadSerialInput",
+      "type": "object",
+      "properties": {
+        "session": {
+          "description": "The session, from open_serial.",
+          "type": "string"
+        },
+        "wait_ms": {
+          "description": "How long to wait for data, in milliseconds, at most 60000. Defaults\nto 0: return what there is now.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "default": null,
+          "minimum": 0
+        },
+        "until": {
+          "description": "Wait until the text received contains this (or wait_ms ends),\ninstead of returning at the first data.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "session"
+      ]
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "ReadSerialOutput",
+      "type": "object",
+      "properties": {
+        "text": {
+          "description": "What arrived, as text (UTF-8; bytes that aren't become U+FFFD).\nEmpty when nothing did. Line endings are as the device sent them.",
+          "type": "string"
+        },
+        "events": {
+          "description": "What happened to the port, in order. Omitted when nothing.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SerialEvent"
+          }
+        },
+        "open": {
+          "description": "Whether the port is open now (false while paused or unplugged).",
+          "type": "boolean"
+        },
+        "port": {
+          "description": "The port's name now: it may change when the board comes back.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "open",
+        "port"
+      ],
+      "$defs": {
+        "SerialEvent": {
+          "description": "Something that happened to a session's port, in the order it happened.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "description": "What happened: paused (program_board is writing the board, so the\nport is closed), resumed (reopened after that), disconnected (the\nport went away, such as the board being unplugged), reconnected\n(reopened when it came back), or overflow (data arrived faster than\nit was read, and the oldest was dropped).",
+              "$ref": "#/$defs/SerialEventKind"
+            },
+            "message": {
+              "description": "The same for people, such as \"The serial port was closed while the\nboard is programmed.\".",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "message"
+          ]
+        },
+        "SerialEventKind": {
+          "type": "string",
+          "enum": [
+            "paused",
+            "resumed",
+            "disconnected",
+            "reconnected",
+            "overflow"
+          ]
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "write_serial",
+    "description": "Sends text to a serial session's port, as UTF-8 bytes, exactly as given: add the line ending the device expects, such as \\n or \\r\\n. While the port is closed (paused or unplugged), nothing is sent and it's an error.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "WriteSerialInput",
+      "type": "object",
+      "properties": {
+        "session": {
+          "description": "The session, from open_serial.",
+          "type": "string"
+        },
+        "text": {
+          "description": "What to send.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "session",
+        "text"
+      ]
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "WriteSerialOutput",
+      "type": "object",
+      "properties": {
+        "bytes": {
+          "description": "How many bytes were sent.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bytes"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "close_serial",
+    "description": "Ends a serial session and closes its port, so other programs can open it. What it received but wasn't read is dropped.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "CloseSerialInput",
+      "type": "object",
+      "properties": {
+        "session": {
+          "description": "The session, from open_serial.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "session"
+      ]
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "CloseSerialOutput",
+      "type": "object",
+      "additionalProperties": false
     },
     "annotations": {
       "readOnlyHint": false,

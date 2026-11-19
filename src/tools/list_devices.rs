@@ -101,6 +101,9 @@ pub fn run_with(
     scan: impl FnOnce() -> Result<Vec<Device>, ToolError>,
 ) -> Result<ListDevicesOutput, ToolError> {
     let lookup = |v: &str, p: &str, i: u8, c: bool| drivers::current_drivers(v, p, i, c);
+    let custom_folder = input.custom_boards_folder.clone();
+    let build_folder = input.build_folder.clone();
+    let board = input.board.clone();
     let mut out = run_with_drivers(
         input,
         scan,
@@ -109,7 +112,64 @@ pub fn run_with(
     if cfg!(target_os = "linux") {
         add_udev_statuses(&mut out, &drivers::udev_rule);
     }
+    add_serial_ports(
+        &mut out,
+        &crate::serial::usb_ports(),
+        custom_folder.as_deref(),
+        build_folder.as_deref(),
+        board.as_deref(),
+    )?;
     Ok(out)
+}
+
+/// Gives each device its serial ports, from the system's USB serial ports
+/// (crate::serial::usb_ports; made up in tests), and the port of its
+/// board's UART (Device.serial_port). The board is the build's, else
+/// `board` when the device may be it, else the device's only likely board.
+pub fn add_serial_ports(
+    out: &mut ListDevicesOutput,
+    ports: &[(crate::serial::DeviceKey, crate::serial::DevicePort)],
+    custom_boards_folder: Option<&str>,
+    build_folder: Option<&str>,
+    board: Option<&str>,
+) -> Result<(), ToolError> {
+    let custom = crate::custom_boards::load(custom_boards_folder)?;
+    let known = crate::board::known_boards(&custom);
+    let build_board = match build_folder {
+        Some(folder) => super::program_board::read_build(folder)?.1.board.board_id,
+        None => None,
+    };
+    let found = crate::serial::ports_of_devices(&out.devices, ports);
+    for (d, device_ports) in out.devices.iter_mut().zip(found) {
+        let board_id = build_board.clone().or_else(|| {
+            board
+                .filter(|b| d.boards.iter().any(|m| m.board == *b))
+                .map(str::to_string)
+                .or_else(|| match d.likely_boards.as_slice() {
+                    [only] => Some(only.clone()),
+                    _ => None,
+                })
+        });
+        // The board's first UART by name that says its USB interface.
+        let interface = board_id
+            .as_deref()
+            .and_then(|id| known.get(id))
+            .and_then(|b| {
+                let mut uarts: Vec<_> = b
+                    .resources
+                    .iter()
+                    .filter_map(|(name, r)| match r {
+                        crate::resources::Resource::Uart(u) => Some((name, u.usb_interface)),
+                        _ => None,
+                    })
+                    .collect();
+                uarts.sort_by(|a, b| a.0.cmp(b.0));
+                uarts.into_iter().find_map(|(_, i)| i)
+            });
+        d.serial_port = crate::serial::uart_port(&device_ports, interface);
+        d.serial_ports = device_ports;
+    }
+    Ok(())
 }
 
 /// Logix Engine's udev rule for some USB IDs, by its file name, when it's

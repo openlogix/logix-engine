@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://www.openlogix.org/schemas/logix-fpgas-ecp5-v1.json",
   "title": "Logix Catalog ECP5 FPGAs",
-  "description": "The ECP5 FPGAs of Logix Catalog (www.openlogix.org/catalog/): the schema of fpgas/ecp5.json, which maps each FPGA ID to its facts. The file's name gives the FPGAs' family.",
+  "description": "The ECP5 FPGAs of Logix Catalog (github.com/openlogix/logix-catalog): the schema of fpgas/ecp5.json, which maps each FPGA ID to its facts. The file's name gives the FPGAs' family.",
   "type": "object",
   "properties": {
     "$schema": {

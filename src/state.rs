@@ -1,6 +1,7 @@
 //! What an engine process knows from its launch. Requests are stateless: the
 //! only state is the launch settings, which are fixed for the life of the
-//! process.
+//! process, and the serial sessions (crate::serial), the one exception, since
+//! a port stays open between calls.
 
 use std::path::PathBuf;
 

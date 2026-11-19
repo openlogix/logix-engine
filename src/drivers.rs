@@ -381,18 +381,21 @@ pub fn udev_rule_name(vid: &str, pid: &str) -> String {
 }
 
 /// Logix Engine's udev rule for a pair of USB IDs: the USB device (libusb's
-/// programmers) and its HID nodes (HID programmers, such as icesprog and
-/// CMSIS-DAP adapters, through hidraw) may be opened by the user at the
+/// programmers), its HID nodes (HID programmers, such as icesprog and
+/// CMSIS-DAP adapters, through hidraw) and its serial ports (tty, such as
+/// /dev/ttyUSB1, for the Serial Monitor: without it only the dialout group
+/// can open them; added 2026-11-19) may be opened by the user at the
 /// computer (uaccess) and by the plugdev group (such as over SSH), as
 /// openFPGALoader's own rules do. `name` is for the comment.
 pub fn udev_rule_text(vid: &str, pid: &str, name: &str) -> String {
     let (vid, pid) = (vid.to_ascii_lowercase(), pid.to_ascii_lowercase());
     format!(
         "# Added by Logix Engine for {name} ({vid}:{pid}), so the user at this\n\
-         # computer and the plugdev group can program it. Logix Engine's\n\
-         # uninstall_driver removes this file.\n\
+         # computer and the plugdev group can program it and open its serial\n\
+         # ports. Logix Engine's uninstall_driver removes this file.\n\
          SUBSYSTEM==\"usb\", ATTRS{{idVendor}}==\"{vid}\", ATTRS{{idProduct}}==\"{pid}\", MODE=\"0660\", GROUP=\"plugdev\", TAG+=\"uaccess\"\n\
-         SUBSYSTEM==\"hidraw\", ATTRS{{idVendor}}==\"{vid}\", ATTRS{{idProduct}}==\"{pid}\", MODE=\"0660\", GROUP=\"plugdev\", TAG+=\"uaccess\"\n"
+         SUBSYSTEM==\"hidraw\", ATTRS{{idVendor}}==\"{vid}\", ATTRS{{idProduct}}==\"{pid}\", MODE=\"0660\", GROUP=\"plugdev\", TAG+=\"uaccess\"\n\
+         SUBSYSTEM==\"tty\", ATTRS{{idVendor}}==\"{vid}\", ATTRS{{idProduct}}==\"{pid}\", MODE=\"0660\", GROUP=\"plugdev\", TAG+=\"uaccess\"\n"
     )
 }
 
@@ -539,16 +542,17 @@ mod tests {
     }
 
     #[test]
-    fn the_udev_rule_lets_the_user_open_the_device_and_its_hid_nodes() {
+    fn the_udev_rule_lets_the_user_open_the_device_its_hid_nodes_and_serial_ports() {
         assert_eq!(
             udev_rule_name("1D50", "602B"),
             "70-logix-engine-1d50-602b.rules"
         );
         let text = udev_rule_text("0403", "6010", "the Alhambra II");
         let rules: Vec<&str> = text.lines().filter(|l| !l.starts_with('#')).collect();
-        assert_eq!(rules.len(), 2, "{text}");
+        assert_eq!(rules.len(), 3, "{text}");
         assert!(rules[0].starts_with("SUBSYSTEM==\"usb\""), "{text}");
         assert!(rules[1].starts_with("SUBSYSTEM==\"hidraw\""), "{text}");
+        assert!(rules[2].starts_with("SUBSYSTEM==\"tty\""), "{text}");
         for r in rules {
             for part in [
                 "ATTRS{idVendor}==\"0403\"",

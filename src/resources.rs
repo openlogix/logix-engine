@@ -306,6 +306,13 @@ resource_type!(
         rts: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         cts: Option<String>,
+        /// The USB interface that carries this serial port on the board's
+        /// USB device (the one its variants' usb filters match), such as 1
+        /// for an FTDI chip's second channel, whose first programs the
+        /// board: how list_devices finds the board's serial port when the
+        /// device has several. Omitted when unknown.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        usb_interface: Option<u8>,
     }
 );
 
