@@ -6485,7 +6485,7 @@
   },
   {
     "name": "read_serial",
-    "description": "Returns what a serial session received since the last read, as text, and what happened to its port meanwhile (paused for program_board, resumed, disconnected, reconnected). With wait_ms it waits up to that long for something to arrive (with until, for that text, such as a line a testbench or design prints); without, it returns at once. A Serial Monitor calls it in a loop with a wait, such as 1000 ms. Up to 1 MB is kept unread; beyond, the oldest is dropped (an overflow event).",
+    "description": "Returns the bytes a serial session received since the last read, exactly, as hex (two digits per byte), and what happened to its port meanwhile (paused for program_board, resumed, disconnected, reconnected). With wait_ms it waits up to that long for something to arrive (with until, for those bytes, such as 0d0a, a line ending); without, it returns at once. A Serial Monitor calls it in a loop with a wait, such as 1000 ms. Up to 1 MB is kept unread; beyond, the oldest is dropped (an overflow event).",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "ReadSerialInput",
@@ -6505,7 +6505,7 @@
           "minimum": 0
         },
         "until": {
-          "description": "Wait until the text received contains this (or wait_ms ends),\ninstead of returning at the first data.",
+          "description": "Bytes to wait for, as hex, such as \"0d0a\" (a line ending): wait\nuntil what's received contains them (or wait_ms ends), instead of\nreturning at the first data.",
           "type": [
             "string",
             "null"
@@ -6523,8 +6523,8 @@
       "title": "ReadSerialOutput",
       "type": "object",
       "properties": {
-        "text": {
-          "description": "What arrived, as text (UTF-8; bytes that aren't become U+FFFD).\nEmpty when nothing did. Line endings are as the device sent them.",
+        "hex": {
+          "description": "What arrived, exactly: two lowercase hex digits per byte, such as\n\"48690d0a\" for \"Hi\" and a carriage return and line feed. Empty when\nnothing did. The engine passes bytes through unchanged, as a UART\ndoes: decoding them (such as UTF-8 text) is the client's.",
           "type": "string"
         },
         "events": {
@@ -6545,7 +6545,7 @@
       },
       "additionalProperties": false,
       "required": [
-        "text",
+        "hex",
         "open",
         "port"
       ],
@@ -6589,7 +6589,7 @@
   },
   {
     "name": "write_serial",
-    "description": "Sends text to a serial session's port, as UTF-8 bytes, exactly as given: add the line ending the device expects, such as \\n or \\r\\n. While the port is closed (paused or unplugged), nothing is sent and it's an error.",
+    "description": "Sends bytes to a serial session's port, exactly as given, as hex (two digits per byte, such as 48690a for \"Hi\" and a line feed): any byte, text or not. Encoding text (such as UTF-8, and the line ending the device expects) is the client's. While the port is closed (paused or unplugged), nothing is sent and it's an error.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "WriteSerialInput",
@@ -6599,15 +6599,15 @@
           "description": "The session, from open_serial.",
           "type": "string"
         },
-        "text": {
-          "description": "What to send.",
+        "hex": {
+          "description": "The bytes to send, two hex digits each, such as \"48690a\".",
           "type": "string"
         }
       },
       "additionalProperties": false,
       "required": [
         "session",
-        "text"
+        "hex"
       ]
     },
     "outputSchema": {

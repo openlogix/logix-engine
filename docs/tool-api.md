@@ -1414,7 +1414,9 @@ Four tools give frontends and AI agents a board's serial port, such as its UART 
 
 **Upload and unplugging** (with `device`). While `program_board` writes the board, its sessions close their ports (a `paused` event) and reopen them after (`resumed`), by themselves. When the port goes away, such as when the board is unplugged, the session reports `disconnected` and tries again every 0.3 s; when the board is back it reopens the port, found again by the device's USB IDs, serial number and USB interface, even under another name (`reconnected`). Without `device` the session waits for the same port name.
 
-**Reading.** `read_serial` returns at once, or with `wait_ms` waits up to that long for something to arrive: a Serial Monitor calls it in a loop with a wait (such as 1000 ms), and an agent can wait `until` a text, such as a line the design prints. Text is UTF-8, with a character split between reads kept for the next; other bytes become U+FFFD. The format is always 8 data bits, no parity, 1 stop bit (8N1).
+**Bytes only** (the user's decision, 2026-11-19). The tools pass bytes through as a UART does, any of the 256 values, unchanged: `read_serial` returns exactly what arrived and `write_serial` sends exactly what it's given, both as hex (two digits per byte), since JSON can't carry raw bytes. Text is the client's: it decodes what it reads (such as UTF-8, keeping a character split between two reads for the next) and encodes what it sends, with the line ending the device expects.
+
+**Reading.** `read_serial` returns at once, or with `wait_ms` waits up to that long for something to arrive: a Serial Monitor calls it in a loop with a wait (such as 1000 ms), and an agent can wait `until` some bytes arrive, such as `0d0a` at the end of a line the design prints. The format is always 8 data bits, no parity, 1 stop bit (8N1).
 
 **A frontend's own serial code.** The serial tools are optional: a frontend may take the port from `list_devices` (`serial_port`) and open it with its own code. It then closes its port around its own uploads, since `program_board` pauses only the engine's sessions; and a port is open in one program at a time (on Windows always, and the engine asks for exclusive use on macOS and Linux), so it and an engine session can't share one.
 
@@ -1442,13 +1444,13 @@ Four tools give frontends and AI agents a board's serial port, such as its UART 
 | --- | --- | --- | --- |
 | `session` | text | Yes | The session, from `open_serial` |
 | `wait_ms` | integer | No | How long to wait for something to arrive, at most 60000 ms. Defaults to 0: return what there is now |
-| `until` | text | No | Wait until the text received contains this (or `wait_ms` ends) |
+| `until` | hex | No | Bytes to wait for, such as `0d0a` (a line ending): wait until what's received contains them (or `wait_ms` ends) |
 
 **Table 48.** read_serial tool outputs
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `text` | text | What arrived, line endings as sent. Empty when nothing did |
+| `hex` | text | What arrived, exactly: two lowercase hex digits per byte, such as `48690d0a` ("Hi", a carriage return and a line feed). Empty when nothing did |
 | `events` | list of objects | Optional, omitted when none. What happened to the port, in order: `kind` (`paused`, `resumed`, `disconnected`, `reconnected` or `overflow`) and `message`, the same for people, such as "The serial port was closed while the board is programmed." |
 | `open` | boolean | Whether the port is open now (false while paused or unplugged) |
 | `port` | text | The port's name now: it may change when the board comes back |
@@ -1458,7 +1460,7 @@ Four tools give frontends and AI agents a board's serial port, such as its UART 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `session` | text | Yes | The session |
-| `text` | text | Yes | What to send, as UTF-8, exactly as given: add the line ending the device expects |
+| `hex` | text | Yes | The bytes to send, two hex digits each, such as `48690a` ("Hi" and a line feed): any byte, text or not |
 
 **Table 50.** write_serial tool outputs
 
@@ -1468,7 +1470,7 @@ Four tools give frontends and AI agents a board's serial port, such as its UART 
 
 `close_serial` takes `session` and returns an empty object; what wasn't read is dropped.
 
-**Errors:** request errors for an unknown session, a port that's open in another session, or a bad `baud` or `wait_ms`. Setup errors when a port can't be opened (`connect_board` when it isn't there; on Linux `fix_device_permissions` when permission is denied) and when `write_serial` finds the port closed (paused or unplugged): nothing is sent, so send again once `read_serial` reports `open`.
+**Errors:** request errors for an unknown session, a port that's open in another session, a bad `baud` or `wait_ms`, or hex that isn't two digits per byte. Setup errors when a port can't be opened (`connect_board` when it isn't there; on Linux `fix_device_permissions` when permission is denied) and when `write_serial` finds the port closed (paused or unplugged): nothing is sent, so send again once `read_serial` reports `open`.
 
 **Example**
 
@@ -1476,7 +1478,7 @@ Four tools give frontends and AI agents a board's serial port, such as its UART 
 { "port": "/dev/ttyUSB1", "device": "usb:1-1:0403:6010:FTATANKC" }
 ```
 
-`open_serial` returns `{"session": "serial-1", "port": "/dev/ttyUSB1", "baud": 115200}`; then `read_serial` with `{"session": "serial-1", "wait_ms": 1000}` returns `{"text": "Hello from your FPGA board\r\n", "open": true, "port": "/dev/ttyUSB1"}`.
+`open_serial` returns `{"session": "serial-1", "port": "/dev/ttyUSB1", "baud": 115200}`; then `read_serial` with `{"session": "serial-1", "wait_ms": 1000}` returns `{"hex": "48656c6c6f2066726f6d20796f7572204650474120626f6172640d0a", "open": true, "port": "/dev/ttyUSB1"}` ("Hello from your FPGA board" and a line ending).
 
 ## Default project model
 
@@ -1573,7 +1575,7 @@ Requests never carry source text. Write the buffer to a file in a scratch folder
 
 ### Show a Serial Monitor
 
-List the devices with the board (`list_devices` `board`), take the chosen device's `serial_port` (else let the user pick from its `serial_ports`), and `open_serial` it with the device's `id` and the baud rate. Then call `read_serial` in a loop with `wait_ms` (such as 1000) and show `text` as it comes, and each event's `message`; send what the user types with `write_serial`, adding their chosen line ending. Upload needs nothing more: the session pauses and resumes by itself. `close_serial` when the monitor closes or the project changes. Logix IDE's Serial Monitor does this ([`src-tauri/src/engine/serial.rs`](https://github.com/openlogix/logix-ide/blob/main/src-tauri/src/engine/serial.rs)).
+List the devices with the board (`list_devices` `board`), take the chosen device's `serial_port` (else let the user pick from its `serial_ports`), and `open_serial` it with the device's `id` and the baud rate. Then call `read_serial` in a loop with `wait_ms` (such as 1000) and decode `hex` and show it as it comes, and each event's `message`; send what the user types with `write_serial`, encoded (such as UTF-8) with their chosen line ending. Upload needs nothing more: the session pauses and resumes by itself. `close_serial` when the monitor closes or the project changes. Logix IDE's Serial Monitor does this ([`src-tauri/src/engine/serial.rs`](https://github.com/openlogix/logix-ide/blob/main/src-tauri/src/engine/serial.rs)).
 
 ### Show system info
 

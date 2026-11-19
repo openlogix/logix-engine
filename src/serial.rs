@@ -200,9 +200,6 @@ struct Session {
     /// while paused or gone.
     port: Mutex<Option<Box<dyn serialport::SerialPort>>>,
     inbox: Mutex<Inbox>,
-    /// Bytes at the end of the last read that start a character not yet
-    /// complete (UTF-8), kept for the next read.
-    partial: Mutex<Vec<u8>>,
     arrived: tokio::sync::Notify,
     /// How many program_board calls are pausing it now.
     pauses: AtomicUsize,
@@ -351,7 +348,8 @@ pub fn sessions() -> &'static Sessions {
 
 /// What a read returns.
 pub struct ReadResult {
-    pub text: String,
+    /// Exactly the bytes received.
+    pub bytes: Vec<u8>,
     pub events: Vec<SerialEvent>,
     pub open: bool,
     pub port: String,
@@ -413,7 +411,6 @@ impl Sessions {
             interface,
             port: Mutex::new(Some(writer)),
             inbox: Mutex::new(Inbox::default()),
-            partial: Mutex::new(Vec::new()),
             arrived: tokio::sync::Notify::new(),
             pauses: AtomicUsize::new(0),
             closed: AtomicBool::new(false),
@@ -437,17 +434,18 @@ impl Sessions {
             .ok_or_else(|| no_session(id))
     }
 
-    /// What arrived since the last read. Waits up to `wait` for data or an
-    /// event (or, with `until`, for that text), then returns what there is.
+    /// What arrived since the last read, exactly. Waits up to `wait` for
+    /// data or an event (or, with `until`, for those bytes), then returns
+    /// what there is.
     pub async fn read(
         &self,
         id: &str,
         wait: Duration,
-        until: Option<&str>,
+        until: Option<&[u8]>,
     ) -> Result<ReadResult, ToolError> {
         let s = self.get(id)?;
         let deadline = tokio::time::Instant::now() + wait;
-        let mut text = String::new();
+        let mut received = Vec::new();
         let mut events = Vec::new();
         loop {
             // Registered before taking the inbox, so data that arrives in
@@ -463,11 +461,11 @@ impl Sessions {
                     std::mem::take(&mut inbox.events),
                 )
             };
-            text.push_str(&decode(&mut s.partial.lock().unwrap(), &bytes));
+            received.extend_from_slice(&bytes);
             events.extend(new_events);
             let done = match until {
-                Some(u) => text.contains(u),
-                None => !text.is_empty() || !events.is_empty(),
+                Some(u) => received.windows(u.len()).any(|w| w == u),
+                None => !received.is_empty() || !events.is_empty(),
             };
             if done || tokio::time::Instant::now() >= deadline || s.closed.load(Ordering::SeqCst) {
                 break;
@@ -479,15 +477,15 @@ impl Sessions {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         Ok(ReadResult {
-            text,
+            bytes: received,
             events,
             open: s.is_open(),
             port: s.port_name.lock().unwrap().clone(),
         })
     }
 
-    /// Sends text to the port.
-    pub fn write(&self, id: &str, text: &str) -> Result<usize, ToolError> {
+    /// Sends bytes to the port, exactly as given.
+    pub fn write(&self, id: &str, data: &[u8]) -> Result<usize, ToolError> {
         let s = self.get(id)?;
         let mut port = s.port.lock().unwrap();
         let Some(p) = port.as_mut() else {
@@ -503,13 +501,13 @@ impl Sessions {
         };
         // No flush: it waits until every byte has left (tcdrain), which a
         // monitor doesn't need.
-        p.write_all(text.as_bytes()).map_err(|e| {
+        p.write_all(data).map_err(|e| {
             ToolError::setup(format!(
                 "Can't send to {}: {e}",
                 s.port_name.lock().unwrap()
             ))
         })?;
-        Ok(text.len())
+        Ok(data.len())
     }
 
     /// Closes a session and its port.
@@ -562,20 +560,6 @@ impl Drop for PauseGuard {
             s.pauses.fetch_sub(1, Ordering::SeqCst);
         }
     }
-}
-
-/// Bytes to text, keeping an incomplete character at the end (UTF-8) in
-/// `partial` for next time. Bytes that aren't UTF-8 become U+FFFD.
-fn decode(partial: &mut Vec<u8>, bytes: &[u8]) -> String {
-    partial.extend_from_slice(bytes);
-    let complete = match std::str::from_utf8(partial) {
-        Ok(_) => partial.len(),
-        Err(e) if e.error_len().is_none() => e.valid_up_to(),
-        Err(_) => partial.len(),
-    };
-    let text = String::from_utf8_lossy(&partial[..complete]).into_owned();
-    partial.drain(..complete);
-    text
 }
 
 fn open_error(name: &str, e: &serialport::Error) -> ToolError {
@@ -668,18 +652,8 @@ mod tests {
     }
 
     #[test]
-    fn decode_keeps_a_split_character_for_next_time() {
-        let mut partial = Vec::new();
-        let e_acute = "é".as_bytes();
-        assert_eq!(decode(&mut partial, &[b'a', e_acute[0]]), "a");
-        assert_eq!(decode(&mut partial, &[e_acute[1], b'b']), "éb");
-        assert_eq!(decode(&mut partial, &[0xff, b'c']), "\u{fffd}c");
-        assert!(partial.is_empty());
-    }
-
-    #[test]
     fn unknown_sessions_are_request_errors() {
-        let err = sessions().write("serial-999", "x").unwrap_err();
+        let err = sessions().write("serial-999", b"x").unwrap_err();
         assert_eq!(err.category, crate::errors::Category::Request);
         assert!(sessions().close("serial-999").is_err());
     }
@@ -700,25 +674,39 @@ mod tests {
         // The board talks: read it, waiting for the whole line.
         board.write_all(b"Hello from your FPGA board\r\n").unwrap();
         let r = s
-            .read(&id, Duration::from_secs(5), Some("\r\n"))
+            .read(&id, Duration::from_secs(5), Some(b"\r\n"))
             .await
             .unwrap();
-        assert_eq!(r.text, "Hello from your FPGA board\r\n");
+        assert_eq!(r.bytes, b"Hello from your FPGA board\r\n");
         assert!(r.open);
         // The computer talks: the board reads it.
-        assert_eq!(s.write(&id, "A").unwrap(), 1);
+        assert_eq!(s.write(&id, b"A").unwrap(), 1);
         let mut got = [0u8; 1];
         board.set_timeout(Duration::from_secs(5)).unwrap();
         board.read_exact(&mut got).unwrap();
         assert_eq!(&got, b"A");
+        // Any byte goes out and comes in exactly, text or not.
+        let all: Vec<u8> = (0..=255).collect();
+        assert_eq!(s.write(&id, &all).unwrap(), 256);
+        let mut echoed = vec![0u8; 256];
+        board.read_exact(&mut echoed).unwrap();
+        assert_eq!(echoed, all);
+        board.write_all(&all).unwrap();
+        let mut got = Vec::new();
+        while got.len() < 256 {
+            let r = s.read(&id, Duration::from_secs(5), None).await.unwrap();
+            assert!(!r.bytes.is_empty(), "timed out after {} bytes", got.len());
+            got.extend(r.bytes);
+        }
+        assert_eq!(got, all);
         // Nothing more: an empty read after the wait.
         let r = s.read(&id, Duration::from_millis(50), None).await.unwrap();
-        assert_eq!(r.text, "");
+        assert!(r.bytes.is_empty());
         // Writing never waits for the reader: keys typed one by one go out
         // at once (each took a second or more when the two shared a lock).
         for _ in 0..20 {
             let started = std::time::Instant::now();
-            s.write(&id, "k").unwrap();
+            s.write(&id, b"k").unwrap();
             assert!(
                 started.elapsed() < Duration::from_millis(100),
                 "{:?}",
