@@ -242,6 +242,9 @@ struct Session {
     /// How many program_board calls are pausing it now.
     pauses: AtomicUsize,
     closed: AtomicBool,
+    /// The reader thread, which close waits for: the port is free only
+    /// once it has let go of its handle.
+    reader: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 impl Session {
@@ -452,12 +455,14 @@ impl Sessions {
             arrived: tokio::sync::Notify::new(),
             pauses: AtomicUsize::new(0),
             closed: AtomicBool::new(false),
+            reader: Mutex::new(None),
         });
         let session_for_reader = session.clone();
-        std::thread::Builder::new()
+        let reader = std::thread::Builder::new()
             .name(format!("serial {id}"))
             .spawn(move || read_loop(session_for_reader, Some(port)))
             .map_err(|e| ToolError::engine(format!("Can't start reading {name}: {e}")))?;
+        *session.reader.lock().unwrap() = Some(reader);
         self.sessions.lock().unwrap().insert(id.clone(), session);
         log::info!("Serial session {id}: opened {name} at {baud} baud");
         Ok((id, name.to_string()))
@@ -548,7 +553,9 @@ impl Sessions {
         Ok(data.len())
     }
 
-    /// Closes a session and its port.
+    /// Closes a session and its port. Returns once the port is free, so
+    /// it can be opened again at once, such as at another baud rate (the
+    /// reader lets go within a read slice, or a retry's wait).
     pub fn close(&self, id: &str) -> Result<(), ToolError> {
         let s = self
             .sessions
@@ -559,6 +566,9 @@ impl Sessions {
         s.closed.store(true, Ordering::SeqCst);
         s.port.lock().unwrap().take();
         s.arrived.notify_waiters();
+        if let Some(reader) = s.reader.lock().unwrap().take() {
+            let _ = reader.join();
+        }
         log::info!("Serial session {id}: closed");
         Ok(())
     }
@@ -600,9 +610,28 @@ impl Drop for PauseGuard {
     }
 }
 
+/// Whether the system lists a serial port by this name.
+fn port_listed(name: &str) -> bool {
+    serialport::available_ports().is_ok_and(|ports| {
+        ports
+            .into_iter()
+            .any(|p| p.port_name == name || macos_callout(p.port_name) == name)
+    })
+}
+
 fn open_error(name: &str, e: &serialport::Error) -> ToolError {
+    // serialport's NoDevice is also a port another program holds (EBUSY on
+    // macOS and Linux, access denied on Windows): a port the system lists
+    // is there, so it's in use.
+    let missing = matches!(
+        e.kind(),
+        serialport::ErrorKind::NoDevice | serialport::ErrorKind::Io(std::io::ErrorKind::NotFound)
+    );
     match e.kind() {
-        serialport::ErrorKind::NoDevice => ToolError::setup(format!(
+        _ if missing && port_listed(name) => ToolError::setup(format!(
+            "Can't open the serial port {name}: it's in use. Another program may have it open: close it, then try again."
+        )),
+        _ if missing => ToolError::setup(format!(
             "Can't open the serial port {name}: it isn't there. Is the board plugged in?"
         ))
         .with_action(
@@ -774,7 +803,21 @@ mod tests {
         assert_eq!(&keys, b"kkkkkkkkkkkkkkkkkkkk");
         // The same port can't be opened twice.
         assert!(s.open(&name, 115_200, None, None).is_err());
+        // Closing returns once the reader has let go of its handle, so the
+        // port can be opened again at once (such as at another baud rate:
+        // it was refused as busy, the user's report, 2026-11-20).
+        let session = s.get(&id).unwrap();
         s.close(&id).unwrap();
+        assert_eq!(Arc::strong_count(&session), 1, "the reader still runs");
+        assert!(session.port.lock().unwrap().is_none());
         assert!(s.read(&id, Duration::ZERO, None).await.is_err());
+    }
+
+    /// A port that isn't listed is missing, not busy.
+    #[test]
+    fn a_missing_port_isnt_called_busy() {
+        let e = serialport::Error::new(serialport::ErrorKind::NoDevice, "busy");
+        let message = open_error("/dev/no-such-port", &e).message;
+        assert!(message.contains("it isn't there"), "{message}");
     }
 }

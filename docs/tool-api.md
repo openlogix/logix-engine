@@ -1468,7 +1468,7 @@ Four tools give frontends and AI agents a board's serial port, such as its UART 
 | --- | --- | --- |
 | `bytes` | integer | How many bytes were sent |
 
-`close_serial` takes `session` and returns an empty object; what wasn't read is dropped.
+`close_serial` takes `session` and returns an empty object, once the port is free: it can be opened again at once, such as at another baud rate. What wasn't read is dropped.
 
 **Errors:** request errors for an unknown session, a port that's open in another session, a bad `baud` or `wait_ms`, or hex that isn't two digits per byte. Setup errors when a port can't be opened (`connect_board` when it isn't there; on Linux `fix_device_permissions` when permission is denied) and when `write_serial` finds the port closed (paused or unplugged): nothing is sent, so send again once `read_serial` reports `open`.
 
