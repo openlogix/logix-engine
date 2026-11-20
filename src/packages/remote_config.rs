@@ -2,15 +2,18 @@
 //! `CLAUDE.md`): which release of each package the engine uses. It's the
 //! version folder `remote-config/logix-engine/<NNN>/` in this repo, by the
 //! config version this engine hard-codes, read from GitHub and cached in the
-//! engine folder: `channels.jsonc` says which releases are on which channel,
-//! and the engine reads its channel's config file, `<channel>.jsonc`
-//! (`prod.jsonc` when its channel has none). Its channel: `LOGIX_ENGINE_CHANNEL`
-//! when set; else, for a release build, the channel `channels.jsonc` lists
-//! its own release under (dev when unlisted); a local build is always dev.
+//! engine folder: `assign.jsonc` says which releases are on which channel,
+//! and the engine reads its channel's config file, `<channel>-channel.jsonc`
+//! (`prod-channel.jsonc` when its channel has none). Its channel:
+//! `LOGIX_ENGINE_CHANNEL` when set; else, for a release build, the channel
+//! `assign.jsonc` lists its own release under (dev when unlisted); a local
+//! build is always dev.
 //! There's no built-in list: the repo's files are the pin lists.
 //!
-//! A config names, per package, a GitHub repo, a release tag and a file
-//! template (`${PLATFORM}`, `${YYYYMMDD}`). Resolving it for this platform
+//! A config names `dependencies`, per package a GitHub repo, a release tag
+//! and a file template (`${PLATFORM}`, `${YYYYMMDD}`), and `latest`, the
+//! engine's own newest release on the channel (read, not used yet).
+//! `remote-config/logix-engine/index.jsonc` lists the version folders. Resolving it for this platform
 //! takes each file's SHA-256 from its release's `SHA256SUMS`, which gives the
 //! package set the package manager downloads and checks.
 //!
@@ -34,8 +37,15 @@ pub const CONFIG_REPO: &str = "openlogix/logix-engine";
 pub const CONFIG_VERSION: &str = "001";
 /// The product folder in `remote-config/`.
 const PRODUCT: &str = "logix-engine";
-/// Each version folder's channel lists.
-pub const CHANNELS_FILE: &str = "channels.jsonc";
+/// Each version folder's channel lists: which channel each release is on.
+pub const ASSIGN_FILE: &str = "assign.jsonc";
+/// The prod channel's config file, which a channel without its own file reads.
+pub const PROD_FILE: &str = "prod-channel.jsonc";
+
+/// A channel's config file name.
+pub fn channel_file(channel: &str) -> String {
+    format!("{channel}-channel.jsonc")
+}
 /// The local override of the channel (a runtime setting, no `DEV_`, since
 /// `dev` is a channel name).
 pub const CHANNEL_VAR: &str = "LOGIX_ENGINE_CHANNEL";
@@ -85,13 +95,13 @@ pub fn repo_file_source() -> ConfigSource {
 pub fn repo_release(name: &str) -> String {
     let folder = PathBuf::from(repo_file_source().location);
     let channels =
-        parse_channels(&std::fs::read_to_string(folder.join(CHANNELS_FILE)).unwrap()).unwrap();
+        parse_channels(&std::fs::read_to_string(folder.join(ASSIGN_FILE)).unwrap()).unwrap();
     let channel = choose_channel(&channels, channel_variable().unwrap().as_deref()).unwrap();
     let file = [channel.name.clone(), "prod".into()]
         .iter()
-        .map(|c| folder.join(format!("{c}.jsonc")))
+        .map(|c| folder.join(channel_file(c)))
         .find(|f| f.is_file())
-        .expect("the channel's config file, or prod.jsonc");
+        .expect("the channel's config file, or prod-channel.jsonc");
     parse(&std::fs::read_to_string(file).unwrap()).expect("a valid config")[name]
         .release
         .clone()
@@ -145,11 +155,11 @@ impl ConfigSource {
 pub struct Channel {
     /// Such as prod or dev.
     pub name: String,
-    /// Why: "listed" (channels.jsonc lists this release), "default" (it
+    /// Why: "listed" (assign.jsonc lists this release), "default" (it
     /// doesn't: dev), "local build" (always dev) or "LOGIX_ENGINE_CHANNEL".
     pub how: String,
-    /// The config file read: `<channel>.jsonc`, or `prod.jsonc` when the
-    /// channel has none.
+    /// The config file read: `<channel>-channel.jsonc`, or
+    /// `prod-channel.jsonc` when the channel has none.
     pub file: String,
 }
 
@@ -177,23 +187,23 @@ pub fn channel_variable() -> Result<Option<String>, String> {
     }
 }
 
-/// channels.jsonc: channel name to its release tags.
+/// assign.jsonc: channel name to its release tags.
 pub fn parse_channels(text: &str) -> Result<BTreeMap<String, Vec<String>>, String> {
     let json: serde_json::Value = serde_json::from_str(&strip_comments(text)?)
-        .map_err(|e| format!("{CHANNELS_FILE} isn't valid JSONC: {e}"))?;
+        .map_err(|e| format!("{ASSIGN_FILE} isn't valid JSONC: {e}"))?;
     let obj = json
         .as_object()
-        .ok_or(format!("{CHANNELS_FILE} isn't a JSON object"))?;
+        .ok_or(format!("{ASSIGN_FILE} isn't a JSON object"))?;
     let mut out = BTreeMap::new();
     for (name, tags) in obj.iter().filter(|(k, _)| *k != "$schema") {
         let tags = tags
             .as_array()
-            .ok_or(format!("{CHANNELS_FILE}: {name} isn't a list"))?
+            .ok_or(format!("{ASSIGN_FILE}: {name} isn't a list"))?
             .iter()
             .map(|t| t.as_str().map(str::to_string))
             .collect::<Option<Vec<_>>>()
             .ok_or(format!(
-                "{CHANNELS_FILE}: {name} lists something that isn't a release tag"
+                "{ASSIGN_FILE}: {name} lists something that isn't a release tag"
             ))?;
         out.insert(name.clone(), tags);
     }
@@ -201,7 +211,7 @@ pub fn parse_channels(text: &str) -> Result<BTreeMap<String, Vec<String>>, Strin
 }
 
 /// The engine's channel, by the rules in the module's comment (`file` is
-/// the channel's own; reading falls back to prod.jsonc).
+/// the channel's own; reading falls back to prod-channel.jsonc).
 pub fn choose_channel(
     channels: &BTreeMap<String, Vec<String>>,
     variable: Option<&str>,
@@ -209,7 +219,7 @@ pub fn choose_channel(
     let (name, how) = if let Some(v) = variable {
         if v != "prod" && v != "dev" && !channels.contains_key(v) {
             return Err(format!(
-                "{CHANNEL_VAR}: {v} isn't a channel (prod, dev or one in {CHANNELS_FILE})"
+                "{CHANNEL_VAR}: {v} isn't a channel (prod, dev or one in {ASSIGN_FILE})"
             ));
         }
         (v.to_string(), CHANNEL_VAR)
@@ -223,7 +233,7 @@ pub fn choose_channel(
         }
     };
     Ok(Channel {
-        file: format!("{name}.jsonc"),
+        file: channel_file(&name),
         name,
         how: how.to_string(),
     })
@@ -288,8 +298,9 @@ pub fn strip_comments(text: &str) -> Result<String, String> {
 }
 
 /// Reads a config's text: its dependencies, by package name. Checks what
-/// the schema (logix-remote-config-v1) does that matters here, and that it
-/// names exactly the packages this engine needs.
+/// the schema (logix-remote-config-v1) does that matters here, that `latest`
+/// is well formed (not used yet), and that it names exactly the packages
+/// this engine needs.
 pub fn parse(text: &str) -> Result<BTreeMap<String, Entry>, String> {
     let json: serde_json::Value = serde_json::from_str(&strip_comments(text)?)
         .map_err(|e| format!("not valid JSONC: {e}"))?;
@@ -297,11 +308,40 @@ pub fn parse(text: &str) -> Result<BTreeMap<String, Entry>, String> {
     if obj.get("$schema").and_then(|v| v.as_str()) != Some(SCHEMA) {
         return Err(format!("its $schema must be {SCHEMA}"));
     }
+    if let Some(extra) = obj
+        .keys()
+        .find(|k| !["$schema", "latest", "dependencies"].contains(&k.as_str()))
+    {
+        return Err(format!("unknown key {extra}"));
+    }
+    if let Some(latest) = obj.get("latest") {
+        entry("latest", latest, false)?;
+    }
+    let deps = obj
+        .get("dependencies")
+        .and_then(|d| d.as_object())
+        .ok_or("no dependencies object")?;
     let mut out = BTreeMap::new();
-    for (name, dep) in obj {
-        if name == "$schema" {
-            continue;
-        }
+    for (name, dep) in deps {
+        out.insert(name.clone(), entry(name, dep, true)?);
+    }
+    let names: Vec<&str> = out.keys().map(String::as_str).collect();
+    let mut wanted = PACKAGES.to_vec();
+    wanted.sort();
+    if names != wanted {
+        return Err(format!(
+            "it must name exactly {}, not {}",
+            wanted.join(", "),
+            names.join(", ")
+        ));
+    }
+    Ok(out)
+}
+
+/// One `repo`, `release`, `file` entry: a dependency (file required) or
+/// `latest` (file optional: nothing downloads it).
+fn entry(name: &str, dep: &serde_json::Value, needs_file: bool) -> Result<Entry, String> {
+    {
         let field = |key: &str| -> Result<String, String> {
             dep.get(key)
                 .and_then(|v| v.as_str())
@@ -327,32 +367,21 @@ pub fn parse(text: &str) -> Result<BTreeMap<String, Entry>, String> {
                 "{name}: release must be yyyy-mm-dd, not {release:?}"
             ));
         }
-        let file = field("file")?;
+        let file = match dep.get("file") {
+            None if !needs_file => String::new(),
+            _ => field("file")?,
+        };
         let plain = file.replace("${PLATFORM}", "x").replace("${YYYYMMDD}", "x");
-        if !safe(&plain) {
+        if !file.is_empty() && !safe(&plain) {
             return Err(format!("{name}: bad file {file:?}"));
         }
-        out.insert(
-            name.clone(),
-            Entry {
-                owner: owner.into(),
-                repo: repo.into(),
-                release,
-                file,
-            },
-        );
+        Ok(Entry {
+            owner: owner.into(),
+            repo: repo.into(),
+            release,
+            file,
+        })
     }
-    let names: Vec<&str> = out.keys().map(String::as_str).collect();
-    let mut wanted = PACKAGES.to_vec();
-    wanted.sort();
-    if names != wanted {
-        return Err(format!(
-            "it must name exactly {}, not {}",
-            wanted.join(", "),
-            names.join(", ")
-        ));
-    }
-    Ok(out)
 }
 
 /// A single path component made of safe characters.
@@ -425,30 +454,29 @@ pub struct Read {
     pub text: String,
 }
 
-/// Reads a version folder: `channels.jsonc`, then the channel's config file,
-/// or `prod.jsonc` when the channel has none (a rule, not an error: dev uses
+/// Reads a version folder: `assign.jsonc`, then the channel's config file,
+/// or `prod-channel.jsonc` when the channel has none (a rule, not an error: dev uses
 /// what users get when it needs nothing else).
 pub async fn read(source: &ConfigSource, client: &reqwest::Client) -> Result<Read, String> {
-    let channels_text = read_file(source, CHANNELS_FILE, client)
+    let channels_text = read_file(source, ASSIGN_FILE, client)
         .await?
-        .ok_or_else(|| format!("{}: there's no {CHANNELS_FILE}", source.location))?;
+        .ok_or_else(|| format!("{}: there's no {ASSIGN_FILE}", source.location))?;
     let channels =
         parse_channels(&channels_text).map_err(|e| format!("{}: {e}", source.location))?;
     let mut channel = choose_channel(&channels, channel_variable()?.as_deref())?;
     let text = match read_file(source, &channel.file, client).await? {
         Some(t) => t,
         None if channel.name != "prod" => {
-            channel.file = "prod.jsonc".into();
-            read_file(source, "prod.jsonc", client)
-                .await?
-                .ok_or_else(|| {
-                    format!(
-                        "{}: there's neither {}.jsonc nor prod.jsonc",
-                        source.location, channel.name
-                    )
-                })?
+            channel.file = PROD_FILE.into();
+            read_file(source, PROD_FILE, client).await?.ok_or_else(|| {
+                format!(
+                    "{}: there's neither {} nor {PROD_FILE}",
+                    source.location,
+                    channel_file(&channel.name)
+                )
+            })?
         }
-        None => return Err(format!("{}: there's no prod.jsonc", source.location)),
+        None => return Err(format!("{}: there's no {PROD_FILE}", source.location)),
     };
     Ok(Read { channel, text })
 }
@@ -617,7 +645,7 @@ mod tests {
             channel: Channel {
                 name: "dev".into(),
                 how: "local build".into(),
-                file: "dev.jsonc".into(),
+                file: "dev-channel.jsonc".into(),
             },
             reader: reader(),
             fetched: now(),
@@ -636,19 +664,21 @@ mod tests {
     const CONFIG: &str = r#"// What Logix Engine on config 001 uses.
 {
   "$schema": "https://www.openlogix.org/schemas/logix-remote-config-v1.json",
+  "latest": { "repo": "openlogix/logix-engine", "release": "2026-11-17" },
+  "dependencies": {
+    /* The FPGA tools. */
+    "logix-core": {
+      "repo": "openlogix/logix-core",
+      "release": "2026-11-11",
+      "file": "logix-core-${PLATFORM}-${YYYYMMDD}.tgz"
+    },
 
-  /* The FPGA tools. */
-  "logix-core": {
-    "repo": "openlogix/logix-core",
-    "release": "2026-11-11",
-    "file": "logix-core-${PLATFORM}-${YYYYMMDD}.tgz"
-  },
-
-  // A "//" in a string isn't a comment: "a//b".
-  "logix-catalog": {
-    "repo": "openlogix/logix-catalog",
-    "release": "2026-11-11",
-    "file": "logix-catalog-${YYYYMMDD}.tgz"
+    // A "//" in a string isn't a comment: "a//b".
+    "logix-catalog": {
+      "repo": "openlogix/logix-catalog",
+      "release": "2026-11-11",
+      "file": "logix-catalog-${YYYYMMDD}.tgz"
+    }
   }
 }
 "#;
@@ -675,8 +705,8 @@ mod tests {
     fn bad_configs_are_refused() {
         for (from, to, why) in [
             (
-                "2026-11-11\",\n    \"file\": \"logix-core",
-                "latest\",\n    \"file\": \"logix-core",
+                "2026-11-11\",\n      \"file\": \"logix-core",
+                "latest\",\n      \"file\": \"logix-core",
                 "release",
             ),
             ("openlogix/logix-core", "logix-core", "owner/name"),
@@ -692,6 +722,13 @@ mod tests {
                 "\"repo\": \"openlogix/logix-core\", \"x\": 1,",
                 "unknown key",
             ),
+            ("\"latest\": {", "\"newest\": {", "unknown key newest"),
+            (
+                "\"release\": \"2026-11-17\"",
+                "\"release\": \"soon\"",
+                "latest: release",
+            ),
+            ("\"dependencies\": {", "\"deps\": {", "unknown key deps"),
         ] {
             assert!(CONFIG.contains(from), "{from}");
             let err = parse(&CONFIG.replacen(from, to, 1)).unwrap_err();
@@ -703,12 +740,13 @@ mod tests {
     #[test]
     fn the_repo_config_is_valid() {
         let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join(repo_path());
-        parse_channels(&std::fs::read_to_string(folder.join(CHANNELS_FILE)).unwrap()).unwrap();
-        // Every config file there is valid: prod.jsonc, dev.jsonc, others.
+        parse_channels(&std::fs::read_to_string(folder.join(ASSIGN_FILE)).unwrap()).unwrap();
+        // Every config file there is valid: prod-channel.jsonc, dev-channel.jsonc,
+        // others.
         let mut files = 0;
         for f in std::fs::read_dir(&folder).unwrap().flatten() {
             let name = f.file_name().to_string_lossy().into_owned();
-            if name != CHANNELS_FILE && name.ends_with(".jsonc") {
+            if name.ends_with("-channel.jsonc") {
                 parse(&std::fs::read_to_string(f.path()).unwrap()).unwrap();
                 files += 1;
             }
@@ -731,7 +769,7 @@ mod tests {
         let c = choose_channel(&channels, None).unwrap();
         assert_eq!(
             (c.name.as_str(), c.how.as_str(), c.file.as_str()),
-            ("dev", "local build", "dev.jsonc")
+            ("dev", "local build", "dev-channel.jsonc")
         );
         let c = choose_channel(&channels, Some("beta")).unwrap();
         assert_eq!((c.name.as_str(), c.how.as_str()), ("beta", CHANNEL_VAR));

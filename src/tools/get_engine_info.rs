@@ -109,12 +109,12 @@ pub struct RemoteConfigInfo {
     /// before the config has been read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel: Option<String>,
-    /// Why it's on that channel: listed (channels.jsonc lists this release),
+    /// Why it's on that channel: listed (assign.jsonc lists this release),
     /// default (it doesn't: dev), local build (always dev) or
     /// LOGIX_ENGINE_CHANNEL (a diagnostic setting).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel_reason: Option<String>,
-    /// The config file read, such as dev.jsonc, or prod.jsonc when the
+    /// The config file read, such as dev-channel.jsonc, or prod-channel.jsonc when the
     /// channel has none of its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub config_file: Option<String>,
@@ -364,7 +364,7 @@ mod tests {
                 is_override: false,
                 channel: Some("dev".into()),
                 channel_reason: Some("LOGIX_ENGINE_CHANNEL".into()),
-                config_file: Some("prod.jsonc".into()),
+                config_file: Some("prod-channel.jsonc".into()),
                 read_at: Some("2026-11-08T09:30:00Z".into()),
             },
             boards_schema: crate::catalog::BOARDS_SCHEMA.into(),

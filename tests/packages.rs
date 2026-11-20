@@ -669,16 +669,19 @@ fn config_text(catalog: &str) -> String {
         r#"// A test config.
 {{
   "$schema": "https://www.openlogix.org/schemas/logix-remote-config-v1.json",
-  /* The tools. */
-  "logix-core": {{
-    "repo": "test/core",
-    "release": "2026-01-02",
-    "file": "core-${{PLATFORM}}-${{YYYYMMDD}}.tgz"
-  }},
-  "logix-catalog": {{
-    "repo": "test/catalog",
-    "release": "{catalog}",
-    "file": "catalog-${{YYYYMMDD}}.tgz"
+  "latest": {{ "repo": "test/engine", "release": "2026-01-01" }},
+  "dependencies": {{
+    /* The tools. */
+    "logix-core": {{
+      "repo": "test/core",
+      "release": "2026-01-02",
+      "file": "core-${{PLATFORM}}-${{YYYYMMDD}}.tgz"
+    }},
+    "logix-catalog": {{
+      "repo": "test/catalog",
+      "release": "{catalog}",
+      "file": "catalog-${{YYYYMMDD}}.tgz"
+    }}
   }}
 }}
 "#
@@ -697,13 +700,14 @@ fn test_channel() -> String {
     std::env::var(remote_config::CHANNEL_VAR).unwrap_or_else(|_| "dev".into())
 }
 
-/// The test server's config file for that channel, such as /001/dev.jsonc.
+/// The test server's config file for that channel, such as
+/// /001/dev-channel.jsonc.
 fn config_path() -> String {
-    format!("/001/{}.jsonc", test_channel())
+    format!("/001/{}", remote_config::channel_file(&test_channel()))
 }
 
 /// A server with core 2026-01-02, catalogs 2026-01-02 and 2026-01-03, and a
-/// version folder at /001/ (channels.jsonc, and the test channel's config
+/// version folder at /001/ (assign.jsonc, and the test channel's config
 /// file naming catalog 2026-01-02).
 fn remote_setup() -> RemoteSetup {
     let tmp = tempfile::tempdir().unwrap();
@@ -735,8 +739,8 @@ fn remote_setup() -> RemoteSetup {
     // The version folder's channel lists: nothing promoted, so the tests read
     // their channel's file.
     server.put(
-        "/001/channels.jsonc",
-        br#"{"$schema": "https://www.openlogix.org/schemas/logix-channels-v1.json"}"#,
+        "/001/assign.jsonc",
+        br#"{"$schema": "https://www.openlogix.org/schemas/logix-assign-v1.json"}"#,
     );
     RemoteSetup {
         _tmp: tmp,
@@ -808,13 +812,13 @@ async fn reads_the_remote_config_then_downloads_what_it_names() {
         )
     );
     assert_eq!(record["size"], good_package().len());
-    // channels.jsonc, the config, the two SHA256SUMS and the two packages.
+    // assign.jsonc, the config, the two SHA256SUMS and the two packages.
     assert_eq!(r.server.count(), 6);
     let channel = pm.remote_info().unwrap().channel.unwrap();
     // A local build is on dev; CI's passes set LOGIX_ENGINE_CHANNEL.
     assert_eq!(
         (channel.name.clone(), channel.file.clone()),
-        (test_channel(), format!("{}.jsonc", test_channel()))
+        (test_channel(), remote_config::channel_file(&test_channel()))
     );
     assert!(
         ["local build", remote_config::CHANNEL_VAR].contains(&channel.how.as_str()),
@@ -826,18 +830,20 @@ async fn reads_the_remote_config_then_downloads_what_it_names() {
 #[tokio::test]
 async fn without_its_own_file_dev_reads_the_prod_config() {
     if test_channel() == "prod" {
-        return; // Only another channel falls back to prod.jsonc.
+        return; // Only another channel falls back to prod-channel.jsonc.
     }
     let r = remote_setup();
     r.server.remove(&config_path());
-    r.server
-        .put("/001/prod.jsonc", config_text("2026-01-02").as_bytes());
+    r.server.put(
+        "/001/prod-channel.jsonc",
+        config_text("2026-01-02").as_bytes(),
+    );
     let pm = r.pm(true, false);
     assert_eq!(download_all(&pm).await.len(), 2);
     let channel = pm.remote_info().unwrap().channel.unwrap();
     assert_eq!(
         (channel.name.clone(), channel.file.as_str()),
-        (test_channel(), "prod.jsonc")
+        (test_channel(), "prod-channel.jsonc")
     );
 }
 
@@ -922,8 +928,8 @@ async fn without_a_config_to_use_it_is_a_setup_error() {
         err.message
     );
     let missing = match test_channel().as_str() {
-        "prod" => "there's no prod.jsonc".to_string(),
-        c => format!("there's neither {c}.jsonc nor prod.jsonc"),
+        "prod" => "there's no prod-channel.jsonc".to_string(),
+        c => format!("there's neither {c}-channel.jsonc nor prod-channel.jsonc"),
     };
     assert!(err.message.contains(&missing), "{}", err.message);
 }

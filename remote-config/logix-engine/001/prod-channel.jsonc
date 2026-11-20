@@ -1,0 +1,39 @@
+// What Logix Engine on config 001 uses on the prod channel (Remote updates, in
+// the website repo's CLAUDE.md): the engine releases assign.jsonc lists under
+// prod, and every other channel without a file of its own here (dev, while
+// there's no dev-channel.jsonc). Every such engine reads this file from main,
+// so a change here reaches users without an engine release. Change it only by
+// pull request, saying why in a comment; the tests run with what it names. It
+// names only stable releases (prod ones), which are never deleted.
+{
+  "$schema": "https://www.openlogix.org/schemas/logix-remote-config-v1.json",
+  // Logix Engine's own newest prod release, the one its users should have:
+  // the newest release on prod in assign.jsonc. Set it when promoting.
+  "latest": {
+    "repo": "openlogix/logix-engine",
+    "release": "2026-11-17",
+    "file": "logix-engine-${PLATFORM}-${YYYYMMDD}.tgz"
+  },
+  "dependencies": {
+    // The FPGA tools: the YosysHQ OSS CAD Suite, openXC7, Verible and elkjs.
+    // Pinned at the first promotion, 2026-11-13.
+    // 2026-11-16, the Windows promotion (Milestone 3): openXC7 runs with the
+    // suite's yosys and Python and verilator gets VERILATOR_ROOT on Windows,
+    // the Windows package has libwdi's wdi-simple for install_driver, and
+    // openXC7 2026-11-15 counts Xilinx resources right (apio#1192) and finds
+    // the suite's Python on Windows (apio#1194).
+    "logix-core": {
+      "repo": "openlogix/logix-core",
+      "release": "2026-11-15",
+      "file": "logix-core-${PLATFORM}-${YYYYMMDD}.tgz"
+    },
+
+    // The boards and FPGAs.
+    // Pinned at the first promotion, 2026-11-13.
+    "logix-catalog": {
+      "repo": "openlogix/logix-catalog",
+      "release": "2026-11-11",
+      "file": "logix-catalog-${YYYYMMDD}.tgz"
+    }
+  }
+}
