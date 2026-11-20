@@ -9,13 +9,13 @@ link to) and from the folders the user names. Don't read the engine's source rep
 local clones, other projects' files, or notes and memories from earlier sessions. If \
 something you need is missing, say so instead of looking for it elsewhere."
 
-# Copies the built engine to ~/.logix/engine-dev/bin (or LOGIX_ENGINE_DEV_BIN_FOLDER), so the
+# Copies the built engine to ~/.logix/engine-dev/engine-program (or LOGIX_ENGINE_DEV_PROGRAM_FOLDER), so the
 # agent's MCP config doesn't show the repo's path, and prints the copy's
 # path. Copies to a temporary name and renames, so a session already running
 # the old copy keeps working.
 copy_engine() {
   local built="$1"
-  local bin="${LOGIX_ENGINE_DEV_BIN_FOLDER:-$HOME/.logix/engine-dev/bin}"
+  local bin="${LOGIX_ENGINE_DEV_PROGRAM_FOLDER:-$HOME/.logix/engine-dev/engine-program}"
   mkdir -p "$bin"
   cp "$built" "$bin/.logix-engine.tmp"
   mv -f "$bin/.logix-engine.tmp" "$bin/logix-engine"

@@ -8,11 +8,11 @@
 # The same as scripts/run-in-claude.sh, with Grok as the host. Arguments are
 # passed to grok. Grok runs in a playground folder, ~/.logix/engine-dev/playground
 # (or LOGIX_ENGINE_DEV_PLAYGROUND), where it can create designs, not in this repo. The
-# engine uses the engine folder ~/.logix/engine-dev/engine (or
-# LOGIX_ENGINE_DEV_FOLDER), and logs at LOGIX_ENGINE_DEV_LOG_LEVEL (info by default; debug
+# engine uses the engine folder ~/.logix/engine-dev/engine-data (or
+# LOGIX_ENGINE_DEV_DATA_FOLDER), and logs at LOGIX_ENGINE_DEV_LOG_LEVEL (info by default; debug
 # also logs every program's output). The engine's tools are allowed without
 # asking. Each run starts the freshly built engine, copied to
-# ~/.logix/engine-dev/bin so the session doesn't see this repo's path.
+# ~/.logix/engine-dev/engine-program so the session doesn't see this repo's path.
 #
 # For a reproducible starting point, the session has Grok's memory off,
 # loads none of Claude Code's files (such as ~/.claude/CLAUDE.md), and gets
@@ -52,7 +52,7 @@ source scripts/_rust-env.sh
 source scripts/_test-session.sh
 
 repo="$(pwd)"
-engine_folder="${LOGIX_ENGINE_DEV_FOLDER:-$HOME/.logix/engine-dev/engine}"
+engine_folder="${LOGIX_ENGINE_DEV_DATA_FOLDER:-$HOME/.logix/engine-dev/engine-data}"
 # The engine log level: error, warn, info (default) or debug, which also logs
 # every program's output, such as a programmer's.
 log_level="${LOGIX_ENGINE_DEV_LOG_LEVEL:-info}"

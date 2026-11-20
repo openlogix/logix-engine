@@ -55,7 +55,7 @@ Check the setup with `cargo --version`.
 | --- | --- |
 | `scripts/test.sh` | All checks and tests: format, lint, unit, schema, command-line, build and end-to-end MCP tests. Run it before committing. CI runs it too. The first run downloads the FPGA tools (the `logix-core` package) for the build tests |
 | `scripts/build.sh` | Builds the release binary, `target/release/logix-engine` |
-| `scripts/run-in-claude.sh` | Builds if needed and starts Claude Code with the engine connected, so you can prompt it. Claude works in `~/.logix/engine-dev/playground`, and the engine uses `~/.logix/engine-dev/engine` |
+| `scripts/run-in-claude.sh` | Builds if needed and starts Claude Code with the engine connected, so you can prompt it. Claude works in `~/.logix/engine-dev/playground`, and the engine uses `~/.logix/engine-dev/engine-data` |
 | `scripts/run-in-grok.sh` | The same with Grok as the host. It writes the engine into the playground's `.grok/config.toml` |
 | `scripts/engine-cmd.sh` | Sends one prompt to Claude Code with the engine connected and prints the answer as plain text, such as `scripts/engine-cmd.sh --add-dir ~/proj "Build ~/proj for the iCESugar v1.5"`. `-c` continues the previous conversation. See `--help` |
 | `scripts/serve.sh` | Builds if needed and runs the engine as an MCP server on stdin/stdout, for other MCP clients |

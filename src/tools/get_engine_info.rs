@@ -350,13 +350,13 @@ mod tests {
             platform: "darwin-arm64".into(),
             operating_system: "macOS 26.5".into(),
             engine_commit: Some("abc1234".into()),
-            engine_folder: "/Users/you/.logix/ide/engine".into(),
+            engine_folder: "/Users/you/.logix/ide/engine-data".into(),
             auto_download: true,
             command_line: vec![
                 "--engine-folder".into(),
-                "/Users/you/.logix/ide/engine".into(),
+                "/Users/you/.logix/ide/engine-data".into(),
             ],
-            log_file: "/Users/you/.logix/ide/engine/logs/20261108-1.log".into(),
+            log_file: "/Users/you/.logix/ide/engine-data/logs/20261108-1.log".into(),
             packages: Vec::new(),
             remote_config: RemoteConfigInfo {
                 config_version: "001".into(),
@@ -396,10 +396,10 @@ mod tests {
             info.report,
             "Logix Engine 2026.11.08
 Operating system: macOS 26.5 (darwin-arm64)
-Log file: /Users/you/.logix/ide/engine/logs/20261108-1.log
-Engine folder: /Users/you/.logix/ide/engine
+Log file: /Users/you/.logix/ide/engine-data/logs/20261108-1.log
+Engine folder: /Users/you/.logix/ide/engine-data
 Automatic package download: on
-Command line: --engine-folder /Users/you/.logix/ide/engine
+Command line: --engine-folder /Users/you/.logix/ide/engine-data
 
 Developer settings:
   LOGIX_ENGINE_CHANNEL = dev

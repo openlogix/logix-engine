@@ -168,7 +168,7 @@ Download the FPGA tools the engine needs, and show me the progress.
 
 > [!NOTE]
 > The tools are downloaded into the engine's own folder,
-> `.logix/claude-code/engine` in your home folder, and don't change your
+> `.logix/claude-code/engine-data` in your home folder, and don't change your
 > computer's setup. This takes
 > a minute or two, only the first time.
 
@@ -481,7 +481,8 @@ restart Claude Code.
 1. **Install the engine.** Open the engine's
     [**Latest** release](https://github.com/openlogix/logix-engine/releases/latest)
     and follow all the steps for your system on that page. They unpack the
-    engine into `.logix/claude-code` in your home folder, check that it runs,
+    engine into `.logix/claude-code/engine-program` in your home folder, check
+    that it runs,
     and connect it to Claude Code. They say exactly what that release needs,
     such as a step for files that aren't signed yet. Newer pre-releases on the
     [releases page](https://github.com/openlogix/logix-engine/releases) are
@@ -491,7 +492,7 @@ restart Claude Code.
     `claude` in the project folder.
 
 The engine keeps the FPGA tools it downloads, and its logs, in its engine
-folder, `.logix/claude-code/engine` in your home folder. Each Claude Code
+folder, `.logix/claude-code/engine-data` in your home folder. Each Claude Code
 session's logs are in a folder of their own in its `logs` folder, named by
 the session's start time.
 
