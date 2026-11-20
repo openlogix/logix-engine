@@ -30,7 +30,7 @@ project.
 - **Claude Code:** installed and signed in to your Claude account, so that
   `claude` starts it in a terminal (on Windows, in PowerShell). If it isn't installed yet, follow the
   official [Claude Code installation instructions](https://code.claude.com/docs/en/setup).
-- **An FPGA board:** one of the engine's [supported boards](https://www.openlogix.org/logix-catalog/boards/), and its USB cable. The
+- **An FPGA board (optional):** one of the engine's [supported boards](https://www.openlogix.org/logix-catalog/boards/), and its USB cable. The
   examples use the **iCESugar v1.5**, which has an RGB LED and 4 switches.
   Any supported board works: replace "iCESugar v1.5" with your board in the
   prompts, and Claude adapts the designs to it. You can also add a board
