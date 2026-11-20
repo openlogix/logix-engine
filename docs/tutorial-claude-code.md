@@ -458,11 +458,11 @@ Start each new design in its own folder, and run `claude` there.
 - Build files: ask Claude to clean the build folder, or delete `_build/`.
 - To disconnect the engine from Claude Code:
   `claude mcp remove --scope user logix-engine`
-- To remove the engine, delete the `logix-engine` folder in your
-  **Downloads** folder, and its engine folder, `.logix/claude-code/engine` in
-  your home folder. On Windows, if Claude installed a WinUSB driver for a
-  board, ask Claude to remove it first. On Linux, if you installed a udev
-  rule for a board, delete its file in `/etc/udev/rules.d/` (with `sudo`).
+- To remove the engine, delete `.logix/claude-code` in your home folder:
+  it holds the engine and its engine folder. On Windows, if Claude installed
+  a WinUSB driver for a board, ask Claude to remove it first. On Linux, if
+  you installed a udev rule for a board, delete its file in
+  `/etc/udev/rules.d/` (with `sudo`).
 
 ## Install the engine yourself
 
@@ -472,61 +472,20 @@ restart Claude Code.
 
 1. **Install the engine.** Open the engine's
     [**Latest** release](https://github.com/openlogix/logix-engine/releases/latest)
-    and follow the steps for your system on that page, up to checking that the
-    engine runs. They say exactly what that release needs, such as a step for
-    files that aren't signed yet. Newer pre-releases on the
+    and follow all the steps for your system on that page. They unpack the
+    engine into `.logix/claude-code` in your home folder, check that it runs,
+    and connect it to Claude Code. They say exactly what that release needs,
+    such as a step for files that aren't signed yet. Newer pre-releases on the
     [releases page](https://github.com/openlogix/logix-engine/releases) are
     development builds.
 
-    The check prints the engine's version, a date such as `2026.11.09`. The
-    steps unpack the engine into a `logix-engine` folder in your **Downloads**
-    folder, which the next step uses.
-
-2. **Connect Claude Code to the engine.** Register the engine with Claude
-    Code once, for every folder:
-
-    === "macOS"
-
-        **Terminal command:**
-
-        ```sh
-        ENGINE=~/Downloads/logix-engine/logix-engine
-        ENGINE_HOME=~/.logix/claude-code/engine
-        claude mcp add -s user logix-engine -- $ENGINE --engine-folder $ENGINE_HOME
-        claude mcp list
-        ```
-
-    === "Windows"
-
-        **PowerShell command:**
-
-        ```powershell
-        $ENGINE = "$HOME\Downloads\logix-engine\logix-engine.exe"
-        $ENGINE_HOME = "$HOME\.logix\claude-code\engine"
-        claude mcp add -s user logix-engine '--' $ENGINE --engine-folder $ENGINE_HOME
-        claude mcp list
-        ```
-
-        The quotes around `--` keep PowerShell from dropping it.
-
-    === "Linux"
-
-        **Terminal command:**
-
-        ```sh
-        ENGINE=~/Downloads/logix-engine/logix-engine
-        ENGINE_HOME=~/.logix/claude-code/engine
-        claude mcp add -s user logix-engine -- $ENGINE --engine-folder $ENGINE_HOME
-        claude mcp list
-        ```
-
-    The list shows `logix-engine` as connected. The engine keeps the FPGA tools
-    it downloads, and its logs, in its engine folder, `.logix/claude-code/engine`
-    in your home folder. Each Claude Code session's logs are in a folder of
-    their own in its `logs` folder, named by the session's start time.
-
-3. **Restart Claude Code**, so it connects to the engine: `/exit`, then
+2. **Restart Claude Code**, so it connects to the engine: `/exit`, then
     `claude` in the project folder.
+
+The engine keeps the FPGA tools it downloads, and its logs, in its engine
+folder, `.logix/claude-code/engine` in your home folder. Each Claude Code
+session's logs are in a folder of their own in its `logs` folder, named by
+the session's start time.
 
 ## Learn more
 
