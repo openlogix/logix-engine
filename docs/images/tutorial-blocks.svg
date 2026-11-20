@@ -66,7 +66,7 @@
   <text x="380" y="306" text-anchor="middle" class="ink sub">lints, builds, tests, simulates and programs the board</text>
   <text x="380" y="322" text-anchor="middle" class="ink sub">knows the supported boards, their FPGAs and pins</text>
   <rect class="tools" stroke-width="1.25" x="176" y="336" width="408" height="40" rx="8"/>
-  <text x="380" y="360" text-anchor="middle" class="ink name" font-size="12">Open source FPGA tools, downloaded and run by the engine</text>
+  <text x="380" y="360" text-anchor="middle" class="ink name" font-size="12">Open source FPGA tools, managed and run by the engine</text>
   <text x="392" y="415" class="quiet sub">USB cable</text>
 
   <rect class="board main" x="160" y="432" width="440" height="56" rx="8"/>
