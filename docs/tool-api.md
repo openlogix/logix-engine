@@ -1451,7 +1451,7 @@ Four tools give frontends and AI agents a board's serial port, such as its UART 
 | Field | Type | Description |
 | --- | --- | --- |
 | `hex` | text | What arrived, exactly: two lowercase hex digits per byte, such as `48690d0a` ("Hi", a carriage return and a line feed). Empty when nothing did |
-| `events` | list of objects | Optional, omitted when none. What happened to the port, in order: `kind` (`paused`, `resumed`, `disconnected`, `reconnected` or `overflow`) and `message`, the same for people, such as "The serial port was closed while the board is programmed." |
+| `events` | list of objects | Optional, omitted when none. What happened to the port, in order: `kind` (`paused`, `resumed`, `disconnected`, `reconnected` or `overflow`) and `message`, the same for people, such as "Closing the serial port while the board is programmed." |
 | `open` | boolean | Whether the port is open now (false while paused or unplugged) |
 | `port` | text | The port's name now: it may change when the board comes back |
 

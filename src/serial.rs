@@ -154,7 +154,7 @@ pub struct SerialEvent {
     /// (reopened when it came back), or overflow (data arrived faster than
     /// it was read, and the oldest was dropped).
     pub kind: SerialEventKind,
-    /// The same for people, such as "The serial port was closed while the
+    /// The same for people, such as "Closing the serial port while the
     /// board is programmed.".
     pub message: String,
 }
@@ -280,7 +280,7 @@ fn read_loop(s: Arc<Session>, mut reader: Option<Box<dyn serialport::SerialPort>
                 close(&s, &mut reader);
                 s.push_event(
                     SerialEventKind::Paused,
-                    "The serial port was closed while the board is programmed.",
+                    "Closing the serial port while the board is programmed.",
                 );
             }
             paused = true;
@@ -301,7 +301,7 @@ fn read_loop(s: Arc<Session>, mut reader: Option<Box<dyn serialport::SerialPort>
                     } else if paused {
                         s.push_event(
                             SerialEventKind::Resumed,
-                            &format!("The serial port {name} was reopened."),
+                            &format!("Reopened the serial port {name} after programming."),
                         );
                     }
                     paused = false;

@@ -6559,7 +6559,7 @@
               "$ref": "#/$defs/SerialEventKind"
             },
             "message": {
-              "description": "The same for people, such as \"The serial port was closed while the\nboard is programmed.\".",
+              "description": "The same for people, such as \"Closing the serial port while the\nboard is programmed.\".",
               "type": "string"
             }
           },
