@@ -59,7 +59,9 @@ each: choose yours once, and every tab follows. On Windows, the terminal is
 
 ## 1. Start Claude Code in a new folder
 
-Make a folder for the tutorial's project, and start Claude Code there:
+Make a folder for the tutorial's project, and start Claude Code there. Choose
+your system in the tabs below (macOS, Windows or Linux): every tab on the
+page follows.
 
 === "macOS"
 
