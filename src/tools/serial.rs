@@ -111,11 +111,10 @@ pub struct ReadSerial;
 
 impl EngineTool for ReadSerial {
     const NAME: &'static str = "read_serial";
-    const DESCRIPTION: &'static str = "Returns what a serial session received since the last \
-        read, as text, and what happened to its port meanwhile (paused for program_board, \
+    const DESCRIPTION: &'static str = "Returns the bytes a serial session received since the \
+        last read, exactly, as hex (two digits per byte), and what happened to its port meanwhile (paused for program_board, \
         resumed, disconnected, reconnected). With wait_ms it waits up to that long for \
-        something to arrive (with until, for that text, such as a line a testbench or design \
-        prints); without, it returns at once. A Serial Monitor calls it in a loop with a wait, \
+        something to arrive (with until, for those bytes, such as 0d0a, a line ending); without, it returns at once. A Serial Monitor calls it in a loop with a wait, \
         such as 1000 ms. Up to 1 MB is kept unread; beyond, the oldest is dropped (an overflow \
         event).";
     const READ_ONLY: bool = true;
@@ -132,8 +131,9 @@ pub struct ReadSerialInput {
     /// to 0: return what there is now.
     #[serde(default)]
     pub wait_ms: Option<u32>,
-    /// Wait until the text received contains this (or wait_ms ends),
-    /// instead of returning at the first data.
+    /// Bytes to wait for, as hex, such as "0d0a" (a line ending): wait
+    /// until what's received contains them (or wait_ms ends), instead of
+    /// returning at the first data.
     #[serde(default)]
     pub until: Option<String>,
 }
@@ -141,9 +141,11 @@ pub struct ReadSerialInput {
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ReadSerialOutput {
-    /// What arrived, as text (UTF-8; bytes that aren't become U+FFFD).
-    /// Empty when nothing did. Line endings are as the device sent them.
-    pub text: String,
+    /// What arrived, exactly: two lowercase hex digits per byte, such as
+    /// "48690d0a" for "Hi" and a carriage return and line feed. Empty when
+    /// nothing did. The engine passes bytes through unchanged, as a UART
+    /// does: decoding them (such as UTF-8 text) is the client's.
+    pub hex: String,
     /// What happened to the port, in order. Omitted when nothing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub events: Vec<SerialEvent>,
@@ -160,15 +162,24 @@ pub async fn read(input: ReadSerialInput) -> Result<ReadSerialOutput, ToolError>
             "wait_ms: {wait} is too long: at most {MAX_WAIT_MS}."
         )));
     }
+    let until = match input
+        .until
+        .as_deref()
+        .map(str::trim)
+        .filter(|u| !u.is_empty())
+    {
+        Some(u) => Some(hex_bytes("until", u)?),
+        None => None,
+    };
     let r = sessions()
         .read(
             &input.session,
             Duration::from_millis(wait.into()),
-            input.until.as_deref().filter(|u| !u.is_empty()),
+            until.as_deref(),
         )
         .await?;
     Ok(ReadSerialOutput {
-        text: r.text,
+        hex: hex::encode(&r.bytes),
         events: r.events,
         open: r.open,
         port: r.port,
@@ -179,9 +190,11 @@ pub struct WriteSerial;
 
 impl EngineTool for WriteSerial {
     const NAME: &'static str = "write_serial";
-    const DESCRIPTION: &'static str = "Sends text to a serial session's port, as UTF-8 bytes, \
-        exactly as given: add the line ending the device expects, such as \\n or \\r\\n. While \
-        the port is closed (paused or unplugged), nothing is sent and it's an error.";
+    const DESCRIPTION: &'static str = "Sends bytes to a serial session's port, exactly as \
+        given, as hex (two digits per byte, such as 48690a for \"Hi\" and a line feed): any \
+        byte, text or not. Encoding text (such as UTF-8, and the line ending the device \
+        expects) is the client's. While the port is closed (paused or unplugged), nothing is \
+        sent and it's an error.";
     const READ_ONLY: bool = false;
     type Input = WriteSerialInput;
     type Output = WriteSerialOutput;
@@ -192,8 +205,8 @@ impl EngineTool for WriteSerial {
 pub struct WriteSerialInput {
     /// The session, from open_serial.
     pub session: String,
-    /// What to send.
-    pub text: String,
+    /// The bytes to send, two hex digits each, such as "48690a".
+    pub hex: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -204,8 +217,18 @@ pub struct WriteSerialOutput {
 }
 
 pub fn write(input: WriteSerialInput) -> Result<WriteSerialOutput, ToolError> {
+    let data = hex_bytes("hex", input.hex.trim())?;
     Ok(WriteSerialOutput {
-        bytes: sessions().write(&input.session, &input.text)?,
+        bytes: sessions().write(&input.session, &data)?,
+    })
+}
+
+/// Hex to bytes, or a request error naming the field.
+fn hex_bytes(field: &str, text: &str) -> Result<Vec<u8>, ToolError> {
+    hex::decode(text).map_err(|e| {
+        ToolError::request(format!(
+            "{field}: {e}: give two hex digits per byte, such as \"48690a\"."
+        ))
     })
 }
 
@@ -250,6 +273,21 @@ mod tests {
         let k = device_key("usb:1-2:1a86:7523:").unwrap();
         assert_eq!(k.serial_number, None);
         assert!(device_key("COM5").is_err());
+    }
+
+    #[test]
+    fn write_takes_hex() {
+        let w = |hex: &str| {
+            write(WriteSerialInput {
+                session: "serial-999".into(),
+                hex: hex.into(),
+            })
+            .unwrap_err()
+        };
+        assert!(w("6").message.starts_with("hex:"));
+        assert!(w("zz").message.starts_with("hex:"));
+        // Good input reaches the sessions: no such session.
+        assert!(w("ff00").message.contains("no open serial session"));
     }
 
     #[test]
