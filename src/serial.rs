@@ -35,6 +35,42 @@ pub struct DevicePort {
     /// FTDI chip's second channel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interface: Option<u8>,
+    /// What it's for, by the device's board (list_devices): uart, the
+    /// board's serial port, to open; programmer, the interface its
+    /// programmer uses (such as an FTDI chip's first channel), not a serial
+    /// port for the design. Omitted when not known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<PortRole>,
+    /// The port for people, in a phrase: "The Alhambra II's serial port",
+    /// "The Alhambra II's programming port", or "A serial port of <the
+    /// device>". Empty until list_devices names it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+}
+
+/// What a serial port is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum PortRole {
+    /// The board's UART: the one to open.
+    Uart,
+    /// The interface the board's programmer uses.
+    Programmer,
+}
+
+/// A port's phrase for people, by its role and the device's `who` (such as
+/// "the Alhambra II").
+pub fn port_description(role: Option<PortRole>, who: &str) -> String {
+    let mut chars = who.chars();
+    let who_cap = match chars.next() {
+        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    };
+    match role {
+        Some(PortRole::Uart) => format!("{who_cap}'s serial port"),
+        Some(PortRole::Programmer) => format!("{who_cap}'s programming port"),
+        None => format!("A serial port of {who}"),
+    }
 }
 
 /// What identifies a USB device across unplugging: its USB IDs and serial
@@ -74,6 +110,8 @@ pub fn usb_ports() -> Vec<(DeviceKey, DevicePort)> {
                 DevicePort {
                     port: macos_callout(p.port_name),
                     interface: u.interface,
+                    role: None,
+                    description: String::new(),
                 },
             )),
             _ => None,
@@ -603,6 +641,8 @@ mod tests {
         DevicePort {
             port: name.into(),
             interface,
+            role: None,
+            description: String::new(),
         }
     }
 
@@ -639,6 +679,22 @@ mod tests {
         let b = device("1a86", "7523", None, None, 5);
         let ports = vec![(key(0x1a86, 0x7523, None), port("/dev/ttyUSB3", Some(0)))];
         assert_eq!(ports_of_devices(&[a, b], &ports), vec![vec![], vec![]]);
+    }
+
+    #[test]
+    fn port_descriptions() {
+        assert_eq!(
+            port_description(Some(PortRole::Uart), "the Alhambra II"),
+            "The Alhambra II's serial port"
+        );
+        assert_eq!(
+            port_description(Some(PortRole::Programmer), "the Alhambra II"),
+            "The Alhambra II's programming port"
+        );
+        assert_eq!(
+            port_description(None, "USB device (1a86:7523)"),
+            "A serial port of USB device (1a86:7523)"
+        );
     }
 
     #[test]

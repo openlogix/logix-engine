@@ -167,6 +167,30 @@ pub fn add_serial_ports(
                 uarts.into_iter().find_map(|(_, i)| i)
             });
         d.serial_port = crate::serial::uart_port(&device_ports, interface);
+        // The programmer's interface: the board's variant this device fits
+        // (else its first), by what its programmer opens (drivers::needed).
+        let programmer = board_id
+            .as_deref()
+            .and_then(|id| known.get(id))
+            .and_then(|b| {
+                let variant = b
+                    .variants
+                    .iter()
+                    .find(|v| devices::matches(d, &v.usb))
+                    .or_else(|| b.variants.first())?;
+                drivers::needed(variant).map(|n| drivers::interface_number(n, d.dfu_interface))
+            });
+        let mut device_ports = device_ports;
+        for p in &mut device_ports {
+            p.role = if d.serial_port.as_deref() == Some(p.port.as_str()) {
+                Some(crate::serial::PortRole::Uart)
+            } else if p.interface.is_some() && p.interface == programmer {
+                Some(crate::serial::PortRole::Programmer)
+            } else {
+                None
+            };
+            p.description = crate::serial::port_description(p.role, &d.who);
+        }
         d.serial_ports = device_ports;
     }
     Ok(())
@@ -476,6 +500,57 @@ pub fn run(_state: &EngineState, input: ListDevicesInput) -> Result<ListDevicesO
 mod tests {
     use super::*;
     use crate::devices::tests::device;
+
+    /// The Alhambra II's two ports: interface 1 its UART (the catalog's
+    /// usb_interface), interface 0 its programmer's (FTDI's first channel).
+    #[test]
+    fn serial_ports_get_their_roles() {
+        let mut d = device("0403", "6010", Some("Alhambra II v1.0A"), Some("A1"), 3);
+        d.likely_boards = vec!["alhambra-ii".into()];
+        d.who = "the Alhambra II".into();
+        let mut out = ListDevicesOutput {
+            devices: vec![d],
+            unreachable: Vec::new(),
+        };
+        let key = crate::serial::DeviceKey {
+            vid: 0x0403,
+            pid: 0x6010,
+            serial_number: Some("A1".into()),
+        };
+        let port = |name: &str, interface: u8| crate::serial::DevicePort {
+            port: name.into(),
+            interface: Some(interface),
+            role: None,
+            description: String::new(),
+        };
+        let ports = vec![
+            (key.clone(), port("/dev/ttyUSB0", 0)),
+            (key, port("/dev/ttyUSB1", 1)),
+        ];
+        add_serial_ports(&mut out, &ports, None, None, None).unwrap();
+        let d = &out.devices[0];
+        assert_eq!(d.serial_port.as_deref(), Some("/dev/ttyUSB1"));
+        let roles: Vec<_> = d
+            .serial_ports
+            .iter()
+            .map(|p| (p.port.as_str(), p.role, p.description.as_str()))
+            .collect();
+        assert_eq!(
+            roles,
+            [
+                (
+                    "/dev/ttyUSB0",
+                    Some(crate::serial::PortRole::Programmer),
+                    "The Alhambra II's programming port"
+                ),
+                (
+                    "/dev/ttyUSB1",
+                    Some(crate::serial::PortRole::Uart),
+                    "The Alhambra II's serial port"
+                ),
+            ]
+        );
+    }
     use serde_json::json;
 
     fn list(

@@ -5122,11 +5122,41 @@
               ],
               "maximum": 255,
               "minimum": 0
+            },
+            "role": {
+              "description": "What it's for, by the device's board (list_devices): uart, the\nboard's serial port, to open; programmer, the interface its\nprogrammer uses (such as an FTDI chip's first channel), not a serial\nport for the design. Omitted when not known.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PortRole"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": {
+              "description": "The port for people, in a phrase: \"The Alhambra II's serial port\",\n\"The Alhambra II's programming port\", or \"A serial port of <the\ndevice>\". Empty until list_devices names it.",
+              "type": "string"
             }
           },
           "additionalProperties": false,
           "required": [
             "port"
+          ]
+        },
+        "PortRole": {
+          "description": "What a serial port is for.",
+          "oneOf": [
+            {
+              "description": "The board's UART: the one to open.",
+              "type": "string",
+              "const": "uart"
+            },
+            {
+              "description": "The interface the board's programmer uses.",
+              "type": "string",
+              "const": "programmer"
+            }
           ]
         },
         "UnreachableDevice": {
@@ -5779,11 +5809,41 @@
               ],
               "maximum": 255,
               "minimum": 0
+            },
+            "role": {
+              "description": "What it's for, by the device's board (list_devices): uart, the\nboard's serial port, to open; programmer, the interface its\nprogrammer uses (such as an FTDI chip's first channel), not a serial\nport for the design. Omitted when not known.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PortRole"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": {
+              "description": "The port for people, in a phrase: \"The Alhambra II's serial port\",\n\"The Alhambra II's programming port\", or \"A serial port of <the\ndevice>\". Empty until list_devices names it.",
+              "type": "string"
             }
           },
           "additionalProperties": false,
           "required": [
             "port"
+          ]
+        },
+        "PortRole": {
+          "description": "What a serial port is for.",
+          "oneOf": [
+            {
+              "description": "The board's UART: the one to open.",
+              "type": "string",
+              "const": "uart"
+            },
+            {
+              "description": "The interface the board's programmer uses.",
+              "type": "string",
+              "const": "programmer"
+            }
           ]
         },
         "CommandRecord": {
