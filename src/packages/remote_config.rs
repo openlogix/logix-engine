@@ -481,6 +481,122 @@ pub async fn read(source: &ConfigSource, client: &reqwest::Client) -> Result<Rea
     Ok(Read { channel, text })
 }
 
+/// The product folder's list of its version folders.
+pub const INDEX_FILE: &str = "index.jsonc";
+const INDEX_SCHEMA: &str = "https://www.openlogix.org/schemas/logix-config-index-v1.json";
+
+/// A config's `latest` (the newest engine release on its channel), without
+/// checking its dependencies: a newer config version's file is read this
+/// way, for its `latest` only.
+pub fn parse_latest(text: &str) -> Result<Option<Entry>, String> {
+    let json: serde_json::Value = serde_json::from_str(&strip_comments(text)?)
+        .map_err(|e| format!("not valid JSONC: {e}"))?;
+    match json.get("latest") {
+        None => Ok(None),
+        Some(l) => entry("latest", l, false).map(Some),
+    }
+}
+
+/// index.jsonc: the version folders, as listed.
+pub fn parse_index(text: &str) -> Result<Vec<String>, String> {
+    let json: serde_json::Value = serde_json::from_str(&strip_comments(text)?)
+        .map_err(|e| format!("{INDEX_FILE} isn't valid JSONC: {e}"))?;
+    if json.get("$schema").and_then(|v| v.as_str()) != Some(INDEX_SCHEMA) {
+        return Err(format!("{INDEX_FILE}: its $schema must be {INDEX_SCHEMA}"));
+    }
+    json.get("versions")
+        .and_then(|v| v.as_array())
+        .ok_or(format!("{INDEX_FILE} has no versions list"))?
+        .iter()
+        .map(|v| {
+            v.as_str()
+                .filter(|v| v.len() >= 3 && v.bytes().all(|c| c.is_ascii_digit()))
+                .map(str::to_string)
+                .ok_or(format!(
+                    "{INDEX_FILE} lists {v}, not a version folder such as 001"
+                ))
+        })
+        .collect()
+}
+
+/// The version folders to look in for a newer release: those not older than
+/// `own`, largest first, by decimal value (`0100` before `010`), always
+/// with `own`.
+pub fn folders_to_try(versions: &[String], own: &str) -> Vec<String> {
+    let value = |v: &str| v.parse::<u64>().unwrap_or(0);
+    let mut out: Vec<String> = versions
+        .iter()
+        .filter(|v| value(v) >= value(own))
+        .cloned()
+        .collect();
+    out.sort_by_key(|v| std::cmp::Reverse(value(v)));
+    if !out.iter().any(|v| value(v) == value(own)) {
+        out.push(own.to_string());
+    }
+    out
+}
+
+impl ConfigSource {
+    /// The product folder: the version folder's parent, with `index.jsonc`
+    /// and the other version folders.
+    fn product_folder(&self) -> ConfigSource {
+        let trimmed = self.location.trim_end_matches(['/', '\\']);
+        let parent = if self.is_url() {
+            trimmed
+                .rsplit_once('/')
+                .map_or(trimmed, |(p, _)| p)
+                .to_string()
+        } else {
+            Path::new(trimmed)
+                .parent()
+                .map_or(trimmed.to_string(), |p| p.display().to_string())
+        };
+        ConfigSource {
+            location: parent,
+            is_override: self.is_override,
+        }
+    }
+}
+
+/// The newest engine release on `channel` (check_updates' newer_engine;
+/// the website repo's CLAUDE.md, Remote updates, A newer version of the
+/// product): from `index.jsonc` in the product folder, the largest version
+/// folder not older than this engine's that has the channel's file (for a
+/// channel other than prod, `prod-channel.jsonc` when it has none), and its
+/// `latest`. Without the index, this engine's own folder. None when no file
+/// names `latest`.
+pub async fn newer_release(
+    source: &ConfigSource,
+    channel: &str,
+    client: &reqwest::Client,
+) -> Result<Option<Entry>, String> {
+    let product = source.product_folder();
+    let versions = match read_file(&product, INDEX_FILE, client).await {
+        Ok(Some(text)) => parse_index(&text)?,
+        Ok(None) => vec![CONFIG_VERSION.to_string()],
+        Err(e) => {
+            log::info!("Couldn't read {INDEX_FILE}, using config {CONFIG_VERSION}: {e}");
+            vec![CONFIG_VERSION.to_string()]
+        }
+    };
+    let mut files = vec![channel_file(channel)];
+    if channel != "prod" {
+        files.push(PROD_FILE.to_string());
+    }
+    for version in folders_to_try(&versions, CONFIG_VERSION) {
+        let folder = ConfigSource {
+            location: product.file(&version),
+            is_override: source.is_override,
+        };
+        for name in &files {
+            if let Some(text) = read_file(&folder, name, client).await? {
+                return parse_latest(&text).map_err(|e| format!("{}: {e}", folder.file(name)));
+            }
+        }
+    }
+    Ok(None)
+}
+
 /// Resolves a config for a platform: each package's file, with its SHA-256
 /// from its release's `SHA256SUMS`, under `release_base` (manifest::GITHUB,
 /// or a test server).
@@ -788,5 +904,56 @@ mod tests {
     fn times_are_utc() {
         assert_eq!(utc_time(0), "1970-01-01T00:00:00Z");
         assert_eq!(utc_time(1_794_441_600), "2026-11-12T00:00:00Z");
+    }
+
+    #[test]
+    fn newer_folders_are_tried_largest_first() {
+        let v = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            folders_to_try(&v(&["001", "002", "010", "0100"]), "002"),
+            v(&["0100", "010", "002"])
+        );
+        assert_eq!(folders_to_try(&v(&["001"]), "002"), v(&["002"]));
+        let index = r#"{"$schema": "https://www.openlogix.org/schemas/logix-config-index-v1.json", "versions": ["001", "002"]}"#;
+        assert_eq!(parse_index(index).unwrap(), v(&["001", "002"]));
+        assert!(parse_index(&index.replace("\"002\"", "\"2\"")).is_err());
+    }
+
+    #[tokio::test]
+    async fn the_newest_folder_with_the_channel_gives_latest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let product = tmp.path().join("logix-engine");
+        let write = |path: &str, text: &str| {
+            let f = product.join(path);
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(f, text).unwrap();
+        };
+        let config = |release: &str| CONFIG.replace("2026-11-17", release);
+        write(
+            INDEX_FILE,
+            r#"{"$schema": "https://www.openlogix.org/schemas/logix-config-index-v1.json", "versions": ["001", "002", "003"]}"#,
+        );
+        write("001/prod-channel.jsonc", &config("2026-11-17"));
+        write("002/prod-channel.jsonc", &config("2026-12-01"));
+        write("003/dev-channel.jsonc", &config("2026-12-05"));
+        let own = ConfigSource {
+            location: product.join(CONFIG_VERSION).display().to_string(),
+            is_override: true,
+        };
+        let client = client().unwrap();
+        let latest = |channel: &'static str| {
+            let (own, client) = (own.clone(), client.clone());
+            async move {
+                newer_release(&own, channel, &client)
+                    .await
+                    .unwrap()
+                    .map(|e| e.release)
+            }
+        };
+        assert_eq!(latest("prod").await.as_deref(), Some("2026-12-01"));
+        assert_eq!(latest("dev").await.as_deref(), Some("2026-12-05"));
+        assert_eq!(latest("beta").await.as_deref(), Some("2026-12-01"));
+        std::fs::remove_file(product.join(INDEX_FILE)).unwrap();
+        assert_eq!(latest("prod").await.as_deref(), Some("2026-11-17"));
     }
 }

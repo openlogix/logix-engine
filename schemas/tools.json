@@ -517,7 +517,7 @@
   },
   {
     "name": "check_updates",
-    "description": "Checks now for newer releases of the engine's packages (the board catalog and the FPGA tools): reads the engine's remote config, downloads what it names that isn't downloaded yet, and uses it from the next call. The engine also checks on its own, before an operation that needs packages, when it last checked more than 24 hours ago, so call this only to check now, such as when the user asks for updates. It works even when automatic download is off. A download can take a few minutes; the tool reports progress and can be cancelled.",
+    "description": "Checks now for newer releases of the engine's packages (the board catalog and the FPGA tools): reads the engine's remote config, downloads what it names that isn't downloaded yet, and uses it from the next call. The engine also checks on its own, before an operation that needs packages, when it last checked more than 24 hours ago, so call this only to check now, such as when the user asks for updates. It works even when automatic download is off. A download can take a few minutes; the tool reports progress and can be cancelled. When newer_engine is in the result, tell the user that a newer Logix Engine is available and give its page: the engine never updates itself.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "CheckUpdatesInput",
@@ -555,6 +555,17 @@
         "remote_config": {
           "description": "The remote config just read.",
           "$ref": "#/$defs/RemoteConfigInfo"
+        },
+        "newer_engine": {
+          "description": "A newer Logix Engine release on this engine's channel, when there is\none. The engine never updates itself: tell the user, with its page.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NewerEngine"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false,
@@ -714,6 +725,25 @@
           "required": [
             "config_version",
             "source"
+          ]
+        },
+        "NewerEngine": {
+          "description": "A newer Logix Engine release than this one.",
+          "type": "object",
+          "properties": {
+            "version": {
+              "description": "Its version, as yyyy.mm.dd.",
+              "type": "string"
+            },
+            "page": {
+              "description": "Its release page, where its install steps are.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "page"
           ]
         }
       }
