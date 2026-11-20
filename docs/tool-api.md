@@ -1297,6 +1297,7 @@ Checks now for newer releases of the Logix Engine's packages: reads its remote c
 | `downloaded` | list of text | Names of the packages this call downloaded or repaired |
 | `packages` | list of packages | Every package the engine uses, with its status afterwards, as in `get_engine_info` |
 | `remote_config` | object | The remote config just read, as in `get_engine_info` |
+| `newer_engine` | object | Optional. A newer Logix Engine release on this engine's channel: `version` (`yyyy.mm.dd`) and `page` (its release page, with its install steps). The engine never updates itself, so a host or AI agent tells the user, with the page. From `latest` in the newest config version folder that has the engine's channel (Remote updates, in the website repo's `CLAUDE.md`, A newer version of the product); omitted when this engine is the newest, and when that can't be read |
 
 **Errors:** setup errors with `download_packages` when the remote config can't be read and there's none to use, or a download fails. Engine errors and cancellation.
 
