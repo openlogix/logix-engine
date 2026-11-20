@@ -20,9 +20,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The remote config (remote-config/logix-engine/<NNN>/: channels.jsonc
+  # The remote config (remote-config/logix-engine/<NNN>/: assign.jsonc
   # and a config file per channel): the shared check (schemas, channels,
-  # releases and files exist, SHA256SUMS lists them, prod.jsonc names only
+  # releases and files exist, SHA256SUMS lists them, prod-channel.jsonc names only
   # stable releases, only openlogix repos on main). The tests below then run
   # once per config file, with what each names.
   remote-config:
@@ -38,7 +38,7 @@ jobs:
 
   # The channels the tests run on: one per config file in the newest version
   # folder (the website repo's CLAUDE.md, Remote updates, Channels): prod
-  # alone in normal maintenance, dev too while dev.jsonc exists. Kept apart
+  # alone in normal maintenance, dev too while dev-channel.jsonc exists. Kept apart
   # from remote-config, so the tests neither wait for nor depend on its
   # network checks.
   channels:

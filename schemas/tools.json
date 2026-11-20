@@ -208,14 +208,14 @@
               ]
             },
             "channel_reason": {
-              "description": "Why it's on that channel: listed (channels.jsonc lists this release),\ndefault (it doesn't: dev), local build (always dev) or\nLOGIX_ENGINE_CHANNEL (a diagnostic setting).",
+              "description": "Why it's on that channel: listed (assign.jsonc lists this release),\ndefault (it doesn't: dev), local build (always dev) or\nLOGIX_ENGINE_CHANNEL (a diagnostic setting).",
               "type": [
                 "string",
                 "null"
               ]
             },
             "config_file": {
-              "description": "The config file read, such as dev.jsonc, or prod.jsonc when the\nchannel has none of its own.",
+              "description": "The config file read, such as dev-channel.jsonc, or prod-channel.jsonc when the\nchannel has none of its own.",
               "type": [
                 "string",
                 "null"
@@ -685,14 +685,14 @@
               ]
             },
             "channel_reason": {
-              "description": "Why it's on that channel: listed (channels.jsonc lists this release),\ndefault (it doesn't: dev), local build (always dev) or\nLOGIX_ENGINE_CHANNEL (a diagnostic setting).",
+              "description": "Why it's on that channel: listed (assign.jsonc lists this release),\ndefault (it doesn't: dev), local build (always dev) or\nLOGIX_ENGINE_CHANNEL (a diagnostic setting).",
               "type": [
                 "string",
                 "null"
               ]
             },
             "config_file": {
-              "description": "The config file read, such as dev.jsonc, or prod.jsonc when the\nchannel has none of its own.",
+              "description": "The config file read, such as dev-channel.jsonc, or prod-channel.jsonc when the\nchannel has none of its own.",
               "type": [
                 "string",
                 "null"
