@@ -9,7 +9,7 @@ understand the Verilog language.
 
 > [!TIP]
 > The prompts in this tutorial are in English, but you can write them in any
-> language Claude understands, such as Spanish, German, Hebrew or Japanese.
+> language Claude understands, such as Spanish, German, Hebrew, Japanese or even French.
 
 ## Background
 
