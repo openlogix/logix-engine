@@ -414,7 +414,7 @@ mod tests {
     fn the_engine_is_at_the_top_without_a_log_folder() {
         // Absolute on every OS (on Windows, /home/... isn't).
         let base = std::env::temp_dir();
-        let engine = &base.join(".logix/claude-code/engine");
+        let engine = &base.join(".logix/claude-code/engine-data");
         let (place, top) = place_for(engine, None, None).unwrap();
         assert!(top);
         assert_eq!(place.name, "engine");

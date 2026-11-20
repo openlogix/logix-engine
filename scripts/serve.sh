@@ -7,7 +7,7 @@
 #
 # (To try the engine with Claude Code, use scripts/run-in-claude.sh.)
 #
-# Uses the engine folder ~/.logix/engine-dev/engine unless LOGIX_ENGINE_DEV_FOLDER is
+# Uses the engine folder ~/.logix/engine-dev/engine-data unless LOGIX_ENGINE_DEV_DATA_FOLDER is
 # set. Extra arguments are passed to the engine, e.g. --log-level debug.
 # Cargo's output goes to stderr, so stdout stays clean for MCP.
 
@@ -17,4 +17,4 @@ source scripts/_rust-env.sh
 
 cargo build --release --locked --quiet 1>&2
 exec target/release/logix-engine \
-  --engine-folder "${LOGIX_ENGINE_DEV_FOLDER:-$HOME/.logix/engine-dev/engine}" "$@"
+  --engine-folder "${LOGIX_ENGINE_DEV_DATA_FOLDER:-$HOME/.logix/engine-dev/engine-data}" "$@"

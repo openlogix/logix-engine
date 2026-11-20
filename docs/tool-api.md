@@ -261,8 +261,8 @@ Example:
   "tool": "verilator_bin",
   "package": "logix-core 2026.11.10 (oss-cad-suite)",
   "cwd": "/home/user/proj",
-  "args": ["/home/user/.logix/ide/engine/packages/logix-core/2026-11-10/oss-cad-suite/bin/verilator_bin", "--lint-only", "--quiet", "main.v"],
-  "shell": "cd /home/user/proj && env -i PATH=/home/user/.logix/ide/engine/packages/logix-core/2026-11-10/oss-cad-suite/bin:/usr/bin:/bin HOME=\"$HOME\" TMPDIR=\"$TMPDIR\" /home/user/.logix/ide/engine/packages/logix-core/2026-11-10/oss-cad-suite/bin/verilator_bin --lint-only --quiet main.v"
+  "args": ["/home/user/.logix/ide/engine-data/packages/logix-core/2026-11-10/oss-cad-suite/bin/verilator_bin", "--lint-only", "--quiet", "main.v"],
+  "shell": "cd /home/user/proj && env -i PATH=/home/user/.logix/ide/engine-data/packages/logix-core/2026-11-10/oss-cad-suite/bin:/usr/bin:/bin HOME=\"$HOME\" TMPDIR=\"$TMPDIR\" /home/user/.logix/ide/engine-data/packages/logix-core/2026-11-10/oss-cad-suite/bin/verilator_bin --lint-only --quiet main.v"
 }
 ```
 
