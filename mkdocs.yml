@@ -57,6 +57,10 @@ extra:
 extra_css:
   - stylesheets/extra.css
 
+# Platform tabs open on the reader's own system until they choose one.
+extra_javascript:
+  - javascripts/platform-tabs.js
+
 plugins:
   - search
 
