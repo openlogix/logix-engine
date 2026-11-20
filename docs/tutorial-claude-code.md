@@ -110,7 +110,15 @@ Claude downloads the engine from its Latest release, checks that it runs,
 and connects it to Claude Code. It asks before each command it runs: read
 what it says, and approve. It ends by asking you to restart Claude Code.
 
-Restart Claude Code: type `/exit`, then start it again in the same folder:
+Restart Claude Code, so it connects to the engine. Leave Claude Code:
+
+**AI prompt:**
+
+```text
+/exit
+```
+
+Then start it again in the same folder:
 
 **Terminal command:**
 
