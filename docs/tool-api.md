@@ -1484,7 +1484,7 @@ Four tools give frontends and AI agents a board's serial port, such as its UART 
 
 The Logix Engine doesn't impose a project model: each frontend organizes designs its own way, and requests name every folder and file. The engine doesn't need a project file, in JSON or any other format, and never reads one.
 
-This model is only a suggestion for AI sessions that have no other requirements, such as an AI agent starting a design from scratch with only the engine. It isn't a standard or a recommendation for frontends and hosts, which keep their own models. Use it only for a new project, or a folder without a layout of its own.
+This model is only a suggestion for AI sessions that have no other requirements, such as an AI agent starting a design from scratch with only the engine. It isn't a standard or a recommendation for frontends and hosts, which keep their own models. Use it only for a new project, or a folder without a layout of its own. A project that already has one, such as a frontend's, keeps it: an AI agent working in a Logix IDE project (it has `logix-ide.toml`) follows Logix IDE's model, which the project's `AGENTS.md` or `CLAUDE.md` may give ([Logix IDE: Using an AI agent](https://www.openlogix.org/logix-ide/ai-agents/)), and adds no `logix.json`. The engine's instructions say so too.
 
 - **One folder** holds the project, with every file at its top level.
 - **`logix.json`** holds the request values that would otherwise have to be remembered between sessions, under their request field names:
