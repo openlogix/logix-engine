@@ -36,7 +36,7 @@ project.
   but that's outside this tutorial.
 
 > [!NOTE]
-> Without a board, you can still do every step but 10.
+> Without a board, you can still do every step but 9.
 
 Each text block is labeled with where it goes:
 
@@ -58,66 +58,9 @@ Where the steps differ between macOS, Windows and Linux, they have a tab for
 each: choose yours once, and every tab follows. On Windows, the terminal is
 **PowerShell** (Start menu, type `PowerShell`).
 
-## 1. Install the engine
+## 1. Start Claude Code in a new folder
 
-Open the engine's [**Latest** release](https://github.com/openlogix/logix-engine/releases/latest)
-and follow the steps for your system on that page, up to checking that the
-engine runs. They say exactly what that release needs, such as a step for
-files that aren't signed yet. Newer pre-releases on the
-[releases page](https://github.com/openlogix/logix-engine/releases) are
-development builds.
-
-The check prints the engine's version, a date such as `2026.11.09`. The
-steps unpack the engine into a `logix-engine` folder in your **Downloads**
-folder, which the next step uses.
-
-## 2. Connect Claude Code to the engine
-
-Register the engine with Claude Code once, for every folder:
-
-=== "macOS"
-
-    **Terminal:**
-
-    ```sh
-    ENGINE=~/Downloads/logix-engine/logix-engine
-    ENGINE_HOME=~/.logix/claude-code/engine
-    claude mcp add -s user logix-engine -- $ENGINE --engine-folder $ENGINE_HOME
-    claude mcp list
-    ```
-
-=== "Windows"
-
-    **PowerShell:**
-
-    ```powershell
-    $ENGINE = "$HOME\Downloads\logix-engine\logix-engine.exe"
-    $ENGINE_HOME = "$HOME\.logix\claude-code\engine"
-    claude mcp add -s user logix-engine '--' $ENGINE --engine-folder $ENGINE_HOME
-    claude mcp list
-    ```
-
-    The quotes around `--` keep PowerShell from dropping it.
-
-=== "Linux"
-
-    **Terminal:**
-
-    ```sh
-    ENGINE=~/Downloads/logix-engine/logix-engine
-    ENGINE_HOME=~/.logix/claude-code/engine
-    claude mcp add -s user logix-engine -- $ENGINE --engine-folder $ENGINE_HOME
-    claude mcp list
-    ```
-
-The list shows `logix-engine` as connected. The engine keeps the FPGA tools
-it downloads, and its logs, in its engine folder, `.logix/claude-code/engine`
-in your home folder. Each Claude Code session's logs are in a folder of
-their own in its `logs` folder, named by the session's start time.
-
-## 3. Create the project
-
-Make a folder for the tutorial's project. You do this only once:
+Make a folder for the tutorial's project, and start Claude Code there:
 
 === "macOS"
 
@@ -125,31 +68,6 @@ Make a folder for the tutorial's project. You do this only once:
 
     ```sh
     mkdir -p ~/logix-tutorial
-    ```
-
-=== "Windows"
-
-    **PowerShell:**
-
-    ```powershell
-    mkdir $HOME\logix-tutorial
-    ```
-
-=== "Linux"
-
-    **Terminal:**
-
-    ```sh
-    mkdir -p ~/logix-tutorial
-    ```
-
-## 4. Start Claude Code
-
-=== "macOS"
-
-    **Terminal:**
-
-    ```sh
     cd ~/logix-tutorial
     claude
     ```
@@ -159,6 +77,7 @@ Make a folder for the tutorial's project. You do this only once:
     **PowerShell:**
 
     ```powershell
+    mkdir $HOME\logix-tutorial
     cd $HOME\logix-tutorial
     claude
     ```
@@ -168,9 +87,50 @@ Make a folder for the tutorial's project. You do this only once:
     **Terminal:**
 
     ```sh
+    mkdir -p ~/logix-tutorial
     cd ~/logix-tutorial
     claude
     ```
+
+If Claude Code asks whether you trust the folder, say yes.
+
+## 2. Let Claude install the engine
+
+Claude installs Logix Engine for you, following this page:
+
+**Claude Code:**
+
+```text
+Install Logix Engine for me. Follow "Install the engine yourself" at
+https://www.openlogix.org/logix-engine/tutorial-claude-code/
+```
+
+Claude downloads the engine from its Latest release, checks that it runs,
+and connects it to Claude Code. It asks before each command it runs: read
+what it says, and approve. It ends by asking you to restart Claude Code.
+
+Restart Claude Code: type `/exit`, then start it again in the same folder:
+
+**Terminal:**
+
+```sh
+claude
+```
+
+Check that it's connected:
+
+**Claude Code:**
+
+```text
+/mcp
+```
+
+The list shows `logix-engine` as connected. If you'd rather install the
+engine yourself, or Claude gets stuck, follow
+[Install the engine yourself](#install-the-engine-yourself) at the end of
+this page, then come back here.
+
+## 3. Meet the engine
 
 Ask what the engine can do:
 
@@ -198,12 +158,12 @@ Download the FPGA tools the engine needs, and show me the progress.
 ```
 
 > [!NOTE]
-> The tools are downloaded into the engine folder you set in step 2,
+> The tools are downloaded into the engine's own folder,
 > `.logix/claude-code/engine` in your home folder, and don't change your
 > computer's setup. This takes
 > a minute or two, only the first time.
 
-## 5. Choose your board
+## 4. Choose your board
 
 **Claude Code:**
 
@@ -231,7 +191,7 @@ To see how two boards differ:
 Compare the iCESugar v1.5 with the iCEBreaker.
 ```
 
-## 6. Blink an LED
+## 5. Blink an LED
 
 **Claude Code:**
 
@@ -249,7 +209,7 @@ The build ends with a bitstream in the `_build/` folder in the project, and
 a short report: how much of the FPGA the design uses, and the fastest clock
 it could run at.
 
-## 7. See it as a diagram
+## 6. See it as a diagram
 
 **Claude Code:**
 
@@ -271,7 +231,7 @@ Try it:
 - Ask Claude about what you see, such as "What's the block between the
   counter and the LED?"
 
-## 8. Test it
+## 7. Test it
 
 On an FPGA, you test before you program the board. Ask for a testbench, a
 simulation that checks what the design does:
@@ -293,7 +253,7 @@ Change the testbench to expect the LED to turn on one clock cycle too early. Run
 The engine reports the failed check at its line and simulation time, and
 Claude explains what went wrong.
 
-## 9. See the signals
+## 8. See the signals
 
 **Claude Code:**
 
@@ -317,7 +277,7 @@ Try it:
 
 Close GTKWave when you're done.
 
-## 10. Program the board
+## 9. Program the board
 
 Connect the board with its USB cable.
 
@@ -377,7 +337,7 @@ Program the board with the design.
 The LED blinks green, about once a second: a design that went from a
 sentence to real hardware.
 
-## 11. Change it with prompts
+## 10. Change it with prompts
 
 From here on, say what you want, and Claude changes the design in your
 project folder, tests it and programs the board. Try these one at a time,
@@ -419,7 +379,7 @@ Put the rainbow in its own module with a speed parameter, give it its own testbe
 > If the board does something you didn't expect, say what you see, such as
 > "the LED is green when it should be red", and let Claude find out why.
 
-## 12. Ask questions
+## 11. Ask questions
 
 Claude knows your design and the engine's reports, so ask about either:
 
@@ -447,7 +407,7 @@ Explain main.v line by line, as if I'm new to Verilog.
 Why did you choose that counter width? What would happen with a 20-bit counter?
 ```
 
-## 13. When things go wrong
+## 12. When things go wrong
 
 The engine reports problems as data, with their file and line, so Claude can
 fix them:
@@ -481,7 +441,7 @@ Program the board with the design.
 Claude reports that the board isn't connected, and what to check. Connect it
 again and ask again.
 
-## 14. Keep going
+## 13. Keep going
 
 Some ideas, each one prompt:
 
@@ -502,6 +462,70 @@ Start each new design in its own folder, and run `claude` there.
   your home folder. On Windows, if Claude installed a WinUSB driver for a
   board, ask Claude to remove it first. On Linux, if you installed a udev
   rule for a board, delete its file in `/etc/udev/rules.d/` (with `sudo`).
+
+## Install the engine yourself
+
+These are the steps Claude follows in step 2, if you'd rather do them
+yourself. Claude: run them for the user, on their computer, then ask them to
+restart Claude Code.
+
+1. **Install the engine.** Open the engine's
+    [**Latest** release](https://github.com/openlogix/logix-engine/releases/latest)
+    and follow the steps for your system on that page, up to checking that the
+    engine runs. They say exactly what that release needs, such as a step for
+    files that aren't signed yet. Newer pre-releases on the
+    [releases page](https://github.com/openlogix/logix-engine/releases) are
+    development builds.
+
+    The check prints the engine's version, a date such as `2026.11.09`. The
+    steps unpack the engine into a `logix-engine` folder in your **Downloads**
+    folder, which the next step uses.
+
+2. **Connect Claude Code to the engine.** Register the engine with Claude
+    Code once, for every folder:
+
+    === "macOS"
+
+        **Terminal:**
+
+        ```sh
+        ENGINE=~/Downloads/logix-engine/logix-engine
+        ENGINE_HOME=~/.logix/claude-code/engine
+        claude mcp add -s user logix-engine -- $ENGINE --engine-folder $ENGINE_HOME
+        claude mcp list
+        ```
+
+    === "Windows"
+
+        **PowerShell:**
+
+        ```powershell
+        $ENGINE = "$HOME\Downloads\logix-engine\logix-engine.exe"
+        $ENGINE_HOME = "$HOME\.logix\claude-code\engine"
+        claude mcp add -s user logix-engine '--' $ENGINE --engine-folder $ENGINE_HOME
+        claude mcp list
+        ```
+
+        The quotes around `--` keep PowerShell from dropping it.
+
+    === "Linux"
+
+        **Terminal:**
+
+        ```sh
+        ENGINE=~/Downloads/logix-engine/logix-engine
+        ENGINE_HOME=~/.logix/claude-code/engine
+        claude mcp add -s user logix-engine -- $ENGINE --engine-folder $ENGINE_HOME
+        claude mcp list
+        ```
+
+    The list shows `logix-engine` as connected. The engine keeps the FPGA tools
+    it downloads, and its logs, in its engine folder, `.logix/claude-code/engine`
+    in your home folder. Each Claude Code session's logs are in a folder of
+    their own in its `logs` folder, named by the session's start time.
+
+3. **Restart Claude Code**, so it connects to the engine: `/exit`, then
+    `claude` in the project folder.
 
 ## Learn more
 
