@@ -42,13 +42,13 @@ Each text block is labeled with where it goes:
 **Terminal:**
 
 ```sh
-echo "a command"
+echo "a command to run in a terminal"
 ```
 
-**Claude Code:**
+**Prompt:**
 
 ```text
-A prompt.
+A prompt to type in Claude Code.
 ```
 
 Type the prompts as they are, or in your own words or language.
@@ -99,7 +99,7 @@ If Claude Code asks whether you trust the folder, say yes.
 
 Claude installs Logix Engine for you, following this page:
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Install Logix Engine for me. Follow "Install the engine yourself" at
@@ -120,7 +120,7 @@ claude
 
 Check that it's connected:
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 /mcp
@@ -135,7 +135,7 @@ this page, then come back here.
 
 Ask what the engine can do:
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 What can Logix Engine do? Keep it short.
@@ -152,7 +152,7 @@ board and more.
 
 Now tell the engine to fetch the open source FPGA tools it needs:
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Download the FPGA tools the engine needs, and show me the progress.
@@ -166,7 +166,7 @@ Download the FPGA tools the engine needs, and show me the progress.
 
 ## 4. Choose your board
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Which boards does the engine support? Group them by FPGA family, names only.
@@ -175,7 +175,7 @@ Which boards does the engine support? Group them by FPGA family, names only.
 The engine knows about 80 boards: their FPGA, how to program them, and
 what's on their pins. Find yours, and ask about it:
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Tell me about the iCESugar v1.5: its FPGA, its clock, its LED and its switches.
@@ -186,7 +186,7 @@ Claude answers from what the engine knows about its [supported boards](https://w
 switches, with their pins. It never has to guess a pin.
 To see how two boards differ:
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Compare the iCESugar v1.5 with the iCEBreaker.
@@ -194,7 +194,7 @@ Compare the iCESugar v1.5 with the iCEBreaker.
 
 ## 5. Blink an LED
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Start a new project here for the iCESugar v1.5: blink the RGB LED in green about once a second. Then build it.
@@ -212,7 +212,7 @@ it could run at.
 
 ## 6. See it as a diagram
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Make a diagram of the design and open it.
@@ -237,7 +237,7 @@ Try it:
 On an FPGA, you test before you program the board. Ask for a testbench, a
 simulation that checks what the design does:
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Write a testbench that checks the green LED turns on and off at the right times, using a small counter so the test is quick. Run it.
@@ -245,7 +245,7 @@ Write a testbench that checks the green LED turns on and off at the right times,
 
 Claude writes `main_tb.v`, and the test passes. Now see a failure:
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Change the testbench to expect the LED to turn on one clock cycle too early. Run it, explain the failure, then put it back.
@@ -256,7 +256,7 @@ Claude explains what went wrong.
 
 ## 8. See the signals
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Simulate the testbench and open the waveforms in GTKWave.
@@ -282,7 +282,7 @@ Close GTKWave when you're done.
 
 Connect the board with its USB cable.
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Is my board connected?
@@ -300,7 +300,7 @@ Claude lists what's connected, and how well each device matches your board.
     an FTDI chip, need the WinUSB driver before the engine can program them,
     and Claude says so when it lists the devices. Then ask:
 
-    **Claude Code:**
+    **Prompt:**
 
     ```text
     Install the driver my board needs.
@@ -317,7 +317,7 @@ Claude lists what's connected, and how well each device matches your board.
     it before the engine can program it. If Claude says it
     can't open the board, ask:
 
-    **Claude Code:**
+    **Prompt:**
 
     ```text
     Write the udev rule my board needs, and tell me how to install it.
@@ -329,7 +329,7 @@ Claude lists what's connected, and how well each device matches your board.
 
 Then:
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Program the board with the design.
@@ -344,25 +344,25 @@ From here on, say what you want, and Claude changes the design in your
 project folder, tests it and programs the board. Try these one at a time,
 and watch the board after each:
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Change the design: make the LED step through its 8 colors (off, red, green, blue and their mixes), about 2 a second. Update the testbench, run it, then program the board.
 ```
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Use the 4 switches: switch 1 pauses the colors, and switches 2 to 4 set the speed. Test it and program the board.
 ```
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Make the LED fade smoothly through the colors of the rainbow, using PWM. Program the board.
 ```
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 When switch 1 is on, make the LED breathe slowly on and off in blue, like a sleeping laptop, instead of the rainbow.
@@ -370,7 +370,7 @@ When switch 1 is on, make the LED breathe slowly on and off in blue, like a slee
 
 Bigger changes work too:
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Put the rainbow in its own module with a speed parameter, give it its own testbench, and keep main.v short. Run all the tests.
@@ -384,25 +384,25 @@ Put the rainbow in its own module with a speed parameter, give it its own testbe
 
 Claude knows your design and the engine's reports, so ask about either:
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 How much of the FPGA does the design use now? What uses the most?
 ```
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 What's the fastest clock this design could run at, and what limits it?
 ```
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Explain main.v line by line, as if I'm new to Verilog.
 ```
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Why did you choose that counter width? What would happen with a 20-bit counter?
@@ -413,19 +413,19 @@ Why did you choose that counter width? What would happen with a 20-bit counter?
 The engine reports problems as data, with their file and line, so Claude can
 fix them:
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Put a typo in main.v on purpose, build it, show me the error, then fix it.
 ```
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Check the design for warnings with the linter, and fix them.
 ```
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Format all the Verilog files.
@@ -433,7 +433,7 @@ Format all the Verilog files.
 
 Disconnect the board, then:
 
-**Claude Code:**
+**Prompt:**
 
 ```text
 Program the board with the design.
