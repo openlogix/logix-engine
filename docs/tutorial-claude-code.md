@@ -21,6 +21,8 @@ open source FPGA tools it needs, and knows about boards, with their FPGAs and
 pins. Logix Engine is part of the [Open Logix](https://www.openlogix.org)
 project.
 
+![You talk to Claude Code, Claude Code uses Logix Engine and its open source FPGA tools, and the engine programs the FPGA board over USB](images/tutorial-blocks.svg)
+
 ## What you need
 
 - **A computer:** a Mac with Apple Silicon (M1 or later), or a 64-bit (x64) PC
