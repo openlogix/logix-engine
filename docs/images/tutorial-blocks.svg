@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 496" role="img" aria-label="You talk to Claude Code, Claude Code uses Logix Engine, and the engine programs the board" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 512" role="img" aria-label="You talk to Claude Code, Claude Code uses Logix Engine, and the engine programs the board" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13">
   <style>
     .bg { fill: #ffffff; }
     .edge { stroke: #8c959f; }
@@ -40,14 +40,14 @@
       <path d="M0 0L10 5L0 10z" class="arrow"/>
     </marker>
   </defs>
-  <rect class="bg" x="0" y="0" width="760" height="496"/>
+  <rect class="bg" x="0" y="0" width="760" height="512"/>
 
   <text x="24" y="32" font-size="15" class="ink name">You describe it, Claude Code writes it, Logix Engine builds it and programs the board</text>
 
   <g class="edge" fill="none" stroke-width="1.25">
     <path d="M380 112V150" marker-end="url(#tut-arrow)"/>
-    <path d="M380 208V246" marker-end="url(#tut-arrow)"/>
-    <path d="M380 376V414" marker-end="url(#tut-arrow)"/>
+    <path d="M380 224V262" marker-end="url(#tut-arrow)"/>
+    <path d="M380 392V430" marker-end="url(#tut-arrow)"/>
   </g>
 
   <rect class="you main" x="160" y="56" width="440" height="56" rx="8"/>
@@ -55,20 +55,21 @@
   <text x="380" y="98" text-anchor="middle" class="quiet sub">describe what you want, in your own words</text>
   <text x="392" y="135" class="quiet sub">prompts</text>
 
-  <rect class="agent main" x="160" y="152" width="440" height="56" rx="8"/>
+  <rect class="agent main" x="160" y="152" width="440" height="72" rx="8"/>
   <text x="380" y="176" text-anchor="middle" class="agent-ink name">Claude Code</text>
-  <text x="380" y="194" text-anchor="middle" class="quiet sub">writes the design files and asks the engine to check and build them</text>
-  <text x="392" y="231" class="quiet sub">MCP</text>
+  <text x="380" y="194" text-anchor="middle" class="quiet sub">writes the design files, and asks the engine to check them,</text>
+  <text x="380" y="210" text-anchor="middle" class="quiet sub">build them and program the board</text>
+  <text x="392" y="247" class="quiet sub">MCP</text>
 
-  <rect class="engine main" x="160" y="248" width="440" height="128" rx="8"/>
-  <text x="380" y="272" text-anchor="middle" class="engine-ink name">Logix Engine</text>
-  <text x="380" y="290" text-anchor="middle" class="ink sub">lints, builds, tests, simulates and programs the board</text>
-  <text x="380" y="306" text-anchor="middle" class="ink sub">knows the supported boards, their FPGAs and pins</text>
-  <rect class="tools" stroke-width="1.25" x="176" y="320" width="408" height="40" rx="8"/>
-  <text x="380" y="344" text-anchor="middle" class="ink name" font-size="12">Open source FPGA tools, downloaded and run by the engine</text>
-  <text x="392" y="399" class="quiet sub">USB cable</text>
+  <rect class="engine main" x="160" y="264" width="440" height="128" rx="8"/>
+  <text x="380" y="288" text-anchor="middle" class="engine-ink name">Logix Engine</text>
+  <text x="380" y="306" text-anchor="middle" class="ink sub">lints, builds, tests, simulates and programs the board</text>
+  <text x="380" y="322" text-anchor="middle" class="ink sub">knows the supported boards, their FPGAs and pins</text>
+  <rect class="tools" stroke-width="1.25" x="176" y="336" width="408" height="40" rx="8"/>
+  <text x="380" y="360" text-anchor="middle" class="ink name" font-size="12">Open source FPGA tools, downloaded and run by the engine</text>
+  <text x="392" y="415" class="quiet sub">USB cable</text>
 
-  <rect class="board main" x="160" y="416" width="440" height="56" rx="8"/>
-  <text x="380" y="440" text-anchor="middle" class="board-ink name">FPGA board</text>
-  <text x="380" y="458" text-anchor="middle" class="quiet sub">runs your design</text>
+  <rect class="board main" x="160" y="432" width="440" height="56" rx="8"/>
+  <text x="380" y="456" text-anchor="middle" class="board-ink name">FPGA board</text>
+  <text x="380" y="474" text-anchor="middle" class="quiet sub">runs your design</text>
 </svg>
