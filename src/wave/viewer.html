@@ -207,8 +207,6 @@ button { font: inherit; color: inherit; }
 .ctx .it .k { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: 11px; }
 .ctx .it.danger { color: var(--x); }
 .ctx .sep { height: 1px; background: var(--line); margin: 4px 6px; }
-.ctx .hd { padding: 8px 10px 3px; font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
-.ctx .hd:first-child { padding-top: 4px; }
 .ctx .sub { padding: 4px 10px 6px; display: flex; flex-direction: column; gap: 5px; }
 .ctx .sub .lbl { font-size: 11px; color: var(--muted); }
 .ctx .seg button { font-size: 11.5px; }
@@ -1465,20 +1463,19 @@ function copyImage() {
       .then(() => toast('Copied a picture of the waves: paste it into a message or a document.'), failed);
   } catch (_) { failed(); }
 }
-// Grouped under headings, so each entry only says what it holds (the
-// user's design, 2026-11-21): pictures are of what's shown; spreadsheets
-// and web pages of all signals or of the shown ones.
+// In groups divided by lines, each entry saying all it does (the user's
+// design, 2026-11-21): pictures are of what's shown; spreadsheets and web
+// pages of all signals or of the shown ones.
 const EXPORT_ITEMS = () => [
-  { head: "Picture of what's shown" },
-  { label: 'Copy image', act: copyImage },
-  { label: 'Save as PNG…', act: () => exportImage('png') },
-  { label: 'Save as SVG…', act: () => exportImage('svg') },
-  { head: 'Spreadsheet (CSV)' },
-  { label: 'All signals, whole run…', act: () => exportCSV(true) },
-  { label: 'Shown signals and range…', act: () => exportCSV(false) },
-  { head: 'Web page (HTML)' },
-  { label: 'All signals…', act: () => exportPage(true), disabled: !PAGE },
-  { label: 'Shown signals…', act: () => exportPage(false), disabled: !PAGE },
+  { label: 'Copy image of the view', act: copyImage },
+  { label: 'Save image of the view as PNG…', act: () => exportImage('png') },
+  { label: 'Save image of the view as SVG…', act: () => exportImage('svg') },
+  '-',
+  { label: 'Save all signals as spreadsheet (CSV)…', act: () => exportCSV(true) },
+  { label: 'Save shown signals as spreadsheet (CSV)…', act: () => exportCSV(false) },
+  '-',
+  { label: 'Save all signals as web page (HTML)…', act: () => exportPage(true), disabled: !PAGE },
+  { label: 'Save shown signals as web page (HTML)…', act: () => exportPage(false), disabled: !PAGE },
 ];
 function imageMenu(x, y) { openMenu(x, y, EXPORT_ITEMS()); }
 
@@ -1602,8 +1599,6 @@ function openMenu(x, y, items, title) {
   for (const it of items) {
     if (!it) continue;
     if (it === '-') { el.insertAdjacentHTML('beforeend', '<div class="sep"></div>'); continue; }
-    // A group's heading: { head: 'Spreadsheet (CSV)' }.
-    if (it.head) { el.insertAdjacentHTML('beforeend', `<div class="hd">${esc(it.head)}</div>`); continue; }
     if (it.html) { const d = document.createElement('div'); d.className = 'sub'; d.innerHTML = it.html; d.addEventListener('click', (e) => { if (it.click(e) !== false) closeMenu(); }); el.appendChild(d); continue; }
     const b = document.createElement('button'); b.className = 'it' + (it.danger ? ' danger' : ''); b.setAttribute('role', 'menuitem');
     b.innerHTML = `<span>${esc(it.label)}</span>${it.key ? `<span class="k">${esc(it.key)}</span>` : ''}`;
