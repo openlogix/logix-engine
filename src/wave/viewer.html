@@ -215,9 +215,8 @@ button { font: inherit; color: inherit; }
    it brings the column back at its last width. */
 .val-open { display: none; }
 #valHead { gap: 4px; }
-.val-close { flex: none; display: grid; place-items: center; width: 18px; height: 18px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; border-radius: 4px; opacity: 0; }
+.val-close { flex: none; display: grid; place-items: center; width: 18px; height: 18px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; border-radius: 4px; }
 .val-close svg, .val-open svg { width: 13px; height: 13px; display: block; }
-#valHead:hover .val-close, .val-close:focus-visible { opacity: 1; }
 .val-close:hover { color: var(--accent); background: var(--soft); }
 .app.val-hidden .val-close { display: none; }
 .app.val-hidden #valHead { padding: 0; }
