@@ -1459,6 +1459,7 @@ function copyImage() {
 // pages of all signals or of the shown ones.
 const EXPORT_ITEMS = () => [
   { label: 'Copy shown image', act: copyImage },
+  '-',
   { label: 'Save shown image (PNG)…', act: () => exportImage('png') },
   { label: 'Save shown image (SVG)…', act: () => exportImage('svg') },
   '-',
