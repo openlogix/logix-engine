@@ -239,7 +239,12 @@ mod tests {
         let f = tmp.path().join("a.vcd");
         std::fs::write(&f, "").unwrap();
         assert!(check_file("waveform_file", f.to_str().unwrap(), "vcd").is_ok());
-        for (bad, needle) in [("a.vcd", "absolute"), ("/no/such.vcd", "can't be found")] {
+        // A path that's absolute on every system, and isn't there.
+        let missing = tmp.path().join("missing.vcd");
+        for (bad, needle) in [
+            ("a.vcd", "absolute"),
+            (missing.to_str().unwrap(), "can't be found"),
+        ] {
             let e = check_file("waveform_file", bad, "vcd").unwrap_err();
             assert!(e.message.contains(needle), "{}", e.message);
         }
