@@ -157,6 +157,10 @@ button { font: inherit; color: inherit; }
 /* Values end 12 px from the column's right border, as its title does, so
    digits line up (tabular numbers). */
 .vrow { padding: 0 12px 0 8px; text-align: right; text-overflow: ellipsis; display: block; line-height: calc(var(--row-h) - 1px); font-family: var(--mono); font-size: 12px; color: var(--c); font-weight: 500; font-variant-numeric: tabular-nums; overflow: hidden; white-space: nowrap; }
+/* A value too long for the column is cut on its left, keeping its low
+   digits, the ones that change (the user's request, 2026-11-21): the cell
+   runs right to left, the value itself left to right. */
+.vrow { direction: rtl; white-space: nowrap; }
 .vrow.xv { color: var(--x); }
 .wavecol { position: relative; }
 .empty { padding: 40px 20px; text-align: center; color: var(--muted); grid-column: 1 / -1; }
@@ -644,7 +648,8 @@ function renderValues() {
     const r = S.rows[i];
     if (!r.v) return `<div class="vrow ${r.kind} ${i === S.sel ? 'sel' : ''}" data-i="${i}"></div>`;
     const val = S.cursor == null ? null : valueAt(r.v, S.cursor);
-    return `<div class="vrow ${i === S.sel ? 'sel' : ''} ${isX(val) ? 'xv' : ''}" data-i="${i}" style="--c:var(--s${r.color})">${esc(fmt(val, r.v.width, r.radix))}</div>`;
+    const text = esc(fmt(val, r.v.width, r.radix));
+    return `<div class="vrow ${i === S.sel ? 'sel' : ''} ${isX(val) ? 'xv' : ''}" data-i="${i}" style="--c:var(--s${r.color})" title="${text}"><bdi dir="ltr">${text}</bdi></div>`;
   }).join('');
 }
 function renderTree() {
