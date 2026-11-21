@@ -810,10 +810,12 @@ function renderStatus() {
     const dt = fmtTime(Math.abs(S.cursor - S.marker));
     return counting() ? `${fmtCycles(Math.abs(cyclePos(S.cursor) - cyclePos(S.marker)))} (${dt})` : dt;
   };
+  // Counting cycles, the clock comes first: it's what the numbers count.
+  if (counting()) parts.push(`<span class="clk" title="Cycles are counted on this clock's rising edges">Clock <b>${esc(S.clock)}</b></span>`);
   parts.push(`<span class="cur">Cursor <b>${S.cursor == null ? '–' : fmtAt(S.cursor)}</b></span>`);
   if (S.marker != null) parts.push(`<span class="mk">Marker <b>${fmtAt(S.marker)}</b></span>`, `<span>Δ <b>${S.cursor == null ? '–' : delta()}</b></span>`);
   parts.push(`<span>Showing <b>${fmtAt(S.start)} – ${fmtAt(S.end)}</b></span>`);
-  if (counting()) parts.push(`<span class="clk" title="Cycles are counted on this clock's rising edges">Clock <b>${esc(S.clock)}</b></span>`);
+
   parts.push(`<span class="help">Click: cursor · Shift+click: marker · Drag: pan · Wheel or pinch: zoom · Right-click: options</span>`);
   $('#status').innerHTML = parts.join('');
 }
