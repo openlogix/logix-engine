@@ -951,8 +951,20 @@ function load() {
     S.cursor = v.cursor ?? null; S.marker = v.marker ?? null;
     if (v.view) { S.start = v.view.from; S.end = v.view.to; }
   }
+  // What a client asked to show first (R8): signals, a time range, the cursor.
+  const f = DATA.focus, ticks = (ns) => Math.round(ns * 1e-9 / w.ts);
+  if (f) {
+    const map = varByPath();
+    const rows = (f.signals || []).map((p) => map.get(p)).filter(Boolean).map(sigRow);
+    if (rows.length) S.rows = rows;
+    if (f.from_ns != null || f.to_ns != null) {
+      S.start = f.from_ns != null ? ticks(f.from_ns) : 0;
+      S.end = f.to_ns != null ? ticks(f.to_ns) : w.end;
+    }
+    if (f.cursor_ns != null) S.cursor = ticks(f.cursor_ns);
+  }
   renderRows();
-  if (v && v.view) setView(v.view.from, v.view.to);
+  if ((v && v.view) || (f && (f.from_ns != null || f.to_ns != null))) setView(S.start, S.end);
   showFailures();
   // A failing run opens at its first failure (R25), even with a saved view.
   if (S.marks.length) showFail(0);

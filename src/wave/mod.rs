@@ -84,6 +84,18 @@ pub struct PageData {
     pub failure_count: u64,
     /// The view the user saved, when there is one.
     pub view: Option<Value>,
+    /// What a client asked the viewer to show first (R8), over the view.
+    pub focus: Option<Focus>,
+}
+
+/// What a client asks the viewer to show first: these signals, this time
+/// range, the cursor here (R8). Each part is optional.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct Focus {
+    pub signals: Option<Vec<String>>,
+    pub from_ns: Option<f64>,
+    pub to_ns: Option<f64>,
+    pub cursor_ns: Option<f64>,
 }
 
 /// Reads a waveform for the page: the whole file, or, when it's larger than
@@ -133,6 +145,70 @@ pub fn top_scope(vcd: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// A VCD file's signals, as the viewer names them: the scopes and the
+/// signal's name, such as main_tb.dut.count; and the run's end in
+/// nanoseconds.
+pub fn vcd_signals(vcd: &str) -> (Vec<String>, f64) {
+    let mut words = vcd.split_whitespace();
+    let (mut scopes, mut signals) = (Vec::<String>::new(), Vec::new());
+    let mut unit_s = 1e-9;
+    while let Some(w) = words.next() {
+        match w {
+            "$enddefinitions" => break,
+            "$timescale" => {
+                let text: String = words.by_ref().take_while(|w| *w != "$end").collect();
+                unit_s = timescale_seconds(&text).unwrap_or(1e-9);
+            }
+            "$scope" => {
+                let section: Vec<&str> = words.by_ref().take_while(|w| *w != "$end").collect();
+                scopes.push(section.get(1).copied().unwrap_or_default().to_string());
+            }
+            "$upscope" => {
+                words.by_ref().take_while(|w| *w != "$end").for_each(drop);
+                scopes.pop();
+            }
+            "$var" => {
+                let section: Vec<&str> = words.by_ref().take_while(|w| *w != "$end").collect();
+                if let Some(name) = section.get(3) {
+                    let path = scopes
+                        .iter()
+                        .map(String::as_str)
+                        .chain([*name])
+                        .collect::<Vec<_>>()
+                        .join(".");
+                    if !signals.contains(&path) {
+                        signals.push(path);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let end = vcd
+        .lines()
+        .rev()
+        .find_map(|l| l.strip_prefix('#')?.trim().parse::<u64>().ok())
+        .unwrap_or(0);
+    (signals, end as f64 * unit_s * 1e9)
+}
+
+/// A VCD $timescale, such as "1ps" or "10 ns", in seconds.
+fn timescale_seconds(text: &str) -> Option<f64> {
+    let text = text.trim();
+    let digits: String = text.chars().take_while(char::is_ascii_digit).collect();
+    let unit = text[digits.len()..].trim();
+    let scale = match unit {
+        "s" => 1.0,
+        "ms" => 1e-3,
+        "us" => 1e-6,
+        "ns" => 1e-9,
+        "ps" => 1e-12,
+        "fs" => 1e-15,
+        _ => return None,
+    };
+    Some(digits.parse::<f64>().ok()? * scale)
 }
 
 /// The keywords that start a signal declaration in a module's body.
@@ -401,6 +477,7 @@ impl RunInfo<'_> {
             failures,
             failure_count: self.failure_count,
             view: self.view,
+            focus: None,
         }
     }
 }
@@ -536,6 +613,16 @@ endmodule
     }
 
     #[test]
+    fn a_vcd_files_signals_and_length() {
+        let vcd = "$timescale 10ns $end\n$scope module tb $end\n$var wire 1 ! clk $end\n$scope module dut $end\n$var reg 4 \" count [3:0] $end\n$var wire 1 ! clk $end\n$upscope $end\n$upscope $end\n$enddefinitions $end\n#0\n#25\n";
+        let (signals, end_ns) = vcd_signals(vcd);
+        assert_eq!(signals, ["tb.clk", "tb.dut.count", "tb.dut.clk"]);
+        assert_eq!(end_ns, 250.0);
+        assert_eq!(timescale_seconds("1 ps"), Some(1e-12));
+        assert_eq!(timescale_seconds("x"), None);
+    }
+
+    #[test]
     fn the_top_scope_names_the_testbench() {
         let vcd = "$timescale 1ps $end\n$scope module uart_tb $end\n$var wire 1 ! clk $end\n$upscope $end\n$enddefinitions $end\n#0\n";
         assert_eq!(top_scope(vcd).as_deref(), Some("uart_tb"));
@@ -579,6 +666,7 @@ endmodule
             }],
             failure_count: 1,
             view: None,
+            focus: None,
         };
         let html = page(&data);
         assert!(!html.contains("/*__DATA__*/"));

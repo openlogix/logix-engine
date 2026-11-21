@@ -1490,6 +1490,62 @@ Four tools give frontends and AI agents a board's serial port, such as its UART 
 
 `open_serial` returns `{"session": "serial-1", "port": "/dev/ttyUSB1", "baud": 115200}`; then `read_serial` with `{"session": "serial-1", "wait_ms": 1000}` returns `{"hex": "48656c6c6f2066726f6d20796f7572204650474120626f6172640d0a", "open": true, "port": "/dev/ttyUSB1"}` ("Hello from your FPGA board" and a line ending).
 
+## open_waveform tool
+
+Opens Open Logix's waveform viewer (see The waveform viewer, under the simulate tool) on any waveform file a client names: another simulator's, an earlier run's, or one an AI agent or a client made itself, which need not come from a simulation (docs/requirements.md, Waveform viewer, R3 and R8). The file is only read. The engine writes the viewer's page, with the waveform in it, into the build folder the request names, or, without one, into its own folder (`<engine folder>/waveforms`, which keeps the 20 newest), and opens it in the default web browser for the person at the screen.
+
+A client can point the person at something: the signals to show, in order, a time range, and the cursor, which the page opens on, over the saved view the request names. Signals the file doesn't have are left out and come back in `unknown_signals`. Unlike simulate's page, this one has no testbench, so it shows the file's top-level signals by default and marks no failures.
+
+**Table 51.** open_waveform tool inputs
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `waveform_file` | absolute path | Yes | The waveform (`.vcd`). Only read |
+| `build_folder` | absolute path | No | Where the page goes: a build folder, as in the build tool. When omitted, the engine's own folder |
+| `view_file` | absolute path | No | A saved view (`.view`) to open with. Only read |
+| `signals` | list of text | No | The signals to show, in order, as paths in the file, such as `main_tb.dut.count` |
+| `from_ns`, `to_ns` | number | No | The time range to show, in nanoseconds. Omitted means the whole run, or the view's |
+| `cursor_ns` | number | No | Where to put the cursor, in nanoseconds |
+| `open_viewer` | boolean | No | Open the page in the default web browser. Defaults to true. False only writes it |
+
+**Table 52.** open_waveform tool outputs
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `viewer_file` | absolute path | The viewer's page |
+| `viewer_opened` | boolean | True if the page was opened in the web browser |
+| `signal_count` | integer | How many signals the file has |
+| `end_ns` | number | The run's length, in nanoseconds |
+| `unknown_signals` | list of text | Requested signals the file doesn't have, which the page leaves out |
+
+**Errors:** request errors for a waveform or view file that isn't an absolute path to an existing `.vcd` or `.view` file, a build folder that breaks the keyword rules, and times below 0 or a range whose start isn't before its end.
+
+**Example**
+
+Input:
+
+```json
+{
+  "waveform_file": "/home/user/proj/_build/main_tb.vcd",
+  "signals": ["main_tb.clk", "main_tb.dut.count"],
+  "from_ns": 900,
+  "to_ns": 1200,
+  "cursor_ns": 1000
+}
+```
+
+Output:
+
+```json
+{
+  "viewer_file": "/home/user/.logix/claude-code/engine-data/waveforms/main_tb.html",
+  "viewer_opened": true,
+  "signal_count": 6,
+  "end_ns": 2000.0,
+  "unknown_signals": []
+}
+```
+
 ## Default project model
 
 The Logix Engine doesn't impose a project model: each frontend organizes designs its own way, and requests name every folder and file. The engine doesn't need a project file, in JSON or any other format, and never reads one.
