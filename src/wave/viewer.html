@@ -525,17 +525,17 @@ function rowLabel(v) {
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
 
 // The rows shown, as indexes into S.rows: a collapsed comment row hides the
-// rows below it up to the next blank or comment row (its group).
+// rows below it, blank rows included, up to the next comment row (its group).
 function visible() {
   const out = []; let hide = false;
   S.rows.forEach((r, i) => {
-    if (r.kind === 'comment' || r.kind === 'blank') { hide = r.kind === 'comment' && !!r.collapsed; out.push(i); }
+    if (r.kind === 'comment') { hide = !!r.collapsed; out.push(i); }
     else if (!hide) out.push(i);
   });
   return out;
 }
-// How many rows a comment row's group has.
-function groupSize(i) { let n = 0; for (let j = i + 1; j < S.rows.length && S.rows[j].v; j++) n++; return n; }
+// How many signals a comment row's group has (its blank rows aren't counted).
+function groupSize(i) { let n = 0; for (let j = i + 1; j < S.rows.length && S.rows[j].kind !== 'comment'; j++) if (S.rows[j].v) n++; return n; }
 // The row (an index into S.rows) at a height in the rows area, or -1.
 function rowAtY(y) { const v = visible()[Math.floor(y / S.rowH)]; return v == null ? -1 : v; }
 function toggleGroup(i) {
@@ -546,7 +546,7 @@ function toggleGroup(i) {
 }
 function renderRows() {
   document.documentElement.style.setProperty('--row-h', S.rowH + 'px');
-  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'comment' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} rows of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'comment' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}</span></div>`; }).join('');
+  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'comment' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'comment' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}</span></div>`; }).join('');
   $('#empty').hidden = S.rows.length > 0;
   renderValues(); renderTree(); draw();
 }
@@ -1060,7 +1060,10 @@ function deserRow(o) {
 }
 function addRowAt(kind, at) {
   const r = kind === 'comment' ? { kind, text: 'New group' } : { kind };
-  S.rows.splice(at, 0, r); S.sel = at; renderRows(); commit();
+  S.rows.splice(at, 0, r); S.sel = at;
+  // A row added inside a collapsed group (a blank row below it) opens the group, so it shows.
+  if (!visible().includes(at)) for (let j = at - 1; j >= 0; j--) if (S.rows[j].kind === 'comment') { S.rows[j].collapsed = false; break; }
+  renderRows(); commit();
   if (kind === 'comment') openRowPop(S.sel, $(`.nrow[data-i="${S.sel}"]`));
 }
 function resetLayout() {
@@ -1277,7 +1280,7 @@ function rowMenu(i, t, x, y) {
     openMenu(x, y, [
       ...(t != null ? [...timeItems(t), '-'] : []),
       r.kind === 'comment' ? { label: 'Edit the text…', act: () => openRowPop(i, $(`.nrow[data-i="${i}"]`)) } : null,
-      r.kind === 'comment' ? { label: r.collapsed ? `Show the group (${groupSize(i)} rows)` : 'Collapse the group', act: () => toggleGroup(i) } : null,
+      r.kind === 'comment' ? { label: r.collapsed ? `Show the group (${groupSize(i)} signals)` : 'Collapse the group', act: () => toggleGroup(i) } : null,
       ...common, '-',
       { label: 'Remove this row', key: 'Delete', danger: true, act: () => removeRow(i) },
     ], r.kind === 'comment' ? 'Comment: ' + r.text : 'Blank row');
