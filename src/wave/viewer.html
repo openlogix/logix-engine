@@ -314,8 +314,8 @@ button { font: inherit; color: inherit; }
       <button class="btn browser-toggle" id="browserToggle" aria-label="Show signals">Signals</button>
       <button class="btn primary" id="saveBtn" title="Save the view: the rows, their formats and colors, and the zoom">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v6h8M7 21v-7h10v7"/></svg><span class="txt">Save view</span></button>
-      <button class="btn" id="imageBtn" title="Copy or save a picture of the waves, to share">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="15.5" cy="8.5" r="1.5"/></svg><span class="txt">Image</span>
+      <button class="btn" id="imageBtn" title="Copy or save the waves, to share: a picture, a spreadsheet or a web page">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="15.5" cy="8.5" r="1.5"/></svg><span class="txt">Export</span>
       </button>
       <button class="btn icon-btn" id="helpBtn" aria-label="Keyboard and mouse" title="Keyboard and mouse">?</button>
       <button class="btn icon-btn" id="settingsBtn" aria-label="View settings" title="View settings">
@@ -374,6 +374,14 @@ button { font: inherit; color: inherit; }
 
 <script>
 (() => {
+// The page as the engine wrote it, without its data, taken before the script
+// changes anything: Export's web page is this page with new data (R48).
+const PAGE = (() => {
+  // The data's line starts the line (this code has the same words inside it).
+  const h = '<!doctype html>\n' + document.documentElement.outerHTML, mark = '\nconst DATA = ', k = h.indexOf(mark);
+  if (k < 0) return null;
+  return { head: h.slice(0, k + mark.length), tail: h.slice(h.indexOf('\n', k + 1)) };
+})();
 const $ = (s) => document.querySelector(s);
 const S = { wave: null, file: '', rows: [], start: 0, end: 1, cursor: null, anchor: null, clock: null, edges: [], cycles: false, marker: null, sel: -1, rowH: 30, grid: true, theme: 'auto', marks: [] };
 // The data the engine wrote into the page.
@@ -1455,12 +1463,90 @@ function copyImage() {
       .then(() => toast('Copied a picture of the waves: paste it into a message or a document.'), failed);
   } catch (_) { failed(); }
 }
-function imageMenu(x, y) {
-  openMenu(x, y, [
-    { label: 'Copy image', act: copyImage },
-    { label: 'Save as PNG…', act: () => exportImage('png') },
-    { label: 'Save as SVG…', act: () => exportImage('svg') },
-  ], 'Picture of the waves');
+const EXPORT_ITEMS = () => [
+  { label: 'Copy image', act: copyImage },
+  { label: 'Save as PNG…', act: () => exportImage('png') },
+  { label: 'Save as SVG…', act: () => exportImage('svg') },
+  '-',
+  { label: 'Save as spreadsheet (CSV)…', act: exportCSV },
+  { label: 'Save as web page (HTML)…', act: exportPage, disabled: !PAGE },
+];
+function imageMenu(x, y) { openMenu(x, y, EXPORT_ITEMS(), 'Export'); }
+
+// The shown signals as a spreadsheet (R48): a column per signal, in the
+// rows' order and formats, over the range shown; a row at each change of
+// any of them, or, counting cycles, at each rising edge of the clock (the
+// values a logic analyzer shows). Hex and binary values get 0x and 0b, so
+// spreadsheets keep them as text (1E5 isn't a number, 0010 keeps its zeros).
+const MAX_CSV_ROWS = 200000;
+function exportCSV() {
+  const rows = S.rows.filter((r) => r.v);
+  if (!rows.length) { toast('No signals are shown: nothing to export.'); return; }
+  let times;
+  if (counting()) times = S.edges.filter((t) => t >= S.start && t <= S.end);
+  else {
+    const set = new Set([Math.max(0, Math.round(S.start))]);
+    for (const r of rows) { const d = S.wave.data.get(r.v.id); for (let k = Math.max(0, idx(d.t, S.start)); k < d.t.length && d.t[k] <= S.end; k++) if (d.t[k] >= S.start) set.add(d.t[k]); }
+    times = [...set].sort((a, b) => a - b);
+  }
+  const cut = times.length > MAX_CSV_ROWS; if (cut) times = times.slice(0, MAX_CSV_ROWS);
+  const [unit, f] = unitFor();
+  const q = (x) => /[",\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x;
+  const name = (v) => v.path.split('.').slice(1).join('.') + (v.range && !v.name.includes('[') ? v.range : '');
+  const cell = (r, t) => {
+    const val = valueAt(r.v, t), txt = fmt(val, r.v.width, r.radix);
+    if (val == null || isX(val) || r.v.width === 1) return txt;
+    return r.radix === 'hex' ? '0x' + txt : r.radix === 'bin' ? '0b' + txt : txt;
+  };
+  const lines = [[...(counting() ? ['cycle'] : []), `time (${unit})`, ...rows.map((r) => name(r.v))].map(q).join(',')];
+  for (const t of times) {
+    const time = +(t * S.wave.ts / f).toFixed(6);
+    lines.push([...(counting() ? [Math.round(cyclePos(t))] : []), time, ...rows.map((r) => q(cell(r, t)))].join(','));
+  }
+  const base = S.file.replace(/\.vcd$/i, '');
+  saveFile(base + '.csv', 'text/csv', lines.join('\n') + '\n');
+  toast(`${hosted ? 'Exported' : 'Downloaded'} ${base}.csv: ${times.length.toLocaleString('en-US')} rows${cut ? ' (the first ones; zoom in for the rest)' : ''}.`);
+}
+
+// The view as a web page to share (R48): this page, with the view built in
+// (rows, groups, formats, zoom, cursor, marker, time base) and only the
+// shown signals (and the clock), so it's small and holds what was meant.
+// Anyone opens it in a browser; their changes stay in their copy.
+function exportPage() {
+  if (!PAGE) return;
+  const keep = new Set(S.rows.filter((r) => r.v).map((r) => r.v.path)); if (S.clock) keep.add(S.clock);
+  const vars = S.wave.vars.filter((v) => keep.has(v.path));
+  const ids = new Set(vars.map((v) => v.id));
+  // A VCD of those signals, written from the parsed waveform.
+  const tsm = /\$timescale\s+([\s\S]*?)\$end/.exec(DATA.vcd || '');
+  const out = [`$timescale ${tsm ? tsm[1].trim() : '1ns'} $end`];
+  const has = (n) => n.vars.some((v) => keep.has(v.path)) || n.children.some(has);
+  const scope = (n) => {
+    if (!has(n)) return;
+    out.push(`$scope ${n.kind || 'module'} ${n.name} $end`);
+    for (const v of n.vars) if (keep.has(v.path)) out.push(`$var ${v.type} ${v.width} ${v.id} ${v.name}${v.range && !v.name.includes('[') ? ' ' + v.range : ''} $end`);
+    n.children.forEach(scope); out.push('$upscope $end');
+  };
+  S.wave.root.children.forEach(scope);
+  out.push('$enddefinitions $end');
+  const ev = [];
+  for (const id of ids) {
+    const d = S.wave.data.get(id), v = vars.find((x) => x.id === id);
+    for (let k = 0; k < d.t.length; k++) {
+      const val = d.v[k];
+      ev.push([d.t[k], val[0] === 'r' ? `r${val.slice(1)} ${id}` : v.width === 1 && val.length === 1 ? val + id : `b${val} ${id}`]);
+    }
+  }
+  ev.sort((a, b) => a[0] - b[0]);
+  let last = null;
+  for (const [t, line] of ev) { if (t !== last) { out.push('#' + t); last = t; } out.push(line); }
+  if (last !== S.wave.end) out.push('#' + S.wave.end);
+  const data = { ...DATA, vcd: out.join('\n') + '\n', view: viewData(), focus: null,
+    order: (DATA.order || []).filter((p) => keep.has(p)) };
+  const json = JSON.stringify(data).replace(/<\//g, '<\\/');
+  const base = S.file.replace(/\.vcd$/i, '');
+  saveFile(base + '.html', 'text/html', PAGE.head + json + ';' + PAGE.tail);
+  toast(`${hosted ? 'Exported' : 'Downloaded'} ${base}.html: open it in any web browser.`);
 }
 $('#imageBtn').addEventListener('click', (e) => { const r = e.currentTarget.getBoundingClientRect(); imageMenu(r.left, r.bottom + 4); });
 function exportImage(kind) {
@@ -1625,9 +1711,7 @@ function timeMenu(t, x, y) {
     '-',
     { label: 'Reset the view', act: () => resetLayout() },
     '-',
-    { label: 'Copy image', act: copyImage },
-    { label: 'Save as PNG…', act: () => exportImage('png') },
-    { label: 'Save as SVG…', act: () => exportImage('svg') },
+    ...EXPORT_ITEMS(),
   ], fmtAt(Math.round(t)));
 }
 // Use a 1-bit signal as the clock (and count its cycles): in a row's menu and the signal list's.
