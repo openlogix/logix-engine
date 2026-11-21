@@ -1476,10 +1476,9 @@ function imageMenu(x, y) { openMenu(x, y, EXPORT_ITEMS(), 'Export'); }
 
 // A spreadsheet (R48), of all (every signal in the file over the whole run,
 // in the testbench's order, each in its usual format) or of what's shown
-// (the rows' signals, order and formats over the range on screen); a row at
+// (the rows' signals and order over the range on screen); a row at
 // each change of any of them, or, counting cycles, at each rising edge of
-// the clock (the values a logic analyzer shows). Hex and binary values get 0x and 0b, so
-// spreadsheets keep them as text (1E5 isn't a number, 0010 keeps its zeros).
+// the clock (the values a logic analyzer shows). Values are numbers (cell).
 const MAX_CSV_ROWS = 200000;
 function exportCSV(all) {
   let rows = S.rows.filter((r) => r.v);
@@ -1500,10 +1499,19 @@ function exportCSV(all) {
   const [unit, f] = unitFor();
   const q = (x) => /[",\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x;
   const name = (v) => v.path.split('.').slice(1).join('.') + (v.range && !v.name.includes('[') ? v.range : '');
+  // Numbers a spreadsheet can calculate and chart with (the user's
+  // decision, 2026-11-21): decimal, signed for signed signals (integers, or
+  // a row shown as Signed); unknown values (x, z) empty, which formulas and
+  // charts skip; buses over 48 bits as hex text with 0x, since spreadsheets
+  // keep only about 15 digits exactly.
+  let wide = false;
   const cell = (r, t) => {
-    const val = valueAt(r.v, t), txt = fmt(val, r.v.width, r.radix);
-    if (val == null || isX(val) || r.v.width === 1) return txt;
-    return r.radix === 'hex' ? '0x' + txt : r.radix === 'bin' ? '0b' + txt : txt;
+    const val = valueAt(r.v, t), w = r.v.width;
+    if (val == null || isX(val) || /[xz]/.test(val)) return '';
+    if (val[0] === 'r') return fmt(val, w, 'dec');
+    if (w === 1) return fmt(val, w, 'bin');
+    if (w > 48) { wide = true; return '0x' + fmt(val, w, 'hex'); }
+    return fmt(val, w, r.radix === 'signed' || r.v.type === 'integer' ? 'signed' : 'dec');
   };
   const lines = [[...(counting() ? ['cycle'] : []), `time (${unit})`, ...rows.map((r) => name(r.v))].map(q).join(',')];
   for (const t of times) {
@@ -1514,7 +1522,7 @@ function exportCSV(all) {
   const base = S.file.replace(/\.vcd$/i, '') + (all ? '-all' : '-shown');
   saveFile(base + '.csv', 'text/csv', lines.join('\n') + '\n');
   const what = all ? `all ${rows.length} signals, the whole run` : `${rows.length} shown signals, ${fmtAt(from)} to ${fmtAt(to)}`;
-  toast(`${hosted ? 'Exported' : 'Downloaded'} ${base}.csv: ${what}, ${times.length.toLocaleString('en-US')} rows${cut ? ` (only the first ${MAX_CSV_ROWS.toLocaleString('en-US')}: export what's shown, zoomed in, for the rest)` : ''}.`);
+  toast(`${hosted ? 'Exported' : 'Downloaded'} ${base}.csv: ${what}, ${times.length.toLocaleString('en-US')} rows, as numbers${wide ? ' (buses over 48 bits as 0x hex text)' : ''}${cut ? ` (only the first ${MAX_CSV_ROWS.toLocaleString('en-US')}: export what's shown, zoomed in, for the rest)` : ''}.`);
 }
 
 // The view as a web page to share (R48): this page, with the view built in
