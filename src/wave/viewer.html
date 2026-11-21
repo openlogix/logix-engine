@@ -89,25 +89,25 @@ button { font: inherit; color: inherit; }
 /* Viewer */
 .viewer { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; position: relative; }
 .toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-.group { display: flex; gap: 2px; background: var(--soft); border-radius: var(--radius); padding: 2px; }
-.group button { border: 0; background: none; height: 26px; min-width: 28px; padding: 0 8px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; color: var(--fg); }
-.group button:hover:not(:disabled) { background: var(--panel); }
-.group button:disabled { opacity: .35; cursor: default; }
+.btns { display: flex; gap: 2px; background: var(--soft); border-radius: var(--radius); padding: 2px; }
+.btns button { border: 0; background: none; height: 26px; min-width: 28px; padding: 0 8px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; color: var(--fg); }
+.btns button:hover:not(:disabled) { background: var(--panel); }
+.btns button:disabled { opacity: .35; cursor: default; }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 12px; }
 .keys kbd { font-family: var(--mono); font-size: 11px; background: var(--soft); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; white-space: nowrap; justify-self: start; }
-/* A comment row is a group's title: a gray band across the row, as the
+/* A group row is a group's title: a gray band across the row, as the
    board picker's family headings, and an arrow that folds the group. */
-.nrow.comment, .vrow.comment, .nrow.comment.sel, .vrow.comment.sel, .nrow.comment:hover { background: var(--group-bg); }
-.nrow.comment { cursor: pointer; }
+.nrow.group, .vrow.group, .nrow.group.sel, .vrow.group.sel, .nrow.group:hover { background: var(--group-bg); }
+.nrow.group { cursor: pointer; }
 .nrow .fold svg { width: 16px; height: 16px; display: block; margin: auto; }
 .nrow .fold { border: 0; background: none; color: var(--group-fg); width: 24px; height: 24px; margin-left: -6px; padding: 0; cursor: pointer; font-size: 17px; line-height: 24px; border-radius: 5px; flex: none; }
 .nrow .fold:hover { background: var(--soft); color: var(--fg); }
 .nrow .hidden-n { font-weight: 400; font-family: var(--mono); font-size: 11px; }
-.nrow.comment .nm { font-family: var(--font); font-weight: 600; font-size: 12px; color: var(--group-fg); letter-spacing: .02em; }
+.nrow.group .nm { font-family: var(--font); font-weight: 600; font-size: 12px; color: var(--group-fg); letter-spacing: .02em; }
 .nrow.blank .nm { color: var(--muted); font-size: 11px; opacity: 0; }
 .nrow.blank:hover .nm { opacity: .7; }
 .pop input[type=text] { width: 100%; box-sizing: border-box; height: 30px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); padding: 0 8px; font: inherit; }
-.group button svg { width: 15px; height: 15px; }
+.btns button svg { width: 15px; height: 15px; }
 .fail-chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--fail) 45%, transparent); background: color-mix(in srgb, var(--fail) 10%, transparent); color: var(--fail); font-weight: 600; cursor: pointer; }
 .fail-chip[hidden] { display: none; }
 .failbar { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--fail) 9%, var(--panel)); color: var(--fg); font-size: 12.5px; flex-wrap: wrap; }
@@ -262,7 +262,7 @@ button { font: inherit; color: inherit; }
     <div class="file"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg><b id="fileName">uart_tb.vcd</b></div>
     <div class="spacer"></div>
     <button class="btn browser-toggle" id="browserToggle" aria-label="Show signals">Signals</button>
-    <div class="group" role="group" aria-label="Undo">
+    <div class="btns" role="group" aria-label="Undo">
       <button id="undoBtn" title="Undo (⌘Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
       <button id="redoBtn" title="Redo (⇧⌘Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg></button>
     </div>
@@ -282,12 +282,12 @@ button { font: inherit; color: inherit; }
 
   <main class="viewer" id="viewer">
     <div class="toolbar">
-      <div class="group" role="group" aria-label="Zoom">
+      <div class="btns" role="group" aria-label="Zoom">
         <button id="zoomOut" title="Zoom out (−)" aria-label="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
         <button id="zoomIn" title="Zoom in (+)" aria-label="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
         <button id="fit" title="Show the whole simulation (F)">Fit</button>
       </div>
-      <div class="group" role="group" aria-label="Move the cursor">
+      <div class="btns" role="group" aria-label="Move the cursor">
         <button id="prevEdge" title="Previous change of the selected signal (←)" aria-label="Previous change"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
         <button id="nextEdge" title="Next change of the selected signal (→)" aria-label="Next change"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
         <button id="setMarker" title="Put the marker at the cursor, to measure from it (M)">Marker</button>
@@ -524,29 +524,29 @@ function rowLabel(v) {
 }
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
 
-// The rows shown, as indexes into S.rows: a collapsed comment row hides the
-// rows below it, blank rows included, up to the next comment row (its group).
+// The rows shown, as indexes into S.rows: a collapsed group row hides the
+// rows below it, blank rows included, up to the next group row.
 function visible() {
   const out = []; let hide = false;
   S.rows.forEach((r, i) => {
-    if (r.kind === 'comment') { hide = !!r.collapsed; out.push(i); }
+    if (r.kind === 'group') { hide = !!r.collapsed; out.push(i); }
     else if (!hide) out.push(i);
   });
   return out;
 }
-// How many signals a comment row's group has (its blank rows aren't counted).
-function groupSize(i) { let n = 0; for (let j = i + 1; j < S.rows.length && S.rows[j].kind !== 'comment'; j++) if (S.rows[j].v) n++; return n; }
+// How many signals a group has (its blank rows aren't counted).
+function groupSize(i) { let n = 0; for (let j = i + 1; j < S.rows.length && S.rows[j].kind !== 'group'; j++) if (S.rows[j].v) n++; return n; }
 // The row (an index into S.rows) at a height in the rows area, or -1.
 function rowAtY(y) { const v = visible()[Math.floor(y / S.rowH)]; return v == null ? -1 : v; }
 function toggleGroup(i) {
-  const r = S.rows[i]; if (!r || r.kind !== 'comment') return;
+  const r = S.rows[i]; if (!r || r.kind !== 'group') return;
   r.collapsed = !r.collapsed;
   if (r.collapsed && S.sel > i && !visible().includes(S.sel)) S.sel = i;
   renderRows(); commit();
 }
 function renderRows() {
   document.documentElement.style.setProperty('--row-h', S.rowH + 'px');
-  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'comment' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'comment' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}</span></div>`; }).join('');
+  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}</span></div>`; }).join('');
   $('#empty').hidden = S.rows.length > 0;
   renderValues(); renderTree(); draw();
 }
@@ -583,7 +583,7 @@ function inOrder(vars) {
 }
 // New signals go right after the selected row (at the end when none is
 // selected), and the last one added becomes the selection, so picking a
-// comment row, then ticking signals, builds a group in place.
+// group row, then ticking signals, builds a group in place.
 function insertSignals(vars) {
   let at = S.sel >= 0 ? S.sel + 1 : S.rows.length;
   for (const v of vars) { S.rows.splice(at, 0, sigRow(v, S.rows.length)); S.sel = at; at++; }
@@ -653,7 +653,7 @@ function draw() {
   shown.forEach((i, pos) => {
     const r = S.rows[i], y0 = pos * S.rowH;
     if (i === S.sel) { ctx.fillStyle = C.sel; ctx.fillRect(0, y0, W, S.rowH); }
-    if (r.kind === 'comment') { ctx.fillStyle = C.group; ctx.fillRect(0, y0, W, S.rowH); }
+    if (r.kind === 'group') { ctx.fillStyle = C.group; ctx.fillRect(0, y0, W, S.rowH); }
     ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(0, y0 + S.rowH - .5); ctx.lineTo(W, y0 + S.rowH - .5); ctx.stroke();
     if (!r.v) return;
     const color = tok(css, '--s' + r.color);
@@ -838,15 +838,15 @@ ruler.addEventListener('pointerleave', hideTip);
 ruler.addEventListener('click', (e) => { const r = ruler.getBoundingClientRect(); const t = timeAtX(e.clientX - r.left); if (e.shiftKey) { S.marker = Math.round(t); draw(); } else setCursor(t); });
 
 /* ---------- Names column: select, options, reorder ---------- */
-// A click selects a row; on a comment row, anywhere on it, it also folds or
+// A click selects a row; on a group row, anywhere on it, it also folds or
 // unfolds its group, as the family headings in Logix IDE's board picker
-// (the user's request, 2026-11-21). The comment's text is edited from its
+// (the user's request, 2026-11-21). The group's name is edited from its
 // right-click menu, Edit the text.
 $('#names').addEventListener('click', (e) => {
   const rowEl = e.target.closest('.nrow'); if (!rowEl) return;
   const i = +rowEl.dataset.i;
   S.sel = i;
-  if (S.rows[i] && S.rows[i].kind === 'comment') toggleGroup(i);
+  if (S.rows[i] && S.rows[i].kind === 'group') toggleGroup(i);
   else renderRows();
 });
 // Double-click a signal's name: its declaration, in hosts that can (R27).
@@ -860,8 +860,8 @@ $('#names').addEventListener('dragstart', (e) => { const el = e.target.closest('
 $('#names').addEventListener('dragover', (e) => { if (dragRow == null) return; e.preventDefault(); document.querySelectorAll('.nrow.drop').forEach((n) => n.classList.remove('drop')); const el = e.target.closest('.nrow'); if (el) el.classList.add('drop'); });
 $('#names').addEventListener('drop', (e) => {
   if (dragRow == null) return; e.preventDefault(); e.stopPropagation();
-  const el = e.target.closest('.nrow'); const to = el ? +el.dataset.i : S.rows.length - 1;
-  const [r] = S.rows.splice(dragRow, 1); S.rows.splice(to, 0, r); S.sel = to; dragRow = null; renderRows();
+  const el = e.target.closest('.nrow'), v = visible(); const to = el ? +el.dataset.i : v[v.length - 1];
+  moveBlock(dragRow, to); dragRow = null;
 });
 $('#names').addEventListener('dragend', () => { dragRow = null; document.querySelectorAll('.nrow.drop').forEach((n) => n.classList.remove('drop')); });
 
@@ -874,17 +874,17 @@ function placePop(el, anchor) {
   el.style.left = Math.max(8, Math.min(a.left, window.innerWidth - w - 8)) + 'px';
   el.style.top = (a.bottom + h + 8 > window.innerHeight ? Math.max(8, a.top - h - 6) : a.bottom + 6) + 'px';
 }
-// The comment or blank row's box: a comment's text, and Remove.
+// The group or blank row's box: a group's name, and Remove.
 function openRowPop(i, anchor) {
   closePop(); const r = S.rows[i]; if (!r || r.v) return;
   return openPlainRowPop(r, anchor);
 }
 function openPlainRowPop(r, anchor) {
   const el = document.createElement('div'); el.className = 'pop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Row options');
-  el.innerHTML = `<h3>${r.kind === 'comment' ? 'Comment row' : 'Blank row'}</h3>
-    ${r.kind === 'comment' ? `<div><div class="lbl">Text</div><input type="text" id="commentText" value="${esc(r.text)}"></div>` : ''}
+  el.innerHTML = `<h3>${r.kind === 'group' ? 'Group' : 'Blank row'}</h3>
+    ${r.kind === 'group' ? `<div><div class="lbl">Name</div><input type="text" id="groupName" value="${esc(r.text)}"></div>` : ''}
     <div class="actions"><button class="btn danger" data-act="remove">Remove</button></div>`;
-  el.addEventListener('input', (e) => { if (e.target.id === 'commentText') { r.text = e.target.value; const n = document.querySelector(`.nrow[data-i="${S.rows.indexOf(r)}"] .nm`); if (n) n.textContent = r.text; } });
+  el.addEventListener('input', (e) => { if (e.target.id === 'groupName') { r.text = e.target.value; const n = document.querySelector(`.nrow[data-i="${S.rows.indexOf(r)}"] .nm`); if (n) n.textContent = r.text; } });
   el.addEventListener('change', () => commit());
   el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { commit(); closePop(); } });
   el.addEventListener('click', (e) => {
@@ -893,7 +893,7 @@ function openPlainRowPop(r, anchor) {
     if (b.dataset.act === 'remove') { S.rows.splice(cur, 1); S.sel = -1; closePop(); renderRows(); }
   });
   placePop(el, anchor);
-  const input = el.querySelector('#commentText'); if (input) { input.focus(); input.select(); }
+  const input = el.querySelector('#groupName'); if (input) { input.focus(); input.select(); }
 }
 function openHelp(anchor) {
   closePop();
@@ -1050,21 +1050,21 @@ function defaultRows() {
 }
 function serRow(r) {
   if (r.v) return { signal: r.v.path, show_as: r.radix, color: r.color };
-  return r.kind === 'comment' ? (r.collapsed ? { comment: r.text, collapsed: true } : { comment: r.text }) : { blank: true };
+  return r.kind === 'group' ? (r.collapsed ? { group: r.text, collapsed: true } : { group: r.text }) : { blank: true };
 }
 function deserRow(o) {
   if (o.signal) { const v = varByPath().get(o.signal); return v && { kind: 'signal', v, radix: o.show_as || 'hex', color: o.color || 1 }; }
-  if (o.comment != null) return { kind: 'comment', text: String(o.comment), collapsed: !!o.collapsed };
+  if (o.group != null) return { kind: 'group', text: String(o.group), collapsed: !!o.collapsed };
   if (o.blank) return { kind: 'blank' };
   return null;
 }
 function addRowAt(kind, at) {
-  const r = kind === 'comment' ? { kind, text: 'New group' } : { kind };
+  const r = kind === 'group' ? { kind, text: 'New group' } : { kind };
   S.rows.splice(at, 0, r); S.sel = at;
   // A row added inside a collapsed group (a blank row below it) opens the group, so it shows.
-  if (!visible().includes(at)) for (let j = at - 1; j >= 0; j--) if (S.rows[j].kind === 'comment') { S.rows[j].collapsed = false; break; }
+  if (!visible().includes(at)) for (let j = at - 1; j >= 0; j--) if (S.rows[j].kind === 'group') { S.rows[j].collapsed = false; break; }
   renderRows(); commit();
-  if (kind === 'comment') openRowPop(S.sel, $(`.nrow[data-i="${S.sel}"]`));
+  if (kind === 'group') openRowPop(S.sel, $(`.nrow[data-i="${S.sel}"]`));
 }
 function resetLayout() {
   S.rows = defaultRows(); S.sel = -1; S.cursor = null; S.marker = null;
@@ -1095,7 +1095,7 @@ function updUndo() {
   $('#undoBtn').disabled = !H.past.length && !H.timer; $('#redoBtn').disabled = !H.future.length;
 }
 // Every gesture ends in one of these; commit() records it only if something changed.
-// Typing a comment's text is one step, taken when it's done (Enter or leaving the field).
+// Typing a group's name is one step, taken when it's done (Enter or leaving the field).
 for (const ev of ['click', 'pointerup', 'drop', 'keyup']) document.addEventListener(ev, (e) => { if (!e.target.closest?.('input')) setTimeout(commit); }, true);
 $('#wavecol').addEventListener('wheel', () => { commitSoon(); $('#undoBtn').disabled = false; }, { passive: true });
 $('#undoBtn').addEventListener('click', (e) => { e.stopPropagation(); undo(); });
@@ -1185,8 +1185,8 @@ function viewSvg() {
   if (valW > 20) out.push(`<text x="${left - 12}" y="15" fill="${tok('--muted')}" text-anchor="end" dominant-baseline="central" style="font:600 11px ${esc(mono)}">VALUE</text>`);
   shownRows.forEach((i, k) => {
     const r = S.rows[i], y = 30 + k * S.rowH + S.rowH / 2, color = r.v ? tok('--s' + r.color) : tok('--group-fg');
-    if (r.kind === 'comment') out.push(`<rect x="0" y="${30 + k * S.rowH}" width="${left}" height="${S.rowH}" fill="${tok('--group-bg')}"/>`);
-    const label = r.v ? r.v.path.split('.').slice(1).join('.') + (r.v.range && !r.v.name.includes('[') ? r.v.range : '') : r.kind === 'comment' ? r.text : '';
+    if (r.kind === 'group') out.push(`<rect x="0" y="${30 + k * S.rowH}" width="${left}" height="${S.rowH}" fill="${tok('--group-bg')}"/>`);
+    const label = r.v ? r.v.path.split('.').slice(1).join('.') + (r.v.range && !r.v.name.includes('[') ? r.v.range : '') : r.kind === 'group' ? r.text : '';
     out.push(`<text x="10" y="${y}" fill="${r.v ? tok('--fg') : color}" dominant-baseline="central" style="font:${r.v ? '' : '600 '}12px ${esc(mono)}">${esc(label)}</text>`);
     if (r.v && valW > 20 && S.cursor != null) out.push(`<text x="${left - 12}" y="${y}" fill="${color}" text-anchor="end" dominant-baseline="central" style="font:500 12px ${esc(mono)}">${esc(fmt(valueAt(r.v, S.cursor), r.v.width, r.radix))}</text>`);
   });
@@ -1218,7 +1218,7 @@ function exportImage(kind) {
 
 /* ---------- The right-click menu ---------- */
 // The viewer's own menu, with what makes sense for what was clicked (a
-// signal's row, a comment row, the time ruler, the signal list), in place
+// signal's row, a group row, the time ruler, the signal list), in place
 // of the browser's. Text fields keep the browser's menu, for Paste.
 let ctx = null;
 function closeMenu() { if (ctx) { ctx.remove(); ctx = null; } }
@@ -1257,7 +1257,24 @@ document.addEventListener('keydown', (e) => {
 function copyText(t) { try { navigator.clipboard.writeText(t).catch(() => {}); } catch (_) {} }
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
 
-function moveRow(i, d) { const j = i + d; if (j < 0 || j >= S.rows.length) return; const [r] = S.rows.splice(i, 1); S.rows.splice(j, 0, r); S.sel = j; renderRows(); }
+// A row and what moves with it: a collapsed group takes its hidden rows
+// along, and stays collapsed (the user's request, 2026-11-21).
+function blockLen(i) {
+  const r = S.rows[i]; if (!r || r.kind !== 'group' || !r.collapsed) return 1;
+  let j = i + 1; while (j < S.rows.length && S.rows[j].kind !== 'group') j++;
+  return j - i;
+}
+// Moves row `from` (with its block) to the place of the shown row `to`:
+// above it when moving up, below it (and below its hidden rows) when moving down.
+function moveBlock(from, to) {
+  const len = blockLen(from);
+  if (to == null || to < 0 || (to >= from && to < from + len)) return;
+  const at = to > from ? to + blockLen(to) - len : to;
+  const block = S.rows.splice(from, len); S.rows.splice(at, 0, ...block);
+  S.sel = at; renderRows();
+}
+// Alt+Up and Alt+Down: past the next shown row, a collapsed group as one.
+function moveRow(i, d) { const v = visible(), k = v.indexOf(i); moveBlock(i, v[k + d]); }
 function removeRow(i) { S.rows.splice(i, 1); S.sel = -1; renderRows(); }
 function timeItems(t) {
   return [
@@ -1271,19 +1288,19 @@ function rowMenu(i, t, x, y) {
   // Below a collapsed group means after the rows it hides, so the new row shows.
   const v = visible(), below = v[v.indexOf(i) + 1] ?? S.rows.length;
   const common = [
-    { label: 'Add a comment row above', act: () => addRowAt('comment', i) },
-    { label: 'Add a comment row below', act: () => addRowAt('comment', below) },
+    { label: 'Add a group above', act: () => addRowAt('group', i) },
+    { label: 'Add a group below', act: () => addRowAt('group', below) },
     { label: 'Add a blank row above', act: () => addRowAt('blank', i) },
     { label: 'Add a blank row below', act: () => addRowAt('blank', below) },
   ];
   if (!r.v) {
     openMenu(x, y, [
       ...(t != null ? [...timeItems(t), '-'] : []),
-      r.kind === 'comment' ? { label: 'Edit the text…', act: () => openRowPop(i, $(`.nrow[data-i="${i}"]`)) } : null,
-      r.kind === 'comment' ? { label: r.collapsed ? `Show the group (${groupSize(i)} signals)` : 'Collapse the group', act: () => toggleGroup(i) } : null,
+      r.kind === 'group' ? { label: 'Rename the group…', act: () => openRowPop(i, $(`.nrow[data-i="${i}"]`)) } : null,
+      r.kind === 'group' ? { label: r.collapsed ? `Show the group (${groupSize(i)} signals)` : 'Collapse the group', act: () => toggleGroup(i) } : null,
       ...common, '-',
       { label: 'Remove this row', key: 'Delete', danger: true, act: () => removeRow(i) },
-    ], r.kind === 'comment' ? 'Comment: ' + r.text : 'Blank row');
+    ], r.kind === 'group' ? 'Group: ' + r.text : 'Blank row');
     return;
   }
   const at = t != null ? t : S.cursor;
@@ -1308,7 +1325,7 @@ function timeMenu(t, x, y) {
     { label: 'Zoom out here', act: () => zoom(2, t) },
     { label: 'Show the whole run', key: 'F', act: () => setView(0, S.wave.end) },
     '-',
-    { label: 'Add a comment row', act: () => addRowAt('comment', S.rows.length) },
+    { label: 'Add a group', act: () => addRowAt('group', S.rows.length) },
     { label: 'Add a blank row', act: () => addRowAt('blank', S.rows.length) },
     '-',
     { label: 'Reset the view', act: () => resetLayout() },
