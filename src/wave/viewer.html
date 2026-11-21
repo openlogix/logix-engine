@@ -182,6 +182,7 @@ button { font: inherit; color: inherit; }
 .status .help { margin-left: auto; }
 /* On a line of their own (a narrow window), the hints start at the left, as the line above. */
 .status.wrapped .help { margin-left: 0; }
+.app.no-hints .status .help, .app.no-hints .browser > .hint { display: none; }
 
 /* A short message after an action that shows nothing by itself, such as a
    download. */
@@ -1088,12 +1089,14 @@ function openSettings(anchor) {
   el.innerHTML = `<div><div class="lbl">Time scale</div><div class="seg"><button data-scale="time" class="${counting() ? '' : 'on'}">Time</button><button data-scale="cycles" class="${counting() ? 'on' : ''}" title="Count clock cycles instead of time">Clock cycles</button></div>${clockLine}</div>
     <div><div class="lbl">Row height</div>${seg('rows', [[24, 'Compact'], [30, 'Normal'], [38, 'Roomy']])}</div>
     <label class="check"><input type="checkbox" id="gridChk" ${S.grid ? 'checked' : ''}> Grid lines</label>
+    <label class="check" title="The mouse hints at the bottom and under the signal list"><input type="checkbox" id="hintsChk" ${hintsShown() ? 'checked' : ''}> Show hints</label>
     <div class="actions"><button class="btn" data-act="reset" title="Back to the testbench's own signals and the whole run. You can undo it.">Reset view</button></div>
     <div class="actions"><button class="btn" data-act="valcol">${valHidden() ? 'Show' : 'Hide'} the Value column</button><button class="btn" data-act="widths">Reset column widths</button></div>
     `;
   el.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (e.target.id === 'gridChk') { S.grid = e.target.checked; draw(); return; }
+    if (e.target.id === 'hintsChk') { setHints(e.target.checked); return; }
     if (!b) return;
     if (b.dataset.rows) { S.rowH = +b.dataset.rows; renderRows(); }
     if (b.dataset.scale) setScale(b.dataset.scale === 'cycles');
@@ -1686,6 +1689,15 @@ function setBrowser(shown) {
   store.set('wv.browser', shown ? '1' : '0');
 }
 setBrowser(store.get('wv.browser') !== '0');
+// Hints for people new to the viewer (the mouse hints at the bottom, the
+// one under the signal list), which experienced users may hide (R47): a
+// per-user choice, kept in the browser, not in the view.
+function hintsShown() { return !$('#app').classList.contains('no-hints'); }
+function setHints(on) {
+  $('#app').classList.toggle('no-hints', !on); store.set('wv.hints', on ? '1' : '0');
+  placeHelp();
+}
+setHints(store.get('wv.hints') !== '0');
 $('#sideBtn').onclick = () => setBrowser($('#app').classList.contains('no-browser'));
 
 function placeGrips() {
