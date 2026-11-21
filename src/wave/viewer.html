@@ -138,6 +138,7 @@ button { font: inherit; color: inherit; }
 .nrow:hover, .nrow.sel, .vrow.sel { background: var(--sel); }
 .nrow.sel { box-shadow: inset 2px 0 0 var(--c); }
 .nrow.drop { box-shadow: inset 0 2px 0 var(--accent); }
+.nrow.drop-below { box-shadow: inset 0 -2px 0 var(--accent); }
 .nrow .dot { width: 8px; height: 8px; border-radius: 3px; background: var(--c); flex: none; }
 .nrow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; }
 .nrow .sc { color: var(--muted); }
@@ -857,13 +858,27 @@ $('#names').addEventListener('dblclick', (e) => {
 });
 let dragRow = null;
 $('#names').addEventListener('dragstart', (e) => { const el = e.target.closest('.nrow'); if (!el) return; dragRow = +el.dataset.i; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', ''); } catch (_) {} });
-$('#names').addEventListener('dragover', (e) => { if (dragRow == null) return; e.preventDefault(); document.querySelectorAll('.nrow.drop').forEach((n) => n.classList.remove('drop')); const el = e.target.closest('.nrow'); if (el) el.classList.add('drop'); });
-$('#names').addEventListener('drop', (e) => {
-  if (dragRow == null) return; e.preventDefault(); e.stopPropagation();
-  const el = e.target.closest('.nrow'), v = visible(); const to = el ? +el.dataset.i : v[v.length - 1];
-  moveBlock(dragRow, to); dragRow = null;
+// Where a dragged row goes, from the pointer's height: the upper half of a
+// row drops above it, the lower half below it (below a collapsed group's
+// hidden rows), and the empty space under the last row at the end.
+function dropAt(y) {
+  const v = visible(), top = $('#names').getBoundingClientRect().top;
+  const k = Math.floor((y - top) / S.rowH);
+  if (k >= v.length) return { at: S.rows.length, el: v.length ? v[v.length - 1] : null, below: true };
+  const t = v[Math.max(0, k)], below = (y - top) - Math.max(0, k) * S.rowH >= S.rowH / 2;
+  return { at: below ? t + blockLen(t) : t, el: t, below };
+}
+function clearDrop() { document.querySelectorAll('.nrow.drop, .nrow.drop-below').forEach((n) => n.classList.remove('drop', 'drop-below')); }
+$('#rows').addEventListener('dragover', (e) => {
+  if (dragRow == null) return; e.preventDefault(); clearDrop();
+  const d = dropAt(e.clientY), el = d.el != null && $(`.nrow[data-i="${d.el}"]`);
+  if (el) el.classList.add(d.below ? 'drop-below' : 'drop');
 });
-$('#names').addEventListener('dragend', () => { dragRow = null; document.querySelectorAll('.nrow.drop').forEach((n) => n.classList.remove('drop')); });
+$('#rows').addEventListener('drop', (e) => {
+  if (dragRow == null) return; e.preventDefault(); e.stopPropagation();
+  clearDrop(); moveBlockTo(dragRow, dropAt(e.clientY).at); dragRow = null;
+});
+$('#names').addEventListener('dragend', () => { dragRow = null; clearDrop(); });
 
 /* ---------- Popovers ---------- */
 let pop = null;
@@ -1264,17 +1279,19 @@ function blockLen(i) {
   let j = i + 1; while (j < S.rows.length && S.rows[j].kind !== 'group') j++;
   return j - i;
 }
-// Moves row `from` (with its block) to the place of the shown row `to`:
-// above it when moving up, below it (and below its hidden rows) when moving down.
-function moveBlock(from, to) {
+// Moves row `from` with its block so that it lands before the row now at
+// index `at` (S.rows.length: at the end).
+function moveBlockTo(from, at) {
   const len = blockLen(from);
-  if (to == null || to < 0 || (to >= from && to < from + len)) return;
-  const at = to > from ? to + blockLen(to) - len : to;
-  const block = S.rows.splice(from, len); S.rows.splice(at, 0, ...block);
-  S.sel = at; renderRows();
+  if (at == null || (at >= from && at <= from + len)) return;
+  const block = S.rows.splice(from, len); if (at > from) at -= len;
+  S.rows.splice(at, 0, ...block); S.sel = at; renderRows();
 }
 // Alt+Up and Alt+Down: past the next shown row, a collapsed group as one.
-function moveRow(i, d) { const v = visible(), k = v.indexOf(i); moveBlock(i, v[k + d]); }
+function moveRow(i, d) {
+  const v = visible(), n = v[v.indexOf(i) + d]; if (n == null) return;
+  moveBlockTo(i, d > 0 ? n + blockLen(n) : n);
+}
 function removeRow(i) { S.rows.splice(i, 1); S.sel = -1; renderRows(); }
 function timeItems(t) {
   return [
