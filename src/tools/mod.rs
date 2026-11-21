@@ -119,6 +119,25 @@ pub fn definition<T: EngineTool>() -> Tool {
 }
 
 /// All tools, in the order `tools/list` returns them.
+/// The tools that read boards, so they load the catalog first
+/// (`EngineState::ensure_catalog`). Every tool whose input names a board is
+/// here (a test checks it): simulate and test were missing, so a client
+/// whose first call was one of them got "isn't a board in the catalog",
+/// found 2026-11-21 (Logix IDE always loads the board list first).
+const READS_BOARDS: [&str; 11] = [
+    get_catalog::GetCatalog::NAME,
+    compare_boards::CompareBoards::NAME,
+    build::Build::NAME,
+    lint::Lint::NAME,
+    test::Test::NAME,
+    simulate::Simulate::NAME,
+    diagram::Diagram::NAME,
+    list_devices::ListDevices::NAME,
+    program_board::ProgramBoard::NAME,
+    install_driver::InstallDriver::NAME,
+    uninstall_driver::UninstallDriver::NAME,
+];
+
 pub fn all_definitions() -> Vec<Tool> {
     vec![
         definition::<get_engine_info::GetEngineInfo>(),
@@ -269,18 +288,7 @@ pub async fn call(
         log::info!("Before {name}: {}", e.message);
     }
     // The tools that read boards load the catalog first.
-    if [
-        GetCatalog::NAME,
-        CompareBoards::NAME,
-        Build::NAME,
-        Lint::NAME,
-        Diagram::NAME,
-        ListDevices::NAME,
-        ProgramBoard::NAME,
-        InstallDriver::NAME,
-        UninstallDriver::NAME,
-    ]
-    .contains(&name)
+    if READS_BOARDS.contains(&name)
         && let Err(e) = state.ensure_catalog(call).await
     {
         return Some(to_call_result::<()>(display, with_commands(Err(e), call)));
@@ -466,6 +474,22 @@ pub async fn call(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_tool_that_names_a_board_loads_the_catalog_first() {
+        for tool in all_definitions() {
+            let props = tool
+                .input_schema
+                .get("properties")
+                .and_then(|p| p.as_object());
+            let names_board =
+                props.is_some_and(|p| p.contains_key("board") || p.contains_key("from_board"));
+            if names_board {
+                assert!(READS_BOARDS.contains(&&*tool.name), "{}", tool.name);
+            }
+        }
+        assert!(READS_BOARDS.contains(&get_catalog::GetCatalog::NAME));
+    }
 
     #[test]
     fn every_tool_has_object_schemas_and_a_description() {
