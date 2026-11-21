@@ -645,7 +645,7 @@ function renderValues() {
 function renderTree() {
   const q = $('#search').value.trim().toLowerCase();
   const shown = new Set(S.rows.filter((r) => r.v).map((r) => r.v.path));
-  const varBtn = (v, label) => `<button class="var ${shown.has(v.path) ? 'on' : ''}" data-path="${esc(v.path)}" title="${esc(v.path)}"><span class="chk"></span><span class="nm">${esc(label)}</span>${v.width > 1 ? `<span class="w">${v.width} bits</span>` : ''}</button>`;
+  const varBtn = (v, label) => `<button class="var ${shown.has(v.path) ? 'on' : ''}" data-path="${esc(v.path)}" title="${esc(v.path)}"><span class="chk"></span><span class="nm">${esc(label)}${counting() && S.clock === v.path ? CLOCK_BADGE : ''}</span>${v.width > 1 ? `<span class="w">${v.width} bits</span>` : ''}</button>`;
   if (q) {
     const hits = S.wave.vars.filter((v) => v.path.toLowerCase().includes(q));
     $('#tree').innerHTML = hits.length ? hits.map((v) => varBtn(v, v.path)).join('') : '<p class="hint" style="border:0">No signal matches.</p>';
@@ -1464,9 +1464,7 @@ function rowMenu(i, t, x, y) {
     { html: `<div class="lbl">Color</div><div class="swatches">${[1, 2, 3, 4, 5, 6].map((c) => `<button data-color="${c}" style="--c:var(--s${c})" class="${r.color === c ? 'on' : ''}" aria-label="Color ${c}"></button>`).join('')}</div>`,
       click: (e) => { const b = e.target.closest('[data-color]'); if (!b) return false; r.color = +b.dataset.color; renderRows(); } },
     '-', ...common, '-',
-    ...(isClockable(r.v) ? [counting() && S.clock === r.v.path
-      ? { label: 'Stop counting cycles of this clock', act: () => useClock(null) }
-      : { label: 'Count cycles of this clock', act: () => useClock(r.v.path) }, '-'] : []),
+    ...(isClockable(r.v) ? [clockItem(r.v.path), '-'] : []),
     { label: 'Copy the name', act: () => copyText(r.v.path) },
     { label: val != null ? `Copy the value (${val.length > 14 ? val.slice(0, 13) + '…' : val})` : 'Copy the value', disabled: val == null, act: () => copyText(val) },
     '-',
@@ -1490,11 +1488,22 @@ function timeMenu(t, x, y) {
     { label: 'Save as SVG…', act: () => exportImage('svg') },
   ], fmtAt(Math.round(t)));
 }
+// Count, or stop counting, cycles of a 1-bit signal: in a row's menu and the signal list's.
+function clockItem(path) {
+  return counting() && S.clock === path
+    ? { label: 'Stop counting cycles of this clock', act: () => useClock(null) }
+    : { label: 'Count cycles of this clock', act: () => useClock(path) };
+}
 function treeMenu(e) {
   const v = e.target.closest('.var'), sc = e.target.closest('.scope-h');
   if (v) {
     const shown = S.rows.some((r) => r.v && r.v.path === v.dataset.path);
-    openMenu(e.clientX, e.clientY, [{ label: shown ? 'Hide this signal' : 'Show this signal', act: () => toggleVar(v.dataset.path) }], v.dataset.path);
+    const x = varByPath().get(v.dataset.path);
+    // The clock can be chosen here too, even while its row is hidden.
+    openMenu(e.clientX, e.clientY, [
+      { label: shown ? 'Hide this signal' : 'Show this signal', act: () => toggleVar(v.dataset.path) },
+      ...(isClockable(x) ? ['-', clockItem(x.path)] : []),
+    ], v.dataset.path);
   } else if (sc) {
     const p = sc.dataset.scope, vars = S.wave.vars.filter((x) => x.path.split('.').slice(0, -1).join('.') === p && x.type !== 'parameter');
     const shown = new Set(S.rows.filter((r) => r.v).map((r) => r.v.path));
