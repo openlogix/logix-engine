@@ -11,7 +11,7 @@
   // the newest release on prod in assign.jsonc. Set it when promoting.
   "latest": {
     "repo": "openlogix/logix-engine",
-    "release": "2026-11-17",
+    "release": "2026-11-21",
     "file": "logix-engine-${PLATFORM}-${YYYYMMDD}.tgz"
   },
   "dependencies": {
@@ -30,9 +30,12 @@
 
     // The boards and FPGAs.
     // Pinned at the first promotion, 2026-11-13.
+    // 2026-11-21, a promotion: the UART of the Alhambra II, iCESugar Pro,
+    // Tang Nano 9K and Arty A7-35T (logix-catalog#1), for Logix IDE's
+    // Serial Monitor and serial examples.
     "logix-catalog": {
       "repo": "openlogix/logix-catalog",
-      "release": "2026-11-11",
+      "release": "2026-11-19",
       "file": "logix-catalog-${YYYYMMDD}.tgz"
     }
   }
