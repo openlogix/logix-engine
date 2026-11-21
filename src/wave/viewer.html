@@ -180,6 +180,8 @@ button { font: inherit; color: inherit; }
 .clockline code { color: var(--fg); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .clockline .btn { height: 24px; padding: 0 8px; margin-left: auto; }
 .status .help { margin-left: auto; }
+/* On a line of their own (a narrow window), the hints start at the left, as the line above. */
+.status.wrapped .help { margin-left: 0; }
 
 /* A short message after an action that shows nothing by itself, such as a
    download. */
@@ -830,6 +832,14 @@ function draw() {
   if (S.hoverT != null) vline(S.hoverT, S.hoverSnap ? C.accent : C.muted, S.hoverSnap ? [3, 2] : [1, 3]);
   renderStatus();
 }
+// Whether the hints wrapped to a line of their own.
+function placeHelp() {
+  const st = $('#status'), help = st.querySelector('.help'), first = st.firstElementChild;
+  if (!help || !first) return;
+  st.classList.remove('wrapped');
+  st.classList.toggle('wrapped', help.offsetTop > first.offsetTop + 2);
+}
+new ResizeObserver(placeHelp).observe(document.getElementById('status'));
 function renderStatus() {
   const parts = [];
   const delta = () => {
@@ -844,6 +854,7 @@ function renderStatus() {
 
   parts.push(`<span class="help">Click: cursor · Shift+click: marker · Drag: pan · Wheel or pinch: zoom · Right-click: options</span>`);
   $('#status').innerHTML = parts.join('');
+  placeHelp();
 }
 
 /* ---------- View ---------- */
