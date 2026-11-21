@@ -1463,19 +1463,19 @@ function copyImage() {
       .then(() => toast('Copied a picture of the waves: paste it into a message or a document.'), failed);
   } catch (_) { failed(); }
 }
-// In groups divided by lines, each entry saying all it does (the user's
-// design, 2026-11-21): pictures are of what's shown; spreadsheets and web
+// In groups divided by lines, each entry short but saying what it makes
+// (the user's design, 2026-11-21): pictures are of what's shown; spreadsheets and web
 // pages of all signals or of the shown ones.
 const EXPORT_ITEMS = () => [
-  { label: 'Copy image of the view', act: copyImage },
-  { label: 'Save image of the view as PNG…', act: () => exportImage('png') },
-  { label: 'Save image of the view as SVG…', act: () => exportImage('svg') },
+  { label: 'Copy image', act: copyImage },
+  { label: 'Save image as PNG…', act: () => exportImage('png') },
+  { label: 'Save image as SVG…', act: () => exportImage('svg') },
   '-',
-  { label: 'Save all signals as spreadsheet (CSV)…', act: () => exportCSV(true) },
-  { label: 'Save shown signals as spreadsheet (CSV)…', act: () => exportCSV(false) },
+  { label: 'Spreadsheet of all signals…', act: () => exportCSV(true) },
+  { label: 'Spreadsheet of shown signals…', act: () => exportCSV(false) },
   '-',
-  { label: 'Save all signals as web page (HTML)…', act: () => exportPage(true), disabled: !PAGE },
-  { label: 'Save shown signals as web page (HTML)…', act: () => exportPage(false), disabled: !PAGE },
+  { label: 'Web page of all signals…', act: () => exportPage(true), disabled: !PAGE },
+  { label: 'Web page of shown signals…', act: () => exportPage(false), disabled: !PAGE },
 ];
 function imageMenu(x, y) { openMenu(x, y, EXPORT_ITEMS()); }
 
