@@ -126,7 +126,7 @@ Every tool that reports files (`lint`, `test`, `simulate`, `format`, `diagram`, 
 - **Which entry.** File entries come first, then folder entries; within each list, the first that matches wins. A folder matches by whole path parts: `/a/b` matches `/a/b/x.v`, never `/a/bc/x.v`.
 - **Real locations.** Paths are compared by where they really are, not by how they're spelled: through symbolic links (such as `/tmp` and `/private/tmp` on macOS), and as the same file on disk, so a case-insensitive volume's spellings match. A file that doesn't exist is compared by its path's parts.
 - **Where.** Diagnostics (`file`, and paths in `text`), error `message` and `details`, testbench `output`, the live tool output (`text` and `original_text`) and the source places in `diagram`'s model and page. In text, the engine finds paths it knows, as the request or a tool spelled them, and names them by the same rules.
-- **Never.** Command lines (`commands`, and `command` lines in the live output), which must stay rerunnable, and fields that are paths, such as `bitstream`, `page_file`, `waveform_file` and `layout_file`.
+- **Never.** Command lines (`commands`, and `command` lines in the live output), which must stay rerunnable, and fields that are paths, such as `bitstream`, `page_file`, `waveform_file`, `layout_file` and `viewer_file`.
 - **No match.** A path that matches no entry, or any path when the request has no `display_paths`, is shown as the request gave it: source files relative to the source folder, custom board file as its absolute path. A path the request never gave, such as a toolchain file a tool mentions, is shown as the tool printed it.
 - **A path in an entry that isn't absolute** is a request error.
 
@@ -466,7 +466,12 @@ This is the one case where the engine creates or deletes a file in the source fo
 
 **A failing testbench** is still simulated and shown, since its waveform is how the user finds the problem. `passed` is false. A testbench that writes no waveform, because it doesn't call `$dumpvars`, is a design error.
 
-**Viewer.** `open_viewer` set to false only writes the waveform and the layout, such as for an AI agent or when no one is at the screen. Opening a viewer needs a local frontend: a network adapter turns it off or refuses it for remote frontends, which view waveforms on their own.
+**Viewer.** `open_viewer` set to false only writes the waveform, the layout and the waveform viewer's page, such as for an AI agent or when no one is at the screen. `viewer` chooses what `open_viewer` opens: `gtkwave` (the default for now) or `logix`, Open Logix's own waveform viewer in the default web browser. Opening a viewer needs a local frontend: a network adapter turns it off or refuses it for remote frontends, which view waveforms on their own.
+
+**The waveform viewer.** Every simulation also writes Open Logix's own waveform viewer next to the waveform, `<testbench>.html` in the build folder (`viewer_file`), which replaces GTKWave in Milestone 5 (docs/requirements.md, Waveform viewer). It's one self-contained page with the waveform in it: it needs no network and nothing installed, opens in any web browser, and keeps working after the engine exits. It opens on the testbench's own signals in the order the testbench declares them, or on the view the user saved; a failing run opens at its first failure, with the check's message and its place in the testbench, and every failure is marked. A waveform larger than 50 MB is cut at a timestamp, and the page says so.
+
+- **Views.** The signals shown, their order, formats and colors, comment and blank rows, the zoom, the cursor and the marker are a view, kept in `view_file`, such as `main_tb.view` next to the testbench, a JSON file. The engine only reads it (a file that isn't a JSON object counts as no view): the page saves it, through its host, or, in a browser with no host, as a download from its Save view button.
+- **Hosts** with a window of their own show the page themselves, as they show the diagram's (with `open_viewer` false, or `viewer` `gtkwave` until the default changes), and load it again after each simulation, with the view as it was. The page takes `?theme=light|dark` and the message `{type: "logix-wave:theme", theme}`. It posts `{type: "logix-wave:view", view}`, the view's JSON, after every change, for the host to save in `view_file`, and `{type: "logix-wave:open-source", file, line}` when the user double-clicks a signal's name (its declaration in the testbench) or clicks a failure's place, with `file` relative to the source folder. A host that loads the page directly, not in an iframe, can define `window.logixWaveSaveView(view)` and `window.logixWaveOpenSource(file, line)` instead.
 
 **Table 28.** simulate tool inputs
 
@@ -479,7 +484,9 @@ This is the one case where the engine creates or deletes a file in the source fo
 | `source_folder`, `source_files`, `build_folder` | See folder fields in Table 2 | Yes | The design files, without testbenches |
 | `testbench_file` | relative path | Yes | The testbench to simulate, relative to the source folder |
 | `layout_file` | relative path | No | The GTKWave layout file, relative to the source folder, ending in `.gtkw`. Its folder must exist; the file may not. When omitted, the layout goes into the build folder |
-| `open_viewer` | boolean | No | Start GTKWave on the waveform. Defaults to true |
+| `open_viewer` | boolean | No | Open a viewer on the waveform for the person at the screen. Defaults to true |
+| `viewer` | enum | No | Which viewer `open_viewer` opens: `gtkwave` (the default for now) or `logix`, the waveform viewer's page (`viewer_file`) in the default web browser |
+| `view_file` | relative path | No | The waveform viewer's view, relative to the source folder, ending in `.view`, such as `main_tb.view`. Its folder must exist; the file may not. The engine only reads it. When omitted or missing, the viewer opens its default view |
 | `max_sim_time_ns` | integer | No | Stop the testbench when simulated time reaches this many nanoseconds. Defaults to no limit |
 | `timeout_seconds` | integer | No | Stop the testbench after this many seconds of real time. Defaults to no limit |
 | `defines` | map of text | No | Macro definitions, as in the build tool. `LOGIX_SIM` is always defined as `1` |
@@ -497,10 +504,11 @@ This is the one case where the engine creates or deletes a file in the source fo
 | `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder |
 | `layout_file` | absolute path | The layout file GTKWave opens |
 | `layout_created` | boolean | True if the engine wrote a default layout, false if it kept the user's |
-| `viewer_opened` | boolean | True if GTKWave was started |
+| `viewer_opened` | boolean | True if the viewer was started: GTKWave, or the waveform viewer's page in the web browser |
+| `viewer_file` | relative path | Open Logix's waveform viewer, a self-contained page with the waveform in it, relative to the build folder, such as `main_tb.html` |
 | `commands` | list of commands | The programs this call ran, in order, so they can be run again without the engine. See Commands |
 
-**Errors:** design errors for compile errors, `$dumpfile` and a testbench without `$dumpvars`. Setup errors with `download_packages`, or when the layout file can't be written. Request errors, such as a missing file, a layout file that isn't `.gtkw` or whose folder doesn't exist, or a build folder that breaks the keyword rules. Tool failures, such as when GTKWave can't start, engine errors and cancellation.
+**Errors:** design errors for compile errors, `$dumpfile` and a testbench without `$dumpvars`. Setup errors with `download_packages`, or when the layout file can't be written. Request errors, such as a missing file, a layout file that isn't `.gtkw` or a view file that isn't `.view`, or whose folder doesn't exist, or a build folder that breaks the keyword rules. Tool failures, such as when GTKWave can't start, engine errors and cancellation.
 
 **Example**
 
@@ -529,7 +537,8 @@ Output:
   "waveform_file": "main_tb.vcd",
   "layout_file": "/home/user/proj/main_tb.gtkw",
   "layout_created": true,
-  "viewer_opened": true
+  "viewer_opened": true,
+  "viewer_file": "main_tb.html"
 }
 ```
 

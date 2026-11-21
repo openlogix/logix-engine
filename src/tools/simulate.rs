@@ -29,7 +29,11 @@ impl EngineTool for Simulate {
         holds the signals shown; when it is missing, or is still a default one, the engine \
         writes a default with the testbench's top-level signals, deleted again when GTKWave \
         exits unless the user saved it; a layout the user saved is kept. Set open_viewer to false to only write the waveform, such as \
-        when no one is at the screen. A failing testbench runs to the end and is \
+        when no one is at the screen. It also writes Open Logix's own waveform viewer, a \
+        self-contained page with the waveform in it (viewer_file); set viewer to \
+        \"logix\" to open that page in the default web browser instead of GTKWave, where it \
+        shows the testbench's own signals, opens at the first failure, and keeps the \
+        user's view in view_file (<testbench>.view). A failing testbench runs to the end and is \
         shown, with passed false and GTKWave's marker at the first failure in a default layout. Compile errors are a design error with diagnostics at file and line. To \
         just check whether testbenches pass, use test.";
     const READ_ONLY: bool = false;
@@ -40,6 +44,17 @@ impl EngineTool for Simulate {
 
 fn default_true() -> bool {
     true
+}
+
+/// The waveform viewer simulate opens.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Viewer {
+    /// GTKWave, from the core package.
+    #[default]
+    Gtkwave,
+    /// Open Logix's own waveform viewer, a page, in the default web browser.
+    Logix,
 }
 
 /// Which testbench to simulate, and how to show it.
@@ -101,10 +116,25 @@ pub struct SimulateInput {
     /// <testbench>.gtkw.
     #[serde(default)]
     pub layout_file: Option<String>,
-    /// Open the waveform in GTKWave. Defaults to true. False only writes the
-    /// waveform and the layout.
+    /// Open the waveform in a viewer for the person at the screen. Defaults
+    /// to true. False only writes the waveform, the layout and the viewer's
+    /// page.
     #[serde(default = "default_true")]
     pub open_viewer: bool,
+    /// Which viewer open_viewer opens: "gtkwave" (the default for now), or
+    /// "logix", Open Logix's own waveform viewer (viewer_file), in the
+    /// default web browser. A host with a window of its own can show
+    /// viewer_file itself, with open_viewer false.
+    #[serde(default)]
+    pub viewer: Viewer,
+    /// The view the waveform viewer opens and saves (the signals shown,
+    /// their formats and colors, the zoom), relative to the source folder,
+    /// such as main_tb.view. The engine only reads it: the viewer's page
+    /// saves it, through its host, or as a download in a browser. Its folder
+    /// must exist. When omitted or missing, the viewer opens its default
+    /// view, the testbench's own signals.
+    #[serde(default)]
+    pub view_file: Option<String>,
     /// Stop the testbench when simulated time reaches this many nanoseconds,
     /// such as one that never calls $finish. Defaults to no limit.
     #[serde(default)]
@@ -154,8 +184,12 @@ pub struct SimulateOutput {
     /// True if the engine wrote a default layout, false if it kept one the
     /// user saved.
     pub layout_created: bool,
-    /// True if GTKWave was started.
+    /// True if the viewer was started: GTKWave, or the waveform viewer's
+    /// page in the web browser.
     pub viewer_opened: bool,
+    /// Open Logix's waveform viewer, a self-contained page with the
+    /// waveform in it, relative to the build folder, such as main_tb.html.
+    pub viewer_file: String,
     /// The programs this call ran, in order, each with the exact command and
     /// a shell line that runs it again without the engine, such as for a bug
     /// report to the tool's developers.
@@ -224,6 +258,11 @@ pub async fn run(
         Some(rel) => check_layout_file(&src, rel)?,
         None => build_folder.join(format!("{}.gtkw", build_stem(&tb))),
     };
+    let view_file = input
+        .view_file
+        .as_deref()
+        .map(|rel| crate::wave::check_view_file(&src, rel))
+        .transpose()?;
     testbench::check_no_dumpfile(&src, &tb)?;
     let includes = sources.include_args()?;
 
@@ -277,7 +316,37 @@ pub async fn run(
     let layout_created =
         gtkwave::write_default_if_needed(&layout, &vcd, &tb, r.first_failure_ticks)?;
 
-    if input.open_viewer {
+    // Open Logix's waveform viewer: its page, with the waveform in it.
+    let stem = build_stem(&tb);
+    let viewer_file = crate::wave::page_name(&stem);
+    let (text, truncated) = crate::wave::read_waveform(&vcd, crate::wave::MAX_WAVEFORM_BYTES)?;
+    let view_name = match &view_file {
+        Some(p) => p
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        None => format!("{stem}.{}", crate::wave::VIEW_EXTENSION),
+    };
+    let data = crate::wave::RunInfo {
+        source_folder: &src,
+        testbench: &tb,
+        waveform: &waveform_file,
+        vcd: text,
+        truncated,
+        diagnostics: &r.diagnostics,
+        failure_count: r.failure_count,
+        view_file: view_name,
+        view: view_file.as_deref().and_then(crate::wave::read_view),
+    }
+    .page_data();
+    let page = build_folder.join(&viewer_file);
+    crate::wave::write_page(&page, &data)?;
+
+    let mut viewer_opened = false;
+    if input.open_viewer && input.viewer == Viewer::Logix {
+        viewer_opened = crate::diagram::open_page(&page);
+    } else if input.open_viewer {
+        viewer_opened = true;
         let program = crate::commands::program_in(&bin, "gtkwave");
         let args = gtkwave::gtkwave_args(&vcd, &layout, !layout_created);
         call.output
@@ -311,7 +380,8 @@ pub async fn run(
         waveform_file,
         layout_file: layout.to_string_lossy().into_owned(),
         layout_created,
-        viewer_opened: input.open_viewer,
+        viewer_opened,
+        viewer_file,
     })
 }
 

@@ -715,6 +715,63 @@ async fn simulate_runs_to_the_end_and_marks_the_first_failure() {
     assert!(layout.contains("[timestart] "), "{layout}");
 }
 
+/// The waveform viewer's data, read back from its page.
+fn page_data(page: &Path) -> Value {
+    let html = std::fs::read_to_string(page).unwrap();
+    let start = html.find("const DATA = ").unwrap() + "const DATA = ".len();
+    let end = start + html[start..].find(";\n").unwrap();
+    serde_json::from_str(&html[start..end].replace("<\\/", "</")).unwrap()
+}
+
+#[tokio::test]
+async fn simulate_writes_the_waveform_viewer_with_the_failures_and_the_saved_view() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    std::fs::write(
+        src.join("main_tb.v"),
+        MAIN_TB.replace(
+            "if (q !== 4'd9) $fatal(1, \"q is %d, expected 9\", q);",
+            "if (q !== 4'd3) $error(\"q is %0d, expected 3\", q);",
+        ),
+    )
+    .unwrap();
+    let input = |extra: Value| simulate_input(&src, with(json!({"viewer": "logix"}), extra));
+    let out = simulate::run(&state, input(json!({})), &call())
+        .await
+        .unwrap();
+    assert_eq!(out.viewer_file, "main_tb.html");
+    assert!(!out.viewer_opened);
+    let data = page_data(&src.join("_build/main_tb.html"));
+    // The testbench's own signals, in the order it declares them, and where.
+    assert_eq!(data["order"], json!(["main_tb.clk", "main_tb.q"]));
+    assert_eq!(data["declarations"]["main_tb.q"]["file"], "main_tb.v");
+    assert_eq!(data["failures"][0]["message"], "q is 9, expected 3");
+    assert_eq!(data["failures"][0]["time_ns"], 95.0);
+    assert_eq!(data["failures"][0]["line"], 10);
+    assert!(data["vcd"].as_str().unwrap().contains("$enddefinitions"));
+    assert_eq!(data["view"], Value::Null);
+    assert_eq!(data["view_file"], "main_tb.view");
+
+    // A saved view goes into the page, and is never changed.
+    let view = r#"{"version": 1, "rows": [{"signal": "main_tb.q", "show_as": "dec", "color": 2}]}"#;
+    std::fs::write(src.join("main_tb.view"), view).unwrap();
+    simulate::run(&state, input(json!({"view_file": "main_tb.view"})), &call())
+        .await
+        .unwrap();
+    let data = page_data(&src.join("_build/main_tb.html"));
+    assert_eq!(data["view"]["rows"][0]["show_as"], "dec");
+    assert_eq!(
+        std::fs::read_to_string(src.join("main_tb.view")).unwrap(),
+        view
+    );
+
+    let err = simulate::run(&state, input(json!({"view_file": "main_tb.gtkw"})), &call())
+        .await
+        .unwrap_err();
+    assert_eq!(err.category, Category::Request);
+    assert!(err.message.contains("view_file"), "{}", err.message);
+}
+
 #[tokio::test]
 async fn repeated_failures_are_each_kept_up_to_a_limit_and_counted() {
     let state = engine().await;
