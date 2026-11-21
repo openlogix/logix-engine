@@ -718,7 +718,8 @@ async fn simulate_runs_to_the_end_and_marks_the_first_failure() {
 /// The waveform viewer's data, read back from its page.
 fn page_data(page: &Path) -> Value {
     let html = std::fs::read_to_string(page).unwrap();
-    let start = html.find("const DATA = ").unwrap() + "const DATA = ".len();
+    // The data's line starts a line: the page's code names it too.
+    let start = html.find("\nconst DATA = ").unwrap() + "\nconst DATA = ".len();
     let end = start + html[start..].find(";\n").unwrap();
     serde_json::from_str(&html[start..end].replace("<\\/", "</")).unwrap()
 }
