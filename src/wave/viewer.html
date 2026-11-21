@@ -144,6 +144,8 @@ button { font: inherit; color: inherit; }
 .names, .vals { border-right: 1px solid var(--line); }
 .nrow, .vrow { height: var(--row-h); display: flex; align-items: center; box-sizing: border-box; border-bottom: 1px solid var(--grid); }
 .nrow { gap: 8px; padding: 0 4px 0 10px; cursor: pointer; user-select: none; }
+/* Rows are selected, not text: Shift+click selects a range of rows (R46). */
+.names, .vals { -webkit-user-select: none; user-select: none; }
 .nrow:hover, .nrow.sel, .vrow.sel { background: var(--sel); }
 .nrow.sel { box-shadow: inset 2px 0 0 var(--c); }
 .nrow.drop { box-shadow: inset 0 2px 0 var(--accent); }
@@ -965,6 +967,8 @@ ruler.addEventListener('click', (e) => { const r = ruler.getBoundingClientRect()
 // unfolds its group, as the family headings in Logix IDE's board picker
 // (the user's request, 2026-11-21). The group's name is edited from its
 // right-click menu, Edit the text.
+// Shift+click would also select text in the browser: rows only.
+$('#names').addEventListener('mousedown', (e) => { if (e.shiftKey) e.preventDefault(); });
 $('#names').addEventListener('click', (e) => {
   const rowEl = e.target.closest('.nrow'); if (!rowEl) return;
   const i = +rowEl.dataset.i;
