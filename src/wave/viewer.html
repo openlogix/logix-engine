@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Waveforms</title>
+<title>Logix Waveforms</title>
 <!-- Written by Logix Engine's simulate tool (docs/tool-api.md, "The
      waveform viewer"). Self-contained: it needs no network and nothing
      installed. Hosts can embed it in an iframe or a window of their own:
@@ -111,6 +111,9 @@ button { font: inherit; color: inherit; }
 .nrow.blank:hover .nm { opacity: .7; }
 .pop input[type=text] { width: 100%; box-sizing: border-box; height: 30px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); padding: 0 8px; font: inherit; }
 .btns button svg { width: 15px; height: 15px; }
+/* Undo and redo, next to the testbench's name where they're easy to find, a size up. */
+.btns.undo button { height: 30px; min-width: 34px; }
+.btns.undo button svg { width: 19px; height: 19px; }
 .fail-chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--fail) 45%, transparent); background: color-mix(in srgb, var(--fail) 10%, transparent); color: var(--fail); font-weight: 600; cursor: pointer; }
 .fail-chip[hidden] { display: none; }
 .failbar { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--fail) 9%, var(--panel)); color: var(--fg); font-size: 12.5px; flex-wrap: wrap; }
@@ -260,14 +263,17 @@ button { font: inherit; color: inherit; }
     <button class="btn icon-btn side-btn on" id="sideBtn" aria-label="Hide the signal list" title="Hide the signal list, for more room (S)" aria-pressed="true">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
     <div class="file"><b id="fileName">uart_tb.vcd</b></div>
-    <div class="spacer"></div>
-    <button class="btn browser-toggle" id="browserToggle" aria-label="Show signals">Signals</button>
-    <div class="btns" role="group" aria-label="Undo">
+    <div class="btns undo" role="group" aria-label="Undo">
       <button id="undoBtn" title="Undo (⌘Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
       <button id="redoBtn" title="Redo (⇧⌘Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg></button>
     </div>
+    <div class="spacer"></div>
+    <button class="btn browser-toggle" id="browserToggle" aria-label="Show signals">Signals</button>
     <button class="btn primary" id="saveBtn" title="Save the view: the rows, their formats and colors, and the zoom">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v6h8M7 21v-7h10v7"/></svg><span class="txt">Save view</span></button>
+    <button class="btn" id="imageBtn" title="Copy or save a picture of the waves, to share">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="15.5" cy="8.5" r="1.5"/></svg><span class="txt">Image</span>
+    </button>
     <button class="btn icon-btn" id="helpBtn" aria-label="Keyboard and mouse" title="Keyboard and mouse">?</button>
     <button class="btn icon-btn" id="settingsBtn" aria-label="View settings" title="View settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button>
@@ -930,7 +936,7 @@ function openSettings(anchor) {
     <label class="check"><input type="checkbox" id="gridChk" ${S.grid ? 'checked' : ''}> Time grid lines</label>
     <div class="actions"><button class="btn" data-act="reset" title="Back to the testbench's own signals and the whole run. You can undo it.">Reset view</button></div>
     <div class="actions"><button class="btn" data-act="valcol">${valHidden() ? 'Show' : 'Hide'} the Value column</button><button class="btn" data-act="widths">Reset column widths</button></div>
-    <div><div class="lbl">Save as image</div><div class="actions"><button class="btn" data-act="svg" title="A drawing that stays sharp at any size">SVG</button><button class="btn" data-act="png" title="A picture, for chats and documents">PNG</button></div></div>`;
+    `;
   el.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (e.target.id === 'gridChk') { S.grid = e.target.checked; draw(); return; }
@@ -939,7 +945,6 @@ function openSettings(anchor) {
     if (b.dataset.act === 'reset') { resetLayout(); closePop(); return; }
     if (b.dataset.act === 'valcol') { showVal(valHidden()); closePop(); return; }
     if (b.dataset.act === 'widths') { resetWidths(); closePop(); return; }
-    if (b.dataset.act === 'svg' || b.dataset.act === 'png') { exportImage(b.dataset.act); closePop(); return; }
     openSettings(anchor);
   });
   placePop(el, anchor);
@@ -982,7 +987,7 @@ function load() {
   S.decl = DATA.declarations || {};
   S.marks = (DATA.failures || []).map((f) => ({ ...f, t: Math.round(f.time_ns * 1e-9 / w.ts) }));
   $('#fileName').textContent = DATA.testbench || S.file;
-  document.title = 'Waveforms · ' + (DATA.testbench || S.file);
+  document.title = 'Logix Waveforms · ' + (DATA.testbench || S.file);
   if (DATA.truncated) {
     $('#truncbar').hidden = false;
     $('#truncbar').textContent = `Showing the first part of the run: the waveform is ${DATA.truncated.size_mb} MB, more than the viewer holds (${DATA.truncated.limit_mb} MB).`;
@@ -1214,19 +1219,43 @@ function saveFile(name, mime, data) {
   a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 }
-function exportImage(kind) {
-  const { svg, w, h } = viewSvg(), base = S.file.replace(/\.vcd$/i, '');
-  const said = (name) => { if (!hosted) toast(`Downloaded ${name}.`); };
-  if (kind === 'svg') { saveFile(base + '.svg', 'image/svg+xml', svg); said(base + '.svg'); return; }
-  // PNG: the SVG drawn at twice the size, sharp on high-resolution screens.
-  const img = new Image();
+// The view as a PNG, drawn at twice the size so it stays sharp; `done`
+// gets the canvas.
+function pngCanvas(done) {
+  const { svg, w, h } = viewSvg(), img = new Image();
   img.onload = () => {
     const c = document.createElement('canvas'); c.width = w * 2; c.height = h * 2;
-    const g = c.getContext('2d'); g.scale(2, 2); g.drawImage(img, 0, 0);
-    if (hosted) saveFile(base + '.png', 'image/png', c.toDataURL('image/png').split(',')[1]);
-    else c.toBlob((b) => { saveFile(base + '.png', 'image/png', b); said(base + '.png'); }, 'image/png');
+    const g = c.getContext('2d'); g.scale(2, 2); g.drawImage(img, 0, 0); done(c);
   };
   img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+// Copies the view as a PNG image, to paste into a message or a document.
+// The clipboard item is made right away, inside the click, with the image
+// to come: browsers allow a copy only while handling the click.
+function copyImage() {
+  const failed = () => toast("Couldn't copy the image here: use Save as PNG instead.");
+  try {
+    const png = new Promise((resolve) => pngCanvas((c) => c.toBlob(resolve, 'image/png')));
+    navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
+      .then(() => toast('Copied a picture of the waves: paste it into a message or a document.'), failed);
+  } catch (_) { failed(); }
+}
+function imageMenu(x, y) {
+  openMenu(x, y, [
+    { label: 'Copy image', act: copyImage },
+    { label: 'Save as PNG…', act: () => exportImage('png') },
+    { label: 'Save as SVG…', act: () => exportImage('svg') },
+  ], 'Picture of the waves');
+}
+$('#imageBtn').addEventListener('click', (e) => { const r = e.currentTarget.getBoundingClientRect(); imageMenu(r.left, r.bottom + 4); });
+function exportImage(kind) {
+  const { svg } = viewSvg(), base = S.file.replace(/\.vcd$/i, '');
+  const said = (name) => { if (!hosted) toast(`Downloaded ${name}.`); };
+  if (kind === 'svg') { saveFile(base + '.svg', 'image/svg+xml', svg); said(base + '.svg'); return; }
+  pngCanvas((c) => {
+    if (hosted) saveFile(base + '.png', 'image/png', c.toDataURL('image/png').split(',')[1]);
+    else c.toBlob((b) => { saveFile(base + '.png', 'image/png', b); said(base + '.png'); }, 'image/png');
+  });
 }
 
 /* ---------- The right-click menu ---------- */
@@ -1345,8 +1374,9 @@ function timeMenu(t, x, y) {
     '-',
     { label: 'Reset the view', act: () => resetLayout() },
     '-',
-    { label: 'Save as image (SVG)', act: () => exportImage('svg') },
-    { label: 'Save as image (PNG)', act: () => exportImage('png') },
+    { label: 'Copy image', act: copyImage },
+    { label: 'Save as PNG…', act: () => exportImage('png') },
+    { label: 'Save as SVG…', act: () => exportImage('svg') },
   ], fmtTime(Math.round(t)));
 }
 function treeMenu(e) {
