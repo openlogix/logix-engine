@@ -95,6 +95,9 @@ button { font: inherit; color: inherit; }
 .group button:disabled { opacity: .35; cursor: default; }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 12px; }
 .keys kbd { font-family: var(--mono); font-size: 11px; background: var(--soft); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; white-space: nowrap; justify-self: start; }
+.nrow .fold { border: 0; background: none; color: var(--fg); width: 18px; height: 20px; margin-left: -6px; padding: 0; cursor: pointer; font-size: 13px; border-radius: 4px; flex: none; }
+.nrow .fold:hover { background: var(--soft); color: var(--fg); }
+.nrow .hidden-n { font-weight: 400; font-family: var(--mono); font-size: 11px; }
 .nrow.comment .nm { font-family: var(--font); font-weight: 600; font-size: 12px; color: var(--muted); letter-spacing: .02em; }
 .nrow.blank .nm { color: var(--muted); font-size: 11px; opacity: 0; }
 .nrow.blank:hover .nm { opacity: .7; }
@@ -200,6 +203,11 @@ button { font: inherit; color: inherit; }
 /* A hidden Value column stays as a narrow strip with a chevron: a click on
    it brings the column back at its last width. */
 .val-open { display: none; }
+#valHead { gap: 6px; }
+.val-close { margin-right: auto; border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 14px; font-weight: 700; padding: 0 4px; border-radius: 4px; opacity: 0; }
+#valHead:hover .val-close, .val-close:focus-visible { opacity: 1; }
+.val-close:hover { color: var(--accent); background: var(--soft); }
+.app.val-hidden .val-close { display: none; }
 .app.val-hidden #valHead { padding: 0; }
 .app.val-hidden #valHead .vt { display: none; }
 .app.val-hidden .val-open { display: grid; place-items: center; width: 100%; height: 100%; border: 0; padding: 0; background: var(--soft); color: var(--muted); cursor: pointer; font-size: 14px; font-weight: 700; }
@@ -290,7 +298,7 @@ button { font: inherit; color: inherit; }
     <div class="truncbar" id="truncbar" hidden></div>
     <div class="cols head">
       <div>Signal</div>
-      <div id="valHead"><span class="vt">Value</span><button class="val-open" id="valOpen" title="Show the Value column" aria-label="Show the Value column">›</button></div>
+      <div id="valHead"><button class="val-close" id="valClose" title="Hide the Value column" aria-label="Hide the Value column">‹</button><span class="vt">Value</span><button class="val-open" id="valOpen" title="Show the Value column" aria-label="Show the Value column">›</button></div>
       <canvas id="ruler" height="30" aria-label="Time ruler"></canvas>
     </div>
     <div class="rows" id="rows">
@@ -508,17 +516,38 @@ function rowLabel(v) {
 }
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
 
+// The rows shown, as indexes into S.rows: a collapsed comment row hides the
+// rows below it up to the next blank or comment row (its group).
+function visible() {
+  const out = []; let hide = false;
+  S.rows.forEach((r, i) => {
+    if (r.kind === 'comment' || r.kind === 'blank') { hide = r.kind === 'comment' && !!r.collapsed; out.push(i); }
+    else if (!hide) out.push(i);
+  });
+  return out;
+}
+// How many rows a comment row's group has.
+function groupSize(i) { let n = 0; for (let j = i + 1; j < S.rows.length && S.rows[j].v; j++) n++; return n; }
+// The row (an index into S.rows) at a height in the rows area, or -1.
+function rowAtY(y) { const v = visible()[Math.floor(y / S.rowH)]; return v == null ? -1 : v; }
+function toggleGroup(i) {
+  const r = S.rows[i]; if (!r || r.kind !== 'comment') return;
+  r.collapsed = !r.collapsed;
+  if (r.collapsed && S.sel > i && !visible().includes(S.sel)) S.sel = i;
+  renderRows(); commit();
+}
 function renderRows() {
   document.documentElement.style.setProperty('--row-h', S.rowH + 'px');
-  $('#names').innerHTML = S.rows.map((r, i) => !r.v ? `<div class="nrow ${r.kind} ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)"><span class="nm">${r.kind === 'comment' ? esc(r.text) : 'blank row'}</span></div>` : `<div class="nrow ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}</span></div>`).join('');
+  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'comment' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} rows of this group">${r.collapsed ? '▸' : '▾'}</button>` : ''}<span class="nm">${r.kind === 'comment' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}</span></div>`; }).join('');
   $('#empty').hidden = S.rows.length > 0;
   renderValues(); renderTree(); draw();
 }
 function renderValues() {
-  $('#vals').innerHTML = S.rows.map((r, i) => {
-    if (!r.v) return `<div class="vrow ${i === S.sel ? 'sel' : ''}"></div>`;
+  $('#vals').innerHTML = visible().map((i) => {
+    const r = S.rows[i];
+    if (!r.v) return `<div class="vrow ${i === S.sel ? 'sel' : ''}" data-i="${i}"></div>`;
     const val = S.cursor == null ? null : valueAt(r.v, S.cursor);
-    return `<div class="vrow ${i === S.sel ? 'sel' : ''} ${isX(val) ? 'xv' : ''}" style="--c:var(--s${r.color})">${esc(fmt(val, r.v.width, r.radix))}</div>`;
+    return `<div class="vrow ${i === S.sel ? 'sel' : ''} ${isX(val) ? 'xv' : ''}" data-i="${i}" style="--c:var(--s${r.color})">${esc(fmt(val, r.v.width, r.radix))}</div>`;
   }).join('');
 }
 function renderTree() {
@@ -604,7 +633,7 @@ function draw() {
   pill(S.cursor, C.accent, '');
 
   // Waves
-  const H = Math.max(S.rows.length * S.rowH, 1);
+  const shown = visible(), H = Math.max(shown.length * S.rowH, 1);
   const ctx = sizeCanvas(waves, W, H);
   ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
   if (S.grid) {
@@ -613,8 +642,8 @@ function draw() {
   }
   ctx.font = `500 11.5px ${mono}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
   const endX = X(S.wave.end);
-  S.rows.forEach((r, i) => {
-    const y0 = i * S.rowH;
+  shown.forEach((i, pos) => {
+    const r = S.rows[i], y0 = pos * S.rowH;
     if (i === S.sel) { ctx.fillStyle = C.sel; ctx.fillRect(0, y0, W, S.rowH); }
     ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(0, y0 + S.rowH - .5); ctx.lineTo(W, y0 + S.rowH - .5); ctx.stroke();
     if (!r.v) return;
@@ -725,7 +754,7 @@ function timeAtX(x) { return S.start + x / waves.clientWidth * (S.end - S.start)
 // shows the snap before a click, so a click lands where it shows.
 const SNAP_PX = 6;
 function snapAt(x, y, alt) {
-  const t = timeAtX(x), r = S.rows[Math.floor(y / S.rowH)];
+  const t = timeAtX(x), r = S.rows[rowAtY(y)];
   if (alt || !r || !r.v) return { t, snapped: false };
   const d = S.wave.data.get(r.v.id), k = idx(d.t, t), pxPerT = waves.clientWidth / (S.end - S.start);
   let best = null;
@@ -744,7 +773,7 @@ waves.addEventListener('pointermove', (e) => {
     const dt = (e.clientX - drag.x) / rect.width * (drag.e - drag.s);
     setView(drag.s - dt, drag.e - dt); waves.style.cursor = 'grabbing'; return;
   }
-  const i = Math.floor(y / S.rowH), r = S.rows[i], sn = snapAt(x, y, e.altKey);
+  const i = rowAtY(y), r = S.rows[i], sn = snapAt(x, y, e.altKey);
   S.hoverT = sn.t; S.hoverSnap = sn.snapped; draw();
   if (!r || !r.v) { hideTip(); return; }
   const v = valueAt(r.v, S.hoverT);
@@ -760,7 +789,7 @@ waves.addEventListener('pointermove', (e) => {
 waves.addEventListener('pointerup', (e) => {
   waves.style.cursor = '';
   if (drag && !drag.moved) {
-    const rect = waves.getBoundingClientRect(), i = Math.floor((e.clientY - rect.top) / S.rowH);
+    const rect = waves.getBoundingClientRect(), i = rowAtY(e.clientY - rect.top);
     const t = snapAt(e.clientX - rect.left, e.clientY - rect.top, e.altKey).t;
     if (e.shiftKey) { S.marker = Math.round(t); draw(); }
     else { if (S.rows[i]) S.sel = i; setCursor(t); renderRows(); }
@@ -801,6 +830,7 @@ ruler.addEventListener('click', (e) => { const r = ruler.getBoundingClientRect()
 
 /* ---------- Names column: select, options, reorder ---------- */
 $('#names').addEventListener('click', (e) => {
+  const fold = e.target.closest('.fold'); if (fold) { toggleGroup(+fold.dataset.i); return; }
   const rowEl = e.target.closest('.nrow'); if (!rowEl) return;
   S.sel = +rowEl.dataset.i; renderRows();
 });
@@ -1022,11 +1052,11 @@ function defaultRows() {
 }
 function serRow(r) {
   if (r.v) return { signal: r.v.path, show_as: r.radix, color: r.color };
-  return r.kind === 'comment' ? { comment: r.text } : { blank: true };
+  return r.kind === 'comment' ? (r.collapsed ? { comment: r.text, collapsed: true } : { comment: r.text }) : { blank: true };
 }
 function deserRow(o) {
   if (o.signal) { const v = varByPath().get(o.signal); return v && { kind: 'signal', v, radix: o.show_as || 'hex', color: o.color || 1 }; }
-  if (o.comment != null) return { kind: 'comment', text: String(o.comment) };
+  if (o.comment != null) return { kind: 'comment', text: String(o.comment), collapsed: !!o.collapsed };
   if (o.blank) return { kind: 'blank' };
   return null;
 }
@@ -1102,8 +1132,7 @@ document.addEventListener('keydown', (e) => {
   else if (k === 'f' || k === 'F') setView(0, S.wave.end);
   else if (k === 'ArrowRight') edge(1);
   else if (k === 'ArrowLeft') edge(-1);
-  else if (k === 'ArrowDown' && S.rows.length) { S.sel = Math.min(S.sel + 1, S.rows.length - 1); renderRows(); }
-  else if (k === 'ArrowUp' && S.rows.length) { S.sel = Math.max(S.sel - 1, 0); renderRows(); }
+  else if ((k === 'ArrowDown' || k === 'ArrowUp') && S.rows.length) { const v = visible(), at = v.indexOf(S.sel); S.sel = v[Math.max(0, Math.min(v.length - 1, at < 0 ? 0 : at + (k === 'ArrowDown' ? 1 : -1)))]; renderRows(); }
   else if (k === 'm' || k === 'M') { S.marker = S.cursor; draw(); }
   else if (k === 's' || k === 'S') setBrowser($('#app').classList.contains('no-browser'));
   else if ((k === 'Delete' || k === 'Backspace') && S.sel >= 0) { S.rows.splice(S.sel, 1); S.sel = -1; renderRows(); }
@@ -1142,7 +1171,7 @@ class SvgCtx {
 function viewSvg() {
   const css = getComputedStyle(document.documentElement), tok = (n) => css.getPropertyValue(n).trim();
   const nameW = $('#names').offsetWidth, valW = $('#vals').offsetWidth, W = $('#wavecol').clientWidth;
-  const left = nameW + valW, H = 30 + S.rows.length * S.rowH, mono = tok('--mono') || 'monospace';
+  const shownRows = visible(), left = nameW + valW, H = 30 + shownRows.length * S.rowH, mono = tok('--mono') || 'monospace';
   const recs = [];
   EXPORT = { ctx: (c) => { const r = new SvgCtx(left, c === ruler ? 0 : 30); recs.push(r); return r; } };
   // No hover line or selected row in the image: only what the view shows.
@@ -1151,8 +1180,8 @@ function viewSvg() {
   const out = [`<rect width="${left + W}" height="${H}" fill="${tok('--panel')}"/>`,
     `<text x="10" y="15" fill="${tok('--muted')}" dominant-baseline="central" style="font:600 11px ${esc(mono)}">SIGNAL</text>`];
   if (valW > 20) out.push(`<text x="${left - 12}" y="15" fill="${tok('--muted')}" text-anchor="end" dominant-baseline="central" style="font:600 11px ${esc(mono)}">VALUE</text>`);
-  S.rows.forEach((r, i) => {
-    const y = 30 + i * S.rowH + S.rowH / 2, color = r.v ? tok('--s' + r.color) : tok('--muted');
+  shownRows.forEach((i, k) => {
+    const r = S.rows[i], y = 30 + k * S.rowH + S.rowH / 2, color = r.v ? tok('--s' + r.color) : tok('--muted');
     const label = r.v ? r.v.path.split('.').slice(1).join('.') + (r.v.range && !r.v.name.includes('[') ? r.v.range : '') : r.kind === 'comment' ? r.text : '';
     out.push(`<text x="10" y="${y}" fill="${r.v ? tok('--fg') : color}" dominant-baseline="central" style="font:${r.v ? '' : '600 '}12px ${esc(mono)}">${esc(label)}</text>`);
     if (r.v && valW > 20 && S.cursor != null) out.push(`<text x="${left - 12}" y="${y}" fill="${color}" text-anchor="end" dominant-baseline="central" style="font:500 12px ${esc(mono)}">${esc(fmt(valueAt(r.v, S.cursor), r.v.width, r.radix))}</text>`);
@@ -1244,6 +1273,7 @@ function rowMenu(i, t, x, y) {
     openMenu(x, y, [
       ...(t != null ? [...timeItems(t), '-'] : []),
       r.kind === 'comment' ? { label: 'Edit the text…', act: () => openRowPop(i, $(`.nrow[data-i="${i}"]`)) } : null,
+      r.kind === 'comment' ? { label: r.collapsed ? `Show the group (${groupSize(i)} rows)` : 'Collapse the group', act: () => toggleGroup(i) } : null,
       ...common, '-',
       { label: 'Remove this row', key: 'Delete', danger: true, act: () => removeRow(i) },
     ], r.kind === 'comment' ? 'Comment: ' + r.text : 'Blank row');
@@ -1307,9 +1337,9 @@ document.addEventListener('contextmenu', (e) => {
     return;
   }
   const rowEl = e.target.closest('.nrow, .vrow');
-  if (rowEl) { const i = [...rowEl.parentNode.children].indexOf(rowEl); rowMenu(i, null, x, y); return; }
+  if (rowEl) { rowMenu(+rowEl.dataset.i, null, x, y); return; }
   if (e.target === waves) {
-    const rect = waves.getBoundingClientRect(), i = Math.floor((y - rect.top) / S.rowH);
+    const rect = waves.getBoundingClientRect(), i = rowAtY(y - rect.top);
     const t = snapAt(x - rect.left, y - rect.top, e.altKey).t;
     if (S.rows[i]) rowMenu(i, t, x, y); else timeMenu(t, x, y);
     return;
@@ -1349,6 +1379,7 @@ function colWidth(col) {
   return Number.isNaN(w) ? COL[col].def : w;
 }
 $('#valOpen').onclick = () => showVal(true);
+$('#valClose').onclick = () => showVal(false);
 $('#vals').addEventListener('click', () => { if (valHidden()) showVal(true); });
 for (const col of ['name', 'val']) { const w = store.get('wv.' + col); if (w != null) setCol(col, +w); }
 document.querySelectorAll('.grip').forEach((g) => {
