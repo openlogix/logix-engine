@@ -874,41 +874,23 @@ function placePop(el, anchor) {
   el.style.left = Math.max(8, Math.min(a.left, window.innerWidth - w - 8)) + 'px';
   el.style.top = (a.bottom + h + 8 > window.innerHeight ? Math.max(8, a.top - h - 6) : a.bottom + 6) + 'px';
 }
+// The comment or blank row's box: a comment's text, and Remove.
 function openRowPop(i, anchor) {
-  closePop(); const r = S.rows[i]; if (!r) return;
-  if (!r.v) return openPlainRowPop(r, anchor);
-  const el = document.createElement('div'); el.className = 'pop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Signal options');
-  el.innerHTML = `<h3>${esc(r.v.path)}${r.v.range ? ' ' + esc(r.v.range) : ''}</h3>
-    ${r.v.width > 1 ? `<div><div class="lbl">Show values as</div><div class="seg">${RADIX.map(([k, n]) => `<button data-radix="${k}" class="${r.radix === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>` : ''}
-    <div><div class="lbl">Color</div><div class="swatches">${[1, 2, 3, 4, 5, 6].map((c) => `<button data-color="${c}" style="--c:var(--s${c})" class="${r.color === c ? 'on' : ''}" aria-label="Color ${c}"></button>`).join('')}</div></div>
-    <div class="actions"><button class="btn" data-act="up">Move up</button><button class="btn" data-act="down">Move down</button><button class="btn danger" data-act="remove">Hide</button></div>`;
-  el.addEventListener('click', (e) => {
-    const b = e.target.closest('button'); if (!b) return;
-    const cur = S.rows.indexOf(r);
-    if (b.dataset.radix) r.radix = b.dataset.radix;
-    if (b.dataset.color) r.color = +b.dataset.color;
-    if (b.dataset.act === 'remove') { S.rows.splice(cur, 1); S.sel = -1; closePop(); renderRows(); return; }
-    if (b.dataset.act === 'up' && cur > 0) { S.rows.splice(cur, 1); S.rows.splice(cur - 1, 0, r); S.sel = cur - 1; }
-    if (b.dataset.act === 'down' && cur < S.rows.length - 1) { S.rows.splice(cur, 1); S.rows.splice(cur + 1, 0, r); S.sel = cur + 1; }
-    renderRows(); openRowPop(S.rows.indexOf(r), $(`.nrow[data-i="${S.rows.indexOf(r)}"]`) || anchor);
-  });
-  placePop(el, anchor);
+  closePop(); const r = S.rows[i]; if (!r || r.v) return;
+  return openPlainRowPop(r, anchor);
 }
 function openPlainRowPop(r, anchor) {
   const el = document.createElement('div'); el.className = 'pop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Row options');
   el.innerHTML = `<h3>${r.kind === 'comment' ? 'Comment row' : 'Blank row'}</h3>
     ${r.kind === 'comment' ? `<div><div class="lbl">Text</div><input type="text" id="commentText" value="${esc(r.text)}"></div>` : ''}
-    <div class="actions"><button class="btn" data-act="up">Move up</button><button class="btn" data-act="down">Move down</button><button class="btn danger" data-act="remove">Remove</button></div>`;
+    <div class="actions"><button class="btn danger" data-act="remove">Remove</button></div>`;
   el.addEventListener('input', (e) => { if (e.target.id === 'commentText') { r.text = e.target.value; const n = document.querySelector(`.nrow[data-i="${S.rows.indexOf(r)}"] .nm`); if (n) n.textContent = r.text; } });
   el.addEventListener('change', () => commit());
   el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { commit(); closePop(); } });
   el.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const cur = S.rows.indexOf(r);
-    if (b.dataset.act === 'remove') { S.rows.splice(cur, 1); S.sel = -1; closePop(); renderRows(); return; }
-    if (b.dataset.act === 'up' && cur > 0) { S.rows.splice(cur, 1); S.rows.splice(cur - 1, 0, r); S.sel = cur - 1; }
-    if (b.dataset.act === 'down' && cur < S.rows.length - 1) { S.rows.splice(cur, 1); S.rows.splice(cur + 1, 0, r); S.sel = cur + 1; }
-    renderRows(); openRowPop(S.rows.indexOf(r), $(`.nrow[data-i="${S.rows.indexOf(r)}"]`) || anchor);
+    if (b.dataset.act === 'remove') { S.rows.splice(cur, 1); S.sel = -1; closePop(); renderRows(); }
   });
   placePop(el, anchor);
   const input = el.querySelector('#commentText'); if (input) { input.focus(); input.select(); }
@@ -920,7 +902,7 @@ function openHelp(anchor) {
   const rows = [
     ['Click', 'Put the cursor there; near an edge, on the edge'], ['Shift+click', 'Put the marker there, the same way'], ['Alt+click', 'Anywhere, without snapping to an edge'], ['Drag', 'Move along in time'],
     ['Wheel or pinch', 'Zoom around the pointer'], ['Shift+wheel or swipe sideways', 'Move along in time'], ['Wheel over the names', 'Scroll the rows'],['+  −', 'Zoom in, out'], ['F', 'Show the whole run'],
-    ['←  →', 'Previous, next change of the selected signal'], ['↑  ↓', 'Select the signal above, below'],
+    ['←  →', 'Previous, next change of the selected signal'], ['↑  ↓', 'Select the signal above, below'], ['Alt+↑  Alt+↓', 'Move the selected row up, down (or drag it)'],
     ['M', 'Put the marker at the cursor'], ['Delete', 'Hide the selected row'], ['S', 'Hide or show the signal list'], ['Right-click', 'What you can do with what you clicked'], ['Drag a column border', 'Resize the Signal or Value column'], ['Click the narrow strip', 'Show a hidden Value column'],
     [mod + 'Z', 'Undo'], ['⇧' + mod + 'Z', 'Redo'],
   ];
@@ -1138,8 +1120,13 @@ document.addEventListener('keydown', (e) => {
     if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
     if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); return; }
   }
-  if (e.target.closest('input, textarea') || !$('#overlay').hidden || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target.closest('input, textarea') || !$('#overlay').hidden || e.metaKey || e.ctrlKey) return;
   const k = e.key;
+  // Alt+Up and Alt+Down move the selected row, as dragging it does.
+  if (e.altKey) {
+    if ((k === 'ArrowUp' || k === 'ArrowDown') && S.sel >= 0) { e.preventDefault(); moveRow(S.sel, k === 'ArrowDown' ? 1 : -1); }
+    return;
+  }
   if (k === '+' || k === '=') zoom(0.5);
   else if (k === '-') zoom(2);
   else if (k === 'f' || k === 'F') setView(0, S.wave.end);
@@ -1281,8 +1268,6 @@ function rowMenu(i, t, x, y) {
   const common = [
     { label: 'Add a comment row above', act: () => addRowAt('comment', i) },
     { label: 'Add a blank row below', act: () => addRowAt('blank', i + 1) },
-    { label: 'Move up', disabled: i === 0, act: () => moveRow(i, -1) },
-    { label: 'Move down', disabled: i === S.rows.length - 1, act: () => moveRow(i, 1) },
   ];
   if (!r.v) {
     openMenu(x, y, [
