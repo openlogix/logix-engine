@@ -15,7 +15,7 @@
      it. A host that loads it directly can define
      window.logixWaveOpenSource(file, line) and window.logixWaveSaveView(view)
      instead. Save as image posts {type: "logix-wave:save-file", name, mime,
-     data} (SVG text, or PNG as base64), or calls window.logixWaveSaveFile. In a browser with no host, Save view downloads the .view file. -->
+     data} (SVG text, or PNG as base64), or calls window.logixWaveSaveFile. With no host, as in a browser, the view isn't saved: there's no Save view button (the user's decision, 2026-11-21, until a clear use for one). -->
 <style>
 /* Layout: a one-screen tool. Header bar; signal browser on the left; the viewer on the right as three aligned columns (name, value at cursor, waves) under one time ruler. */
 :root {
@@ -63,8 +63,8 @@ button { font: inherit; color: inherit; }
 /* One toolbar across the window: the testbench's name is in the window's
    title, so the page has no name or icon of its own (R43). */
 .spacer { flex: 1; }
-/* hidden always hides, whatever display a class gives (the Save view
-   button showed in Logix IDE's window, the user's report, 2026-11-21). */
+/* hidden always hides, whatever display a class gives (a hidden button
+   showed, the user's report, 2026-11-21). */
 [hidden] { display: none !important; }
 .btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--panel); cursor: pointer; white-space: nowrap; }
 .btn:hover { border-color: var(--accent); }
@@ -312,8 +312,6 @@ button { font: inherit; color: inherit; }
     <!-- Kept together, so they wrap as one group in a narrow window. -->
     <div class="right">
       <button class="btn browser-toggle" id="browserToggle" aria-label="Show signals">Signals</button>
-      <button class="btn primary" id="saveBtn" title="Save the view: the rows, their formats and colors, and the zoom">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v6h8M7 21v-7h10v7"/></svg><span class="txt">Save view</span></button>
       <button class="btn" id="imageBtn" title="Copy or save the waves, to share: a picture, a spreadsheet or a web page">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="15.5" cy="8.5" r="1.5"/></svg><span class="txt">Export</span>
       </button>
@@ -1172,14 +1170,7 @@ function viewData() {
   o.time_base = counting() ? 'cycles' : 'time'; if (S.clock) o.clock = S.clock;
   return o;
 }
-function layoutJSON() { return JSON.stringify(viewData(), null, 2) + '\n'; }
 function saveToHost() { if (hosted) toHost({ type: 'logix-wave:view', view: viewData() }, 'logixWaveSaveView', viewData()); }
-if (hosted) $('#saveBtn').hidden = true;   // the host saves it by itself
-$('#saveBtn').addEventListener('click', () => {
-  const name = (DATA && DATA.view_file) || S.file.replace(/\.vcd$/i, '') + '.view';
-  saveFile(name, 'application/json', layoutJSON());
-  toast(`Downloaded ${name}: put it next to the testbench to keep this view.`);
-});
 let toastTimer = null;
 function toast(text) {
   const t = $('#toast'); t.textContent = text; t.hidden = false;

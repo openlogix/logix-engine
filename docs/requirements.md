@@ -445,7 +445,7 @@ The requirements keep the numbers they had in review (R1 to R40), so earlier dis
 - **R34.** The view can be saved as an image: SVG, and PNG for pasting into chats and documents, with the signals, values and time axis as shown.
 - **R36.** Every change can be undone and redone, back to when the viewer opened: the rows (adding, removing, moving, coloring and formatting signals, blank rows and groups) and where you look (zoom, scrolling, cursor, marker). Each gesture is one step: a whole wheel zoom, drag or scroll, not each of its moves; typing a group's name is one step. Shortcuts: ⌘Z and ⇧⌘Z (Ctrl on Windows and Linux).
 - **R37.** Reset View goes back to the default view, the testbench's own signals (R9); it can be undone too. It doesn't change the column widths (R38).
-- Saving: the view is saved by itself as it changes, as auto save; nothing to confirm or cancel, since undo goes back. In a browser, where the page can't write files, a Save View button downloads it. In Logix IDE it follows the project's saving.
+- Saving: the view is saved by itself as it changes, as auto save; nothing to confirm or cancel, since undo goes back. In Logix IDE it follows the project's saving. In a browser, where the page can't write files, it isn't saved: a Save View button that downloaded it was removed as unclear (the user's decision, 2026-11-21, until there's a clear use for one).
 
 **Testbench results**
 
@@ -475,7 +475,7 @@ The requirements keep the numbers they had in review (R1 to R40), so earlier dis
 - The testbench's declaration order (R9) and each signal's line (R27) come from the testbench's source, read by a small reader in the engine (`wave::declared_signals`: the module's own reg, wire, integer… declarations, outside tasks, functions and blocks), which needs no program to run.
 - Failures (R25, R26, R35) are the `$error` and assertion lines the engine already finds, with their time, file and line, put into the page as markers.
 - Save as image (R34, built 2026-11-21) records the page's own drawing as SVG (the canvas operations turned into SVG elements, so the image is the view as it shows), and PNG draws that SVG at twice the size; a host gets the file to save (`logix-wave:save-file`), a browser downloads it.
-- The page is the engine's, built into it as the diagram page is (`src/wave/viewer.html`, its data written in as JSON). The engine only reads a `.view` file and writes none: the page's default view is the testbench's own signals, so R24 holds by itself. It has no access to the host: as with the diagram, a host learns of a saved view or a source-line request through a navigation it cancels, and Logix IDE keeps the view as a project file. In a browser, Save View downloads it.
+- The page is the engine's, built into it as the diagram page is (`src/wave/viewer.html`, its data written in as JSON). The engine only reads a `.view` file and writes none: the page's default view is the testbench's own signals, so R24 holds by itself. It has no access to the host: as with the diagram, a host learns of a saved view or a source-line request through a navigation it cancels, and Logix IDE keeps the view as a project file. In a browser it isn't saved.
 
 ## Acceptance and phasing
 

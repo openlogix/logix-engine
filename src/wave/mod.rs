@@ -67,7 +67,7 @@ pub struct PageData {
     pub waveform: String,
     /// The testbench, relative to the source folder.
     pub testbench: String,
-    /// The name Save view gives the downloaded view, such as main_tb.view.
+    /// The view file's name, such as main_tb.view.
     pub view_file: String,
     /// The waveform file's text (VCD), maybe cut (see truncated).
     pub vcd: String,
@@ -648,7 +648,7 @@ endmodule
         );
     }
 
-    /// Elements the page hides, such as Save view in a host's window, stay
+    /// Elements the page hides, such as the signal list's hint, stay
     /// hidden whatever display their classes give them.
     #[test]
     fn hidden_always_hides() {
