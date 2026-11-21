@@ -146,6 +146,8 @@ button { font: inherit; color: inherit; }
 .nrow.drop { box-shadow: inset 0 2px 0 var(--accent); }
 .nrow.drop-below { box-shadow: inset 0 -2px 0 var(--accent); }
 .nrow .dot { width: 8px; height: 8px; border-radius: 3px; background: var(--c); flex: none; }
+.clk-badge { display: inline-flex; vertical-align: -2px; margin-left: 6px; color: var(--accent); }
+.clk-badge svg { width: 13px; height: 13px; }
 .nrow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; }
 .nrow .sc { color: var(--muted); }
 .nrow .rg { color: var(--muted); font-size: 11px; }
@@ -584,11 +586,11 @@ function useClock(path) {
     if (!counting()) { [S.clock, S.edges, S.cycles] = was; toast(`${path} has fewer than two rising edges: it can't be counted as a clock.`); return; }
   }
   else { S.clock = null; S.edges = []; S.cycles = false; }
-  draw();
+  renderRows();
 }
 // The settings' Time / Cycles switch: Cycles with no clock yet suggests one.
 function setScale(cycles) {
-  if (!cycles) { S.cycles = false; draw(); return; }
+  if (!cycles) { S.cycles = false; renderRows(); return; }
   const path = S.clock || suggestClock();
   if (!path) { toast('No clock found: right-click a clock signal and choose Count cycles of this clock.'); return; }
   useClock(path);
@@ -624,9 +626,11 @@ function toggleGroup(i) {
   if (r.collapsed && S.sel > i && !visible().includes(S.sel)) S.sel = i;
   renderRows(); commit();
 }
+// Next to the name of the clock whose cycles are counted.
+const CLOCK_BADGE = '<span class="clk-badge" title="Cycles are counted on this clock\'s rising edges"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 4.6V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
 function renderRows() {
   document.documentElement.style.setProperty('--row-h', S.rowH + 'px');
-  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}</span></div>`; }).join('');
+  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}${counting() && S.clock === r.v.path ? CLOCK_BADGE : ''}</span></div>`; }).join('');
   $('#empty').hidden = S.rows.length > 0;
   renderValues(); renderTree(); draw();
 }
