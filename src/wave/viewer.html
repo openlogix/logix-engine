@@ -207,16 +207,16 @@ button { font: inherit; color: inherit; }
 .app.no-browser .browser { display: none; }
 .side-btn.on { border-color: var(--accent); color: var(--accent); }
 .head > div { position: relative; overflow: hidden; white-space: nowrap; }
-#valHead { padding: 0 12px 0 4px; }
+#valHead { padding: 0 8px 0 4px; }
 /* The title gives way first: at any width the chevron stays. */
-#valHead .vt { margin-left: auto; min-width: 0; overflow: hidden; }
+#valHead .vt { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .app.val-narrow #valHead .vt { display: none; }
 /* A hidden Value column stays as a narrow strip with a chevron: a click on
    it brings the column back at its last width. */
 .val-open { display: none; }
-#valHead { gap: 6px; }
-.val-close { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; border-radius: 5px; opacity: 0; }
-.val-close svg, .val-open svg { width: 16px; height: 16px; display: block; }
+#valHead { gap: 4px; }
+.val-close { flex: none; display: grid; place-items: center; width: 18px; height: 18px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; border-radius: 4px; opacity: 0; }
+.val-close svg, .val-open svg { width: 13px; height: 13px; display: block; }
 #valHead:hover .val-close, .val-close:focus-visible { opacity: 1; }
 .val-close:hover { color: var(--accent); background: var(--soft); }
 .app.val-hidden .val-close { display: none; }
@@ -1385,8 +1385,8 @@ function setCol(col, w) {
   document.documentElement.style.setProperty(c.prop, (col === 'val' && w === 0 ? STRIP : w) + 'px');
   if (col === 'val') {
     $('#app').classList.toggle('val-hidden', w === 0);
-    // Too narrow for its title: only the chevron stays.
-    $('#app').classList.toggle('val-narrow', w > 0 && w < 80);
+    // Too narrow for even a cut title: only the chevron stays.
+    $('#app').classList.toggle('val-narrow', w > 0 && w < 44);
   }
   store.set('wv.' + col, String(w));
 }
