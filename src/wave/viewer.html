@@ -14,7 +14,8 @@
      with the view (the .view file's JSON) after every change, so a host saves
      it. A host that loads it directly can define
      window.logixWaveOpenSource(file, line) and window.logixWaveSaveView(view)
-     instead. In a browser with no host, Save view downloads the .view file. -->
+     instead. Save as image posts {type: "logix-wave:save-file", name, mime,
+     data} (SVG text, or PNG as base64), or calls window.logixWaveSaveFile. In a browser with no host, Save view downloads the .view file. -->
 <style>
 /* Layout: a one-screen tool. Header bar; signal browser on the left; the viewer on the right as three aligned columns (name, value at cursor, waves) under one time ruler. */
 :root {
@@ -564,6 +565,7 @@ function toggleVar(path) {
 const ruler = $('#ruler'), waves = $('#waves');
 function tok(css, n) { return css.getPropertyValue(n).trim(); }
 function sizeCanvas(c, w, h) {
+  if (EXPORT) return EXPORT.ctx(c, w, h);
   const dpr = window.devicePixelRatio || 1;
   if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
   c.style.height = h + 'px';
@@ -889,7 +891,8 @@ function openSettings(anchor) {
   el.innerHTML = `<div><div class="lbl">Row height</div>${seg('rows', [[24, 'Compact'], [30, 'Normal'], [38, 'Roomy']])}</div>
     <label class="check"><input type="checkbox" id="gridChk" ${S.grid ? 'checked' : ''}> Time grid lines</label>
     <div class="actions"><button class="btn" data-act="reset" title="Back to the testbench's own signals and the whole run. You can undo it.">Reset view</button></div>
-    <div class="actions"><button class="btn" data-act="valcol">${valHidden() ? 'Show' : 'Hide'} the Value column</button><button class="btn" data-act="widths">Reset column widths</button></div>`;
+    <div class="actions"><button class="btn" data-act="valcol">${valHidden() ? 'Show' : 'Hide'} the Value column</button><button class="btn" data-act="widths">Reset column widths</button></div>
+    <div><div class="lbl">Save as image</div><div class="actions"><button class="btn" data-act="svg" title="A drawing that stays sharp at any size">SVG</button><button class="btn" data-act="png" title="A picture, for chats and documents">PNG</button></div></div>`;
   el.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (e.target.id === 'gridChk') { S.grid = e.target.checked; draw(); return; }
@@ -898,6 +901,7 @@ function openSettings(anchor) {
     if (b.dataset.act === 'reset') { resetLayout(); closePop(); return; }
     if (b.dataset.act === 'valcol') { showVal(valHidden()); closePop(); return; }
     if (b.dataset.act === 'widths') { resetWidths(); closePop(); return; }
+    if (b.dataset.act === 'svg' || b.dataset.act === 'png') { exportImage(b.dataset.act); closePop(); return; }
     openSettings(anchor);
   });
   placePop(el, anchor);
@@ -1107,6 +1111,77 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
 });
 
+
+/* ---------- Saving the view as an image (R34) ---------- */
+// The same drawing as on screen: draw() runs once with recording contexts
+// in place of the canvases, which turn each canvas operation into SVG.
+let EXPORT = null;
+const measurer = document.createElement('canvas').getContext('2d');
+class SvgCtx {
+  constructor(dx, dy) { Object.assign(this, { dx, dy, out: [], path: '', fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, globalAlpha: 1, font: '11px monospace', textAlign: 'start', textBaseline: 'alphabetic', dash: [] }); }
+  setTransform() {}
+  setLineDash(d) { this.dash = d; }
+  op() { return this.globalAlpha < 1 ? ` opacity="${this.globalAlpha}"` : ''; }
+  fillRect(x, y, w, h) { this.out.push(`<rect x="${x + this.dx}" y="${y + this.dy}" width="${Math.max(w, 0)}" height="${Math.max(h, 0)}" fill="${this.fillStyle}"${this.op()}/>`); }
+  beginPath() { this.path = ''; }
+  moveTo(x, y) { this.path += `M${(x + this.dx).toFixed(2)} ${(y + this.dy).toFixed(2)}`; }
+  lineTo(x, y) { this.path += `L${(x + this.dx).toFixed(2)} ${(y + this.dy).toFixed(2)}`; }
+  closePath() { this.path += 'Z'; }
+  roundRect(x, y, w, h, r) { this.moveTo(x + r, y); this.lineTo(x + w - r, y); this.lineTo(x + w, y + r); this.lineTo(x + w, y + h - r); this.lineTo(x + w - r, y + h); this.lineTo(x + r, y + h); this.lineTo(x, y + h - r); this.lineTo(x, y + r); this.closePath(); }
+  stroke() { if (this.path) this.out.push(`<path d="${this.path}" fill="none" stroke="${this.strokeStyle}" stroke-width="${this.lineWidth}"${this.dash.length ? ` stroke-dasharray="${this.dash.join(' ')}"` : ''}${this.op()}/>`); }
+  fill() { if (this.path) this.out.push(`<path d="${this.path}" fill="${this.fillStyle}"${this.op()}/>`); }
+  measureText(t) { measurer.font = this.font; return measurer.measureText(t); }
+  fillText(t, x, y) {
+    const anchor = { center: 'middle', end: 'end', right: 'end' }[this.textAlign] || 'start';
+    const base = { middle: 'central', top: 'hanging' }[this.textBaseline] || 'alphabetic';
+    this.out.push(`<text x="${x + this.dx}" y="${y + this.dy}" fill="${this.fillStyle}" text-anchor="${anchor}" dominant-baseline="${base}" style="font:${esc(this.font)}"${this.op()}>${esc(t)}</text>`);
+  }
+}
+// The view as an SVG: the names, the values at the cursor, the ruler and
+// the waves, at the size they have on screen.
+function viewSvg() {
+  const css = getComputedStyle(document.documentElement), tok = (n) => css.getPropertyValue(n).trim();
+  const nameW = $('#names').offsetWidth, valW = $('#vals').offsetWidth, W = $('#wavecol').clientWidth;
+  const left = nameW + valW, H = 30 + S.rows.length * S.rowH, mono = tok('--mono') || 'monospace';
+  const recs = [];
+  EXPORT = { ctx: (c) => { const r = new SvgCtx(left, c === ruler ? 0 : 30); recs.push(r); return r; } };
+  // No hover line or selected row in the image: only what the view shows.
+  const hover = S.hoverT, sel = S.sel; S.hoverT = null; S.sel = -1;
+  try { draw(); } finally { EXPORT = null; S.hoverT = hover; S.sel = sel; draw(); }
+  const out = [`<rect width="${left + W}" height="${H}" fill="${tok('--panel')}"/>`,
+    `<text x="10" y="15" fill="${tok('--muted')}" dominant-baseline="central" style="font:600 11px ${esc(mono)}">SIGNAL</text>`];
+  if (valW > 20) out.push(`<text x="${left - 12}" y="15" fill="${tok('--muted')}" text-anchor="end" dominant-baseline="central" style="font:600 11px ${esc(mono)}">VALUE</text>`);
+  S.rows.forEach((r, i) => {
+    const y = 30 + i * S.rowH + S.rowH / 2, color = r.v ? tok('--s' + r.color) : tok('--muted');
+    const label = r.v ? r.v.path.split('.').slice(1).join('.') + (r.v.range && !r.v.name.includes('[') ? r.v.range : '') : r.kind === 'comment' ? r.text : '';
+    out.push(`<text x="10" y="${y}" fill="${r.v ? tok('--fg') : color}" dominant-baseline="central" style="font:${r.v ? '' : '600 '}12px ${esc(mono)}">${esc(label)}</text>`);
+    if (r.v && valW > 20 && S.cursor != null) out.push(`<text x="${left - 12}" y="${y}" fill="${color}" text-anchor="end" dominant-baseline="central" style="font:500 12px ${esc(mono)}">${esc(fmt(valueAt(r.v, S.cursor), r.v.width, r.radix))}</text>`);
+  });
+  out.push(`<path d="M${left - 0.5} 0V${H}M${nameW - 0.5} 0V${H}M0 29.5H${left + W}" stroke="${tok('--line')}"/>`);
+  for (const r of recs) out.push(...r.out);
+  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${left + W}" height="${H}" viewBox="0 0 ${left + W} ${H}">${out.join('')}</svg>`, w: left + W, h: H };
+}
+function saveFile(name, mime, data) {
+  if (hosted) { toHost({ type: 'logix-wave:save-file', name, mime, data }, 'logixWaveSaveFile', name, mime, data); return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type: mime }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+function exportImage(kind) {
+  const { svg, w, h } = viewSvg(), base = S.file.replace(/\.vcd$/i, '');
+  if (kind === 'svg') { saveFile(base + '.svg', 'image/svg+xml', svg); return; }
+  // PNG: the SVG drawn at twice the size, sharp on high-resolution screens.
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas'); c.width = w * 2; c.height = h * 2;
+    const g = c.getContext('2d'); g.scale(2, 2); g.drawImage(img, 0, 0);
+    if (hosted) saveFile(base + '.png', 'image/png', c.toDataURL('image/png').split(',')[1]);
+    else c.toBlob((b) => saveFile(base + '.png', 'image/png', b), 'image/png');
+  };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+
 /* ---------- The right-click menu ---------- */
 // The viewer's own menu, with what makes sense for what was clicked (a
 // signal's row, a comment row, the time ruler, the signal list), in place
@@ -1200,6 +1275,9 @@ function timeMenu(t, x, y) {
     { label: 'Add a blank row', act: () => addRowAt('blank', S.rows.length) },
     '-',
     { label: 'Reset the view', act: () => resetLayout() },
+    '-',
+    { label: 'Save as image (SVG)', act: () => exportImage('svg') },
+    { label: 'Save as image (PNG)', act: () => exportImage('png') },
   ], fmtTime(Math.round(t)));
 }
 function treeMenu(e) {
