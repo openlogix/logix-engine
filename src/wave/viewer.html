@@ -597,7 +597,7 @@ function useClock(path) {
 function setScale(cycles) {
   if (!cycles) { S.cycles = false; renderRows(); return; }
   const path = S.clock || suggestClock();
-  if (!path) { toast('No clock found: right-click a clock signal and choose Count cycles of this clock.'); return; }
+  if (!path) { toast('No clock found: right-click a clock signal and choose Use as time base.'); return; }
   useClock(path);
 }
 
@@ -936,10 +936,10 @@ $('#wavecol').addEventListener('wheel', (e) => {
 // message instead (R26).
 function scaleTip(t) {
   const at = counting() ? `${fmtAt(t)} (${fmtTime(t)})` : fmtTime(t);
-  if (counting()) return `<b>Clock cycles</b> of <code>${esc(S.clock)}</code><div>Counted on its rising edges; cycle 0 is the first.</div><div>At the pointer: ${esc(at)}</div><div class="how">Settings, Time scale: back to time. Right-click another clock to count its cycles.</div>`;
+  if (counting()) return `<b>Clock cycles</b> of <code>${esc(S.clock)}</code><div>Counted on its rising edges; cycle 0 is the first.</div><div>At the pointer: ${esc(at)}</div><div class="how">Settings, Time scale: back to time. Right-click another clock: Use as time base.</div>`;
   return `<b>Time</b>, in ${esc(unitFor()[0])}<div>At the pointer: ${esc(at)}</div><div class="how">${S.clock
     ? `Settings, Time scale: count cycles of <code>${esc(S.clock)}</code> instead.`
-    : 'To count clock cycles instead, right-click a clock signal: Count cycles of this clock.'}</div>`;
+    : 'To count clock cycles instead, right-click a clock signal: Use as time base.'}</div>`;
 }
 ruler.addEventListener('pointermove', (e) => {
   const r = ruler.getBoundingClientRect(), x = e.clientX - r.left, W = r.width;
@@ -1045,7 +1045,7 @@ function openSettings(anchor) {
   closePop();
   const el = document.createElement('div'); el.className = 'pop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'View settings');
   const seg = (key, opts) => `<div class="seg">${opts.map(([v, n]) => `<button data-${key}="${v}" class="${String(S[key === 'rows' ? 'rowH' : key]) === String(v) ? 'on' : ''}">${n}</button>`).join('')}</div>`;
-  const clockLine = S.clock ? `<div class="clockline">Clock <code>${esc(S.clock)}</code> <button class="btn" data-act="noclock" title="Stop counting cycles, and forget the clock">Clear</button></div>` : '';
+  const clockLine = S.clock ? `<div class="clockline">Clock <code>${esc(S.clock)}</code> <button class="btn" data-act="noclock" title="Stop using this clock as the time base, and forget it">Clear</button></div>` : '';
   el.innerHTML = `<div><div class="lbl">Time scale</div><div class="seg"><button data-scale="time" class="${counting() ? '' : 'on'}">Time</button><button data-scale="cycles" class="${counting() ? 'on' : ''}" title="Count clock cycles instead of time">Clock cycles</button></div>${clockLine}</div>
     <div><div class="lbl">Row height</div>${seg('rows', [[24, 'Compact'], [30, 'Normal'], [38, 'Roomy']])}</div>
     <label class="check"><input type="checkbox" id="gridChk" ${S.grid ? 'checked' : ''}> Grid lines</label>
@@ -1506,11 +1506,11 @@ function timeMenu(t, x, y) {
     { label: 'Save as SVG…', act: () => exportImage('svg') },
   ], fmtAt(Math.round(t)));
 }
-// Count, or stop counting, cycles of a 1-bit signal: in a row's menu and the signal list's.
+// Use a 1-bit signal as the time base (count its cycles), or stop: in a row's menu and the signal list's.
 function clockItem(path) {
   return counting() && S.clock === path
-    ? { label: 'Stop counting cycles of this clock', act: () => useClock(null) }
-    : { label: 'Count cycles of this clock', act: () => useClock(path) };
+    ? { label: 'Stop using as time base', act: () => useClock(null) }
+    : { label: 'Use as time base', act: () => useClock(path) };
 }
 function treeMenu(e) {
   const v = e.target.closest('.var'), sc = e.target.closest('.scope-h');
