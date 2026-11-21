@@ -49,12 +49,19 @@ button { font: inherit; color: inherit; }
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 12px; gap: 10px; box-sizing: border-box; }
 
 /* Header */
-.top { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.top { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; min-width: 0; }
+.top .right { display: flex; align-items: center; gap: 8px 10px; margin-left: auto; }
+/* The time base: Time | Cycles, and the clock (R44). */
+.btns button.on { background: var(--panel); color: var(--accent); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.clock-pick { gap: 6px; font-family: var(--mono); font-size: 12px; max-width: 220px; }
+.clock-pick #clockName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.clock-pick .clk-ico svg { width: 14px; height: 14px; display: block; color: var(--accent); }
+.clock-pick .dd { width: 12px; height: 12px; flex: none; color: var(--muted); }
+.clock-pick.idle { color: var(--muted); }
+.clock-pick.idle .clk-ico svg { color: var(--muted); }
 .pill { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); padding: 3px 8px; border-radius: 999px; }
-/* The testbench's name, as the Diagram window's bar names its module: the
-   window's title says Waveforms, so the page has no name or icon of its own. */
-.file { display: flex; align-items: center; min-width: 0; font-family: var(--mono); font-size: 13px; }
-.file b { color: var(--fg); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* One toolbar across the window: the testbench's name is in the window's
+   title, so the page has no name or icon of its own (R43). */
 .spacer { flex: 1; }
 /* hidden always hides, whatever display a class gives (the Save view
    button showed in Logix IDE's window, the user's report, 2026-11-21). */
@@ -94,7 +101,6 @@ button { font: inherit; color: inherit; }
 
 /* Viewer */
 .viewer { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; position: relative; }
-.toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .btns { display: flex; gap: 2px; background: var(--soft); border-radius: var(--radius); padding: 2px; }
 .btns button { border: 0; background: none; height: 26px; min-width: 28px; padding: 0 8px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; color: var(--fg); }
 .btns button:hover:not(:disabled) { background: var(--panel); }
@@ -177,9 +183,6 @@ button { font: inherit; color: inherit; }
 .status b { color: var(--fg); font-weight: 500; font-family: var(--mono); }
 .status .cur b { color: var(--accent); }
 .status .mk b { color: var(--marker); }
-.clockline { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--muted); }
-.clockline code { color: var(--fg); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.clockline .btn { height: 24px; padding: 0 8px; margin-left: auto; }
 .status .help { margin-left: auto; }
 /* On a line of their own (a narrow window), the hints start at the left, as the line above. */
 .status.wrapped .help { margin-left: 0; }
@@ -286,21 +289,38 @@ button { font: inherit; color: inherit; }
   <header class="top">
     <button class="btn icon-btn side-btn on" id="sideBtn" aria-label="Hide the signal list" title="Hide the signal list, for more room (S)" aria-pressed="true">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
-    <div class="file"><b id="fileName">uart_tb.vcd</b></div>
     <div class="btns undo" role="group" aria-label="Undo">
       <button id="undoBtn" title="Undo (⌘Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
       <button id="redoBtn" title="Redo (⇧⌘Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg></button>
     </div>
-    <div class="spacer"></div>
-    <button class="btn browser-toggle" id="browserToggle" aria-label="Show signals">Signals</button>
-    <button class="btn primary" id="saveBtn" title="Save the view: the rows, their formats and colors, and the zoom">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v6h8M7 21v-7h10v7"/></svg><span class="txt">Save view</span></button>
-    <button class="btn" id="imageBtn" title="Copy or save a picture of the waves, to share">
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="15.5" cy="8.5" r="1.5"/></svg><span class="txt">Image</span>
-    </button>
-    <button class="btn icon-btn" id="helpBtn" aria-label="Keyboard and mouse" title="Keyboard and mouse">?</button>
-    <button class="btn icon-btn" id="settingsBtn" aria-label="View settings" title="View settings">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button>
+    <div class="btns" role="group" aria-label="Zoom">
+      <button id="zoomOut" title="Zoom out (−)" aria-label="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+      <button id="zoomIn" title="Zoom in (+)" aria-label="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
+      <button id="fit" title="Show the whole simulation (F)">Fit</button>
+    </div>
+    <div class="btns" role="group" aria-label="Move the cursor">
+      <button id="prevEdge" title="Previous change of the selected signal (←)" aria-label="Previous change"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <button id="nextEdge" title="Next change of the selected signal (→)" aria-label="Next change"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
+      <button id="setMarker" title="Put the marker at the cursor, to measure from it (M)">Marker</button>
+    </div>
+    <div class="btns tb" role="group" aria-label="Time base">
+      <button id="tbTime" title="Show time">Time</button>
+      <button id="tbCycles" title="Count the clock's cycles">Cycles</button>
+    </div>
+    <button class="btn clock-pick" id="clockPick" title="The clock whose cycles are counted"><span class="clk-ico"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 4.6V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span id="clockName">No clock</span><svg class="dd" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <button class="fail-chip" id="failChip" hidden title="Show the first failed check"><span class="dot"></span><span id="failText">Failed check</span></button>
+    <!-- Kept together, so they wrap as one group in a narrow window. -->
+    <div class="right">
+      <button class="btn browser-toggle" id="browserToggle" aria-label="Show signals">Signals</button>
+      <button class="btn primary" id="saveBtn" title="Save the view: the rows, their formats and colors, and the zoom">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v6h8M7 21v-7h10v7"/></svg><span class="txt">Save view</span></button>
+      <button class="btn" id="imageBtn" title="Copy or save a picture of the waves, to share">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="15.5" cy="8.5" r="1.5"/></svg><span class="txt">Image</span>
+      </button>
+      <button class="btn icon-btn" id="helpBtn" aria-label="Keyboard and mouse" title="Keyboard and mouse">?</button>
+      <button class="btn icon-btn" id="settingsBtn" aria-label="View settings" title="View settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button>
+    </div>
   </header>
 
   <aside class="browser" id="browser" aria-label="Signals in the file">
@@ -311,19 +331,6 @@ button { font: inherit; color: inherit; }
   </aside>
 
   <main class="viewer" id="viewer">
-    <div class="toolbar">
-      <div class="btns" role="group" aria-label="Zoom">
-        <button id="zoomOut" title="Zoom out (−)" aria-label="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
-        <button id="zoomIn" title="Zoom in (+)" aria-label="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
-        <button id="fit" title="Show the whole simulation (F)">Fit</button>
-      </div>
-      <div class="btns" role="group" aria-label="Move the cursor">
-        <button id="prevEdge" title="Previous change of the selected signal (←)" aria-label="Previous change"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
-        <button id="nextEdge" title="Next change of the selected signal (→)" aria-label="Next change"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
-        <button id="setMarker" title="Put the marker at the cursor, to measure from it (M)">Marker</button>
-      </div>
-      <button class="fail-chip" id="failChip" hidden title="Show the first failed check"><span class="dot"></span><span id="failText">Failed check</span></button>
-    </div>
     <div class="failbar" id="failbar" hidden>
       <span class="dot"></span><span class="msg" id="failMsg"></span>
       <a class="src" id="failSrc" href="#" hidden></a>
@@ -549,8 +556,11 @@ function niceStep(span, px) {
 // time. A cycle is a clean rising edge, 0 to 1 (not from x or z), counted
 // from the clock's own transitions, so a clock that starts late, stops or
 // changes speed is still counted right. Cycle 0 is the first rising edge.
-// S.clock is the clock's path (kept while time shows, so switching back
-// needs no new choice), S.cycles whether the scale counts its cycles.
+// Two controls in the toolbar (the user's design, 2026-11-21): Time | Cycles
+// switches the time base, and the clock picker chooses the clock. S.clock is
+// always a clock when the run has one (the likely clock at first, then the
+// one chosen), shown by the picker even while time shows, so it's never a
+// hidden choice; S.cycles is the switch.
 function risingEdges(v) {
   const d = S.wave.data.get(v.id), out = [];
   for (let k = 1; k < d.t.length; k++) if (d.v[k] === '1' && d.v[k - 1] === '0') out.push(d.t[k]);
@@ -597,33 +607,64 @@ function suggestClock() {
   }
   return best && best.path;
 }
-// Count cycles of a clock (null: back to time).
-function useClock(path) {
-  if (path) {
-    const was = [S.clock, S.edges, S.cycles];
-    setClock(path); S.cycles = !!S.clock;
-    if (!counting()) { [S.clock, S.edges, S.cycles] = was; toast(`${path} has fewer than two rising edges: it can't be counted as a clock.`); return; }
+const canCount = () => !!S.clock && S.edges.length > 1;
+// Chooses the clock and counts its cycles (the picker, Use as clock).
+function pickClock(path) {
+  const was = [S.clock, S.edges, S.cycles];
+  setClock(path);
+  if (!canCount()) { [S.clock, S.edges, S.cycles] = was; toast(`${shortName(path)} has fewer than two rising edges: it can't be used as the clock.`); return; }
+  S.cycles = true; renderRows();
+}
+// The switch: Time or Cycles of the clock.
+function setCycles(on) {
+  if (on && !canCount()) { toast('This run has no clock to count: right-click a 1-bit signal, Use as clock.'); return; }
+  S.cycles = on; renderRows();
+}
+// The picker's list: the likely clocks, 1-bit signals that toggle, a name
+// like clk first, then by how many rising edges; the chosen one always in it.
+function clockCandidates() {
+  const out = [];
+  for (const v of S.wave.vars) {
+    if (!isClockable(v)) continue;
+    const n = risingEdges(v).length; if (n < 2 && v.path !== S.clock) continue;
+    out.push({ path: v.path, score: (/(^|_)(clk|clock)(_|$|\d)/i.test(v.name) ? 1e9 : 0) + n - v.path.split('.').length });
   }
-  else { S.clock = null; S.edges = []; S.cycles = false; }
-  renderRows();
+  out.sort((x, y) => y.score - x.score);
+  const top = out.slice(0, 8).map((c) => c.path);
+  if (S.clock && !top.includes(S.clock)) top.push(S.clock);
+  return top;
 }
-// The settings' Time / Cycles switch: Cycles with no clock yet suggests one.
-function setScale(cycles) {
-  if (!cycles) { S.cycles = false; renderRows(); return; }
-  const path = S.clock || suggestClock();
-  if (!path) { toast('No clock found: right-click a clock signal and choose Use as time base.'); return; }
-  useClock(path);
+function clockMenu(x, y) {
+  openMenu(x, y, [
+    ...clockCandidates().map((p) => ({ label: (p === S.clock ? '✓ ' : '\u2003') + shortName(p), act: () => pickClock(p) })),
+    '-',
+    { label: 'Any 1-bit signal: right-click it, Use as clock', disabled: true, act: () => {} },
+  ], 'Clock');
 }
+// The toolbar's switch and picker, as the state is.
+function renderTimeBase() {
+  $('#tbTime').classList.toggle('on', !counting()); $('#tbCycles').classList.toggle('on', counting());
+  $('#tbCycles').disabled = !canCount();
+  $('#tbCycles').title = canCount() ? `Count the cycles of ${shortName(S.clock)}` : 'This run has no clock to count';
+  const pick = $('#clockPick');
+  $('#clockName').textContent = S.clock ? shortName(S.clock) : 'No clock';
+  pick.classList.toggle('idle', !counting());
+  pick.title = S.clock ? `Clock: ${S.clock}. Choose another clock.` : 'No clock found. Right-click a 1-bit signal: Use as clock.';
+}
+$('#tbTime').addEventListener('click', () => setCycles(false));
+$('#tbCycles').addEventListener('click', () => setCycles(true));
+$('#clockPick').addEventListener('click', (e) => { const r = e.currentTarget.getBoundingClientRect(); clockMenu(r.left, r.bottom + 4); });
 
 /* ---------- Rows and browser ---------- */
 const varByPath = () => new Map(S.wave.vars.map((v) => [v.path, v]));
 function row(i) { return S.rows[i]; }
-// The clock's name as the rows show it (sys_clk, dut.clk), without the
+// A signal's name as the rows show it (sys_clk, dut.clk), without the
 // testbench's own name; the full path is on hover.
-function clockName() {
-  const parts = (S.clock || '').split('.');
+function shortName(path) {
+  const parts = (path || '').split('.');
   return parts.length > 2 ? parts.slice(-2).join('.') : parts[parts.length - 1];
 }
+const clockName = () => shortName(S.clock);
 function rowLabel(v) {
   const parts = v.path.split('.');
   const sc = parts.length > 2 ? parts[parts.length - 2] + '.' : '';
@@ -659,13 +700,13 @@ const CLOCK_BADGE = '<span class="clk-badge" title="Cycles are counted on this c
 function clockBadge(path) {
   if (S.clock !== path) return '';
   return counting() ? CLOCK_BADGE
-    : CLOCK_BADGE.replace('class="clk-badge"', 'class="clk-badge idle"').replace(/title="[^"]*"/, 'title="The chosen clock. Settings, Time scale: Clock cycles counts its cycles."');
+    : CLOCK_BADGE.replace('class="clk-badge"', 'class="clk-badge idle"').replace(/title="[^"]*"/, 'title="The clock. Cycles, in the toolbar, counts its cycles."');
 }
 function renderRows() {
   document.documentElement.style.setProperty('--row-h', S.rowH + 'px');
   $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}${clockBadge(r.v.path)}</span></div>`; }).join('');
   $('#empty').hidden = S.rows.length > 0;
-  renderValues(); renderTree(); draw();
+  renderValues(); renderTree(); renderTimeBase(); draw();
 }
 function renderValues() {
   $('#vals').innerHTML = visible().map((i) => {
@@ -856,8 +897,6 @@ function renderStatus() {
     const dt = fmtTime(Math.abs(S.cursor - S.marker));
     return counting() ? `${fmtCycles(Math.abs(cyclePos(S.cursor) - cyclePos(S.marker)))} (${dt})` : dt;
   };
-  // Counting cycles, the clock comes first: it's what the numbers count.
-  if (counting()) parts.push(`<span class="clk" title="Cycles are counted on the rising edges of ${esc(S.clock)}">Clock <b>${esc(clockName())}</b>${CLOCK_BADGE}</span>`);
   parts.push(`<span class="cur">Cursor <b>${S.cursor == null ? '–' : fmtAt(S.cursor)}</b></span>`);
   if (S.marker != null) parts.push(`<span class="mk">Marker <b>${fmtAt(S.marker)}</b></span>`, `<span>Δ <b>${S.cursor == null ? '–' : delta()}</b></span>`);
   parts.push(`<span>Showing <b>${fmtAt(S.start)} – ${fmtAt(S.end)}</b></span>`);
@@ -974,10 +1013,10 @@ $('#wavecol').addEventListener('wheel', (e) => {
 // message instead (R26).
 function scaleTip(t) {
   const at = counting() ? `${fmtAt(t)} (${fmtTime(t)})` : fmtTime(t);
-  if (counting()) return `<b>Clock cycles</b> of <code>${esc(clockName())}</code><div>Counted on its rising edges; cycle 0 is the first.</div><div>At the pointer: ${esc(at)}</div><div class="how">Settings, Time scale: back to time. Right-click another clock: Use as time base.</div>`;
+  if (counting()) return `<b>Clock cycles</b> of <code>${esc(clockName())}</code><div>Counted on its rising edges; cycle 0 is the first.</div><div>At the pointer: ${esc(at)}</div><div class="how">Time, in the toolbar: back to time. The clock picker: another clock.</div>`;
   return `<b>Time</b>, in ${esc(unitFor()[0])}<div>At the pointer: ${esc(at)}</div><div class="how">${S.clock
-    ? `Settings, Time scale: count cycles of <code>${esc(clockName())}</code> instead.`
-    : 'To count clock cycles instead, right-click a clock signal: Use as time base.'}</div>`;
+    ? `Cycles, in the toolbar: count the cycles of <code>${esc(clockName())}</code> instead.`
+    : 'This run has no clock to count. Right-click a 1-bit signal: Use as clock.'}</div>`;
 }
 ruler.addEventListener('pointermove', (e) => {
   const r = ruler.getBoundingClientRect(), x = e.clientX - r.left, W = r.width;
@@ -1094,9 +1133,7 @@ function openSettings(anchor) {
   closePop();
   const el = document.createElement('div'); el.className = 'pop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'View settings');
   const seg = (key, opts) => `<div class="seg">${opts.map(([v, n]) => `<button data-${key}="${v}" class="${String(S[key === 'rows' ? 'rowH' : key]) === String(v) ? 'on' : ''}">${n}</button>`).join('')}</div>`;
-  const clockLine = S.clock ? `<div class="clockline">Clock <code title="${esc(S.clock)}">${esc(clockName())}</code> <button class="btn" data-act="noclock" title="Stop using this clock as the time base, and forget it">Clear</button></div>` : '';
-  el.innerHTML = `<div><div class="lbl">Time scale</div><div class="seg"><button data-scale="time" class="${counting() ? '' : 'on'}">Time</button><button data-scale="cycles" class="${counting() ? 'on' : ''}" title="Count clock cycles instead of time">Clock cycles</button></div>${clockLine}</div>
-    <div><div class="lbl">Row height</div>${seg('rows', [[24, 'Compact'], [30, 'Normal'], [38, 'Roomy']])}</div>
+  el.innerHTML = `<div><div class="lbl">Row height</div>${seg('rows', [[24, 'Compact'], [30, 'Normal'], [38, 'Roomy']])}</div>
     <label class="check"><input type="checkbox" id="gridChk" ${S.grid ? 'checked' : ''}> Grid lines</label>
     <label class="check" title="The mouse hints at the bottom and under the signal list"><input type="checkbox" id="hintsChk" ${hintsShown() ? 'checked' : ''}> Show hints</label>
     <div class="actions"><button class="btn" data-act="reset" title="Back to the testbench's own signals and the whole run. You can undo it.">Reset view</button></div>
@@ -1108,8 +1145,6 @@ function openSettings(anchor) {
     if (e.target.id === 'hintsChk') { setHints(e.target.checked); return; }
     if (!b) return;
     if (b.dataset.rows) { S.rowH = +b.dataset.rows; renderRows(); }
-    if (b.dataset.scale) setScale(b.dataset.scale === 'cycles');
-    if (b.dataset.act === 'noclock') useClock(null);
     if (b.dataset.act === 'reset') { resetLayout(); closePop(); return; }
     if (b.dataset.act === 'valcol') { showVal(valHidden()); closePop(); return; }
     if (b.dataset.act === 'widths') { resetWidths(); closePop(); return; }
@@ -1126,7 +1161,7 @@ $('#settingsBtn').addEventListener('click', (e) => { if (pop) { closePop(); retu
 // zoom, the cursor and the marker.
 function viewData() {
   const o = { version: 1, waveform: S.file, rows: S.rows.map(serRow), view: { from: Math.round(S.start), to: Math.round(S.end) }, cursor: S.cursor, marker: S.marker, row_height: S.rowH };
-  if (S.clock) { o.clock = S.clock; o.time_scale = S.cycles ? 'cycles' : 'time'; }
+  o.time_base = counting() ? 'cycles' : 'time'; if (S.clock) o.clock = S.clock;
   return o;
 }
 function layoutJSON() { return JSON.stringify(viewData(), null, 2) + '\n'; }
@@ -1156,7 +1191,6 @@ function load() {
   S.order = DATA.order && DATA.order.length ? DATA.order : null;
   S.decl = DATA.declarations || {};
   S.marks = (DATA.failures || []).map((f) => ({ ...f, t: Math.round(f.time_ns * 1e-9 / w.ts) }));
-  $('#fileName').textContent = DATA.testbench || S.file;
   document.title = 'Logix Waveforms · ' + (DATA.testbench || S.file);
   if (DATA.truncated) {
     $('#truncbar').hidden = false;
@@ -1171,10 +1205,13 @@ function load() {
     S.cursor = v.cursor ?? null; S.marker = v.marker ?? null;
     if (v.view) { S.start = v.view.from; S.end = v.view.to; }
     if (v.clock) {
-      setClock(v.clock); S.cycles = !!S.clock && v.time_scale === 'cycles';
-      if (!S.clock) setTimeout(() => toast(`The clock ${v.clock} isn't in this run: showing time.`), 0);
+      setClock(v.clock);
+      if (!S.clock) setTimeout(() => toast(`The clock ${v.clock} isn't in this run: the likely clock is chosen instead.`), 0);
     }
+    S.cycles = v.time_base === 'cycles';
   }
+  if (!S.clock) setClock(suggestClock() || clockCandidates()[0]);
+  if (!canCount()) S.cycles = false;
   // What a client asked to show first (R8): signals, a time range, the cursor.
   const f = DATA.focus, ticks = (ns) => Math.round(ns * 1e-9 / w.ts);
   if (f) {
@@ -1593,11 +1630,11 @@ function timeMenu(t, x, y) {
     { label: 'Save as SVG…', act: () => exportImage('svg') },
   ], fmtAt(Math.round(t)));
 }
-// Use a 1-bit signal as the time base (count its cycles), or stop: in a row's menu and the signal list's.
+// Use a 1-bit signal as the clock (and count its cycles): in a row's menu and the signal list's.
 function clockItem(path) {
   return counting() && S.clock === path
-    ? { label: 'Stop using as time base', act: () => useClock(null) }
-    : { label: 'Use as time base', act: () => useClock(path) };
+    ? { label: 'Used as clock', disabled: true, act: () => {} }
+    : { label: 'Use as clock', act: () => pickClock(path) };
 }
 function treeMenu(e) {
   const v = e.target.closest('.var'), sc = e.target.closest('.scope-h');
