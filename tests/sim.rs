@@ -13,7 +13,7 @@ use logix_engine::packages::{manifest, remote_config};
 use logix_engine::progress::{NoProgress, OutputSink, Phases, ToolLine};
 use logix_engine::sim::testbench::Ending;
 use logix_engine::state::{self, EngineState};
-use logix_engine::tools::{Call, lint, simulate, test};
+use logix_engine::tools::{Call, lint, open_waveform, simulate, test};
 use serde_json::{Value, json};
 use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
@@ -770,6 +770,57 @@ async fn simulate_writes_the_waveform_viewer_with_the_failures_and_the_saved_vie
         .unwrap_err();
     assert_eq!(err.category, Category::Request);
     assert!(err.message.contains("view_file"), "{}", err.message);
+}
+
+#[tokio::test]
+async fn open_waveform_shows_any_waveform_at_a_place_a_client_chooses() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    simulate::run(&state, simulate_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    let vcd = src.join("_build/main_tb.vcd");
+    let input = |extra: Value| -> open_waveform::OpenWaveformInput {
+        let v = json!({
+            "waveform_file": vcd,
+            "build_folder": src.join("_view_build"),
+            "open_viewer": false,
+        });
+        serde_json::from_value(with(v, extra)).unwrap()
+    };
+    let out = open_waveform::run(
+        &state,
+        input(json!({"signals": ["main_tb.q", "main_tb.nope"], "from_ns": 10, "to_ns": 50, "cursor_ns": 20})),
+    )
+    .unwrap();
+    assert_eq!(out.unknown_signals, ["main_tb.nope"]);
+    assert!(out.signal_count >= 2, "{out:?}");
+    assert!(out.end_ns >= 95.0, "{out:?}");
+    assert!(!out.viewer_opened);
+    let data = page_data(Path::new(&out.viewer_file));
+    assert_eq!(
+        data["focus"]["signals"],
+        json!(["main_tb.q", "main_tb.nope"])
+    );
+    assert_eq!(data["focus"]["from_ns"], 10.0);
+    assert_eq!(data["failures"], json!([]));
+    // The waveform file is only read.
+    assert!(vcd.is_file());
+
+    for (extra, needle) in [
+        (json!({"waveform_file": "main_tb.vcd"}), "absolute"),
+        (
+            json!({"waveform_file": src.join("main_tb.v")}),
+            "must end with .vcd",
+        ),
+        (json!({"from_ns": 50, "to_ns": 10}), "before to_ns"),
+        (json!({"cursor_ns": -1}), "cursor_ns"),
+        (json!({"build_folder": src.join("pages")}), "build_folder"),
+    ] {
+        let err = open_waveform::run(&state, input(extra)).unwrap_err();
+        assert_eq!(err.category, Category::Request);
+        assert!(err.message.contains(needle), "{}", err.message);
+    }
 }
 
 #[tokio::test]

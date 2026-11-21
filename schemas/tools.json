@@ -3469,6 +3469,127 @@
     }
   },
   {
+    "name": "open_waveform",
+    "description": "Opens Open Logix's waveform viewer on a waveform file (.vcd), such as one from another simulator, an earlier run, or one you made, in the default web browser for the person at the screen. The file is only read. To point the person at something, name the signals to show (paths as in the file, such as main_tb.dut.count) and a time range in nanoseconds; signals the file doesn't have come back in unknown_signals. To simulate a testbench and open its waveform, use simulate instead, which also marks its failures.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "OpenWaveformInput",
+      "description": "The waveform to open, and what to show first.",
+      "type": "object",
+      "properties": {
+        "waveform_file": {
+          "description": "The waveform file (.vcd), as an absolute path. It is only read.",
+          "type": "string"
+        },
+        "build_folder": {
+          "description": "Where the viewer's page goes, as an absolute path to a build folder:\none of its last two folder names must contain \"build\", such as\n/home/user/proj/_build. When omitted, the page goes into the engine's\nown folder, which keeps the last 20.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "view_file": {
+          "description": "A saved view (.view) to open with, as an absolute path, such as one\nthe viewer saved for a testbench. It is only read.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "signals": {
+          "description": "The signals to show, in this order, as paths in the file, such as\n[\"main_tb.clk\", \"main_tb.dut.count\"]. Omitted means the view's, or\nthe file's top-level signals.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "default": null
+        },
+        "from_ns": {
+          "description": "The start of the time range to show, in nanoseconds. Omitted means\nthe start of the run, or the view's.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null
+        },
+        "to_ns": {
+          "description": "The end of the time range to show, in nanoseconds. Omitted means the\nend of the run, or the view's.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null
+        },
+        "cursor_ns": {
+          "description": "Where to put the cursor, in nanoseconds, so the viewer's Value\ncolumn shows every signal's value there.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null
+        },
+        "open_viewer": {
+          "description": "Open the page in the default web browser. Defaults to true. False\nonly writes it, such as for a host that shows the page itself.",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "waveform_file"
+      ]
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "OpenWaveformOutput",
+      "description": "The viewer's page.",
+      "type": "object",
+      "properties": {
+        "viewer_file": {
+          "description": "The viewer's page, as an absolute path: self-contained, with the\nwaveform in it.",
+          "type": "string"
+        },
+        "viewer_opened": {
+          "description": "True if the page was opened in the web browser.",
+          "type": "boolean"
+        },
+        "signal_count": {
+          "description": "How many signals the file has.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ns": {
+          "description": "The run's length, in nanoseconds.",
+          "type": "number"
+        },
+        "unknown_signals": {
+          "description": "Requested signals the file doesn't have, which the viewer leaves out.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "viewer_file",
+        "viewer_opened",
+        "signal_count",
+        "end_ns",
+        "unknown_signals"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
     "name": "format",
     "description": "Formats Verilog and SystemVerilog files in place with Verible's formatter. List the files to format (.v, .sv, .vh or .svh); the engine doesn't search for them. Formatting changes only layout, never meaning. Each file is rewritten only when its layout changes; files lists each one as formatted, unchanged or failed. A file Verible can't parse, such as one with a syntax error, is left unchanged: passed is false and diagnostics gives the error at file and line. That is a result, not an error. Code between // verilog_format: off and // verilog_format: on comments is left as is. The first call may download the Verible package first.",
     "inputSchema": {

@@ -15,6 +15,7 @@ pub mod get_engine_info;
 pub mod install_driver;
 pub mod lint;
 pub mod list_devices;
+pub mod open_waveform;
 pub mod program_board;
 pub mod serial;
 pub mod simulate;
@@ -148,6 +149,7 @@ pub fn all_definitions() -> Vec<Tool> {
         definition::<lint::Lint>(),
         definition::<test::Test>(),
         definition::<simulate::Simulate>(),
+        definition::<open_waveform::OpenWaveform>(),
         definition::<format::Format>(),
         definition::<diagram::Diagram>(),
         definition::<build::Build>(),
@@ -239,6 +241,7 @@ pub async fn call(
     use install_driver::InstallDriver;
     use lint::Lint;
     use list_devices::ListDevices;
+    use open_waveform::OpenWaveform;
     use program_board::ProgramBoard;
     use serial::{CloseSerial, OpenSerial, ReadSerial, WriteSerial};
     use simulate::Simulate;
@@ -273,6 +276,7 @@ pub async fn call(
     if ![
         GetEngineInfo::NAME,
         CleanBuild::NAME,
+        OpenWaveform::NAME,
         CleanLogs::NAME,
         OpenSerial::NAME,
         ReadSerial::NAME,
@@ -373,6 +377,13 @@ pub async fn call(
                     Ok(input) => diagram::run(state, input, call).await,
                     Err(e) => Err(e),
                 },
+                call,
+            ),
+        ),
+        OpenWaveform::NAME => to_call_result(
+            display,
+            with_commands(
+                parse_input::<OpenWaveform>(arguments).and_then(|i| open_waveform::run(state, i)),
                 call,
             ),
         ),
