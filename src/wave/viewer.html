@@ -146,10 +146,11 @@ button { font: inherit; color: inherit; }
 .nrow { gap: 8px; padding: 0 4px 0 10px; cursor: pointer; user-select: none; }
 /* Rows are selected, not text: Shift+click selects a range of rows (R46). */
 .names, .vals { -webkit-user-select: none; user-select: none; }
-/* Only selected rows are highlighted: a hover highlight looked like a
-   selection, and stayed on the row where a drag ended (the user's report,
-   2026-11-21). */
+/* Hover is a faint gray, unlike the selection's tint, so it can't pass for
+   a selected row (the user's report, 2026-11-21). After a drop it waits for
+   the mouse to move: the browser keeps the hover where the drag began. */
 .nrow.sel, .vrow.sel { background: var(--sel); }
+.names:not(.after-drop) .nrow:not(.sel):not(.group):hover { background: color-mix(in srgb, var(--fg) 7%, var(--panel)); }
 .nrow.sel { box-shadow: inset 2px 0 0 var(--c); }
 .nrow.drop { box-shadow: inset 0 2px 0 var(--accent); }
 .nrow.drop-below { box-shadow: inset 0 -2px 0 var(--accent); }
@@ -972,6 +973,7 @@ ruler.addEventListener('click', (e) => { const r = ruler.getBoundingClientRect()
 // right-click menu, Edit the text.
 // Shift+click would also select text in the browser: rows only.
 $('#names').addEventListener('mousedown', (e) => { if (e.shiftKey) e.preventDefault(); });
+$('#names').addEventListener('mousemove', () => $('#names').classList.remove('after-drop'));
 $('#names').addEventListener('click', (e) => {
   const rowEl = e.target.closest('.nrow'); if (!rowEl) return;
   const i = +rowEl.dataset.i;
@@ -1013,6 +1015,7 @@ $('#rows').addEventListener('dragover', (e) => {
 $('#rows').addEventListener('drop', (e) => {
   if (dragRow == null) return; e.preventDefault(); e.stopPropagation();
   clearDrop(); moveBlockTo(dragRow, dropAt(e.clientY).at); dragRow = null;
+  $('#names').classList.add('after-drop');
 });
 $('#names').addEventListener('dragend', () => { dragRow = null; clearDrop(); });
 
