@@ -1467,9 +1467,9 @@ function copyImage() {
 // (the user's design, 2026-11-21): pictures are of what's shown; spreadsheets and web
 // pages of all signals or of the shown ones.
 const EXPORT_ITEMS = () => [
-  { label: 'Copy image', act: copyImage },
-  { label: 'Save image as PNG…', act: () => exportImage('png') },
-  { label: 'Save image as SVG…', act: () => exportImage('svg') },
+  { label: 'Copy shown image', act: copyImage },
+  { label: 'Save shown image (PNG)…', act: () => exportImage('png') },
+  { label: 'Save shown image (SVG)…', act: () => exportImage('svg') },
   '-',
   { label: 'Spreadsheet of all signals…', act: () => exportCSV(true) },
   { label: 'Spreadsheet of shown signals…', act: () => exportCSV(false) },
