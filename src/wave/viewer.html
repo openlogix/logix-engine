@@ -157,6 +157,7 @@ button { font: inherit; color: inherit; }
 .nrow .dot { width: 8px; height: 8px; border-radius: 3px; background: var(--c); flex: none; }
 .clk-badge { display: inline-flex; vertical-align: -2px; margin-left: 6px; color: var(--accent); }
 .clk-badge svg { width: 13px; height: 13px; }
+.clk-badge.idle { color: var(--muted); opacity: .75; }
 .nrow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; }
 .nrow .sc { color: var(--muted); }
 .nrow .rg { color: var(--muted); font-size: 11px; }
@@ -652,9 +653,17 @@ function toggleGroup(i) {
 }
 // Next to the name of the clock whose cycles are counted.
 const CLOCK_BADGE = '<span class="clk-badge" title="Cycles are counted on this clock\'s rising edges"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 4.6V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+// The icon next to the chosen clock's name: in the accent color while its
+// cycles are counted, gray while time shows, so the choice stays visible
+// (the user's request, 2026-11-21).
+function clockBadge(path) {
+  if (S.clock !== path) return '';
+  return counting() ? CLOCK_BADGE
+    : CLOCK_BADGE.replace('class="clk-badge"', 'class="clk-badge idle"').replace(/title="[^"]*"/, 'title="The chosen clock. Settings, Time scale: Clock cycles counts its cycles."');
+}
 function renderRows() {
   document.documentElement.style.setProperty('--row-h', S.rowH + 'px');
-  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}${counting() && S.clock === r.v.path ? CLOCK_BADGE : ''}</span></div>`; }).join('');
+  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}${clockBadge(r.v.path)}</span></div>`; }).join('');
   $('#empty').hidden = S.rows.length > 0;
   renderValues(); renderTree(); draw();
 }
@@ -670,7 +679,7 @@ function renderValues() {
 function renderTree() {
   const q = $('#search').value.trim().toLowerCase();
   const shown = new Set(S.rows.filter((r) => r.v).map((r) => r.v.path));
-  const varBtn = (v, label) => `<button class="var ${shown.has(v.path) ? 'on' : ''}" data-path="${esc(v.path)}" title="${esc(v.path)}"><span class="chk"></span><span class="nm">${esc(label)}${counting() && S.clock === v.path ? CLOCK_BADGE : ''}</span>${v.width > 1 ? `<span class="w">${v.width} bits</span>` : ''}</button>`;
+  const varBtn = (v, label) => `<button class="var ${shown.has(v.path) ? 'on' : ''}" data-path="${esc(v.path)}" title="${esc(v.path)}"><span class="chk"></span><span class="nm">${esc(label)}${clockBadge(v.path)}</span>${v.width > 1 ? `<span class="w">${v.width} bits</span>` : ''}</button>`;
   if (q) {
     const hits = S.wave.vars.filter((v) => v.path.toLowerCase().includes(q));
     $('#tree').innerHTML = hits.length ? hits.map((v) => varBtn(v, v.path)).join('') : '<p class="hint" style="border:0">No signal matches.</p>';
