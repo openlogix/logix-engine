@@ -672,7 +672,9 @@ endmodule
         assert!(!html.contains("/*__DATA__*/"));
         assert!(!html.contains("</script><b>"));
         assert!(html.contains(r#""time_ns":12.5"#));
-        // The page needs no network (R28).
+        // The page needs no network (R28). The SVG namespace is a name, not
+        // a place it loads from.
+        let html = html.replace("http://www.w3.org/2000/svg", "");
         assert!(!html.contains("http://") && !html.contains("https://"));
     }
 
