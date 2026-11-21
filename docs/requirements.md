@@ -464,10 +464,10 @@ The requirements keep the numbers they had in review (R1 to R40), so earlier dis
 
 **Design** (proposed 2026-11-21, with the requirements; changed as building shows):
 
-- `simulate` writes the viewer page next to the waveform in the build folder and opens it in the default browser when `open_viewer` asks; its `layout_file` becomes `view_file` (`<testbench>.view`); the result names the page. A new tool, `open_waveform`, opens any `.vcd` file, optionally at a time range and with chosen signals (R3, R8). The tools only add, as the tool API requires; GTKWave's fields go when it's no longer started.
-- The testbench's declaration order (R9) comes from the testbench's source, read with Verible (already in logix-core).
+- `simulate` writes the viewer page next to the waveform in the build folder (`viewer_file`, `<testbench>.html`) and, with `viewer` `logix`, opens it in the default browser when `open_viewer` asks; `view_file` names the saved view (`<testbench>.view`). Built 2026-11-21 (`src/wave/`). `viewer` defaults to `gtkwave` until Logix IDE uses the page, then to `logix`, and GTKWave's option and `layout_file` go (R32). A new tool, `open_waveform`, opens any `.vcd` file, optionally at a time range and with chosen signals (R3, R8). The tools only add, as the tool API requires; GTKWave's fields go when it's no longer started.
+- The testbench's declaration order (R9) and each signal's line (R27) come from the testbench's source, read by a small reader in the engine (`wave::declared_signals`: the module's own reg, wire, integer… declarations, outside tasks, functions and blocks), which needs no program to run.
 - Failures (R25, R26, R35) are the `$error` and assertion lines the engine already finds, with their time, file and line, put into the page as markers.
-- The page is the engine's, built into it as the diagram page is, with its own tests. It has no access to the host: as with the diagram, a host learns of a saved view or a source-line request through a navigation it cancels, and Logix IDE keeps the view as a project file. In a browser, Save View downloads it.
+- The page is the engine's, built into it as the diagram page is (`src/wave/viewer.html`, its data written in as JSON). The engine only reads a `.view` file and writes none: the page's default view is the testbench's own signals, so R24 holds by itself. It has no access to the host: as with the diagram, a host learns of a saved view or a source-line request through a navigation it cancels, and Logix IDE keeps the view as a project file. In a browser, Save View downloads it.
 
 ## Acceptance and phasing
 

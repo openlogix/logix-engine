@@ -1,0 +1,1301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Waveforms</title>
+<!-- Written by Logix Engine's simulate tool (docs/tool-api.md, "The
+     waveform viewer"). Self-contained: it needs no network and nothing
+     installed. Hosts can embed it in an iframe or a window of their own:
+     ?theme=light|dark sets the theme, and it accepts
+     {type: "logix-wave:theme", theme}. It posts
+     {type: "logix-wave:open-source", file, line} when a signal's name or a
+     failure is double-clicked or clicked, and {type: "logix-wave:view", view}
+     with the view (the .view file's JSON) after every change, so a host saves
+     it. A host that loads it directly can define
+     window.logixWaveOpenSource(file, line) and window.logixWaveSaveView(view)
+     instead. In a browser with no host, Save view downloads the .view file. -->
+<style>
+/* Layout: a one-screen tool. Header bar; signal browser on the left; the viewer on the right as three aligned columns (name, value at cursor, waves) under one time ruler. */
+:root {
+  --bg: #f4f6f5; --panel: #ffffff; --fg: #15201e; --muted: #5c6b68; --line: #dde4e2; --soft: #edf2f0;
+  --accent: #00838a; --accent-soft: #d8efee; --wave-bg: #ffffff; --grid: #eef2f1; --sel: #f1f7f6;
+  --x: #d23b3b; --z: #b88400; --fail: #d23b3b; --marker: #7a52d6;
+  --s1: #0f8a66; --s2: #2463c7; --s3: #b25b06; --s4: #8a3fd0; --s5: #c23478; --s6: #0d7891;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --row-h: 30px; --name-w: 210px; --val-w: 92px; --radius: 8px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0c1110; --panel: #121918; --fg: #e2ebe9; --muted: #8b9d99; --line: #22302d; --soft: #19221f;
+  --accent: #3cc8c0; --accent-soft: #143331; --wave-bg: #0f1615; --grid: #182220; --sel: #15201e;
+  --x: #f47272; --z: #f2b52a; --fail: #f47272; --marker: #b493ff;
+  --s1: #3ad69c; --s2: #72a9ff; --s3: #f5a43a; --s4: #bd92ff; --s5: #f477b5; --s6: #2fd0ea;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0c1110; --panel: #121918; --fg: #e2ebe9; --muted: #8b9d99; --line: #22302d; --soft: #19221f;
+  --accent: #3cc8c0; --accent-soft: #143331; --wave-bg: #0f1615; --grid: #182220; --sel: #15201e;
+  --x: #f47272; --z: #f2b52a; --fail: #f47272; --marker: #b493ff;
+  --s1: #3ad69c; --s2: #72a9ff; --s3: #f5a43a; --s4: #bd92ff; --s5: #f477b5; --s6: #2fd0ea;
+  color-scheme: dark; }
+
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 13px; overflow: hidden; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.app { height: 100%; display: grid; grid-template-rows: auto 1fr; grid-template-columns: 250px 1fr;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 12px; gap: 10px; box-sizing: border-box; }
+
+/* Header */
+.top { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; }
+.brand svg { width: 28px; height: 28px; flex: none; }
+.pill { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); padding: 3px 8px; border-radius: 999px; }
+.file { display: flex; align-items: center; gap: 6px; color: var(--muted); font-family: var(--mono); font-size: 12px; min-width: 0; }
+.file b { color: var(--fg); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spacer { flex: 1; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--panel); cursor: pointer; white-space: nowrap; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
+.btn svg { width: 15px; height: 15px; }
+.icon-btn { width: 30px; padding: 0; justify-content: center; }
+.browser-toggle { display: none; }
+
+/* Browser */
+.browser { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.browser h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 12px 12px 8px; font-weight: 600; }
+.search { margin: 0 10px 8px; position: relative; }
+.search input { width: 100%; box-sizing: border-box; height: 30px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); padding: 0 10px 0 28px; font: inherit; }
+.search svg { position: absolute; left: 9px; top: 8px; width: 14px; height: 14px; color: var(--muted); }
+.tree { overflow: auto; padding: 0 6px 10px; flex: 1; }
+.scope-h { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: none; padding: 5px 6px; border-radius: 6px; cursor: pointer; font-weight: 600; text-align: left; }
+.scope-h:hover { background: var(--soft); }
+.scope-h .chev { width: 10px; transition: transform .15s; color: var(--muted); }
+.scope[data-open="false"] > .kids { display: none; }
+.scope[data-open="true"] > .scope-h .chev { transform: rotate(90deg); }
+.scope-h .kind { font-weight: 400; color: var(--muted); font-size: 11px; }
+.kids { padding-left: 12px; }
+.var { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; padding: 4px 6px; border-radius: 6px; cursor: pointer; text-align: left; font-family: var(--mono); font-size: 12px; }
+.var:hover { background: var(--soft); }
+.var .chk { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid var(--line); flex: none; display: grid; place-items: center; }
+.var.on .chk { background: var(--accent); border-color: var(--accent); }
+.var.on .chk::after { content: ""; width: 7px; height: 4px; border: 2px solid var(--panel); border-top: 0; border-right: 0; transform: translate(0, -1px) rotate(-45deg); }
+.var .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.var .w { color: var(--muted); font-size: 11px; }
+.browser .hint { margin: 0; padding: 10px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+/* Viewer */
+.viewer { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; position: relative; }
+.toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.group { display: flex; gap: 2px; background: var(--soft); border-radius: var(--radius); padding: 2px; }
+.group button { border: 0; background: none; height: 26px; min-width: 28px; padding: 0 8px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; color: var(--fg); }
+.group button:hover:not(:disabled) { background: var(--panel); }
+.group button:disabled { opacity: .35; cursor: default; }
+.keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 12px; }
+.keys kbd { font-family: var(--mono); font-size: 11px; background: var(--soft); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; white-space: nowrap; justify-self: start; }
+.nrow.comment .nm { font-family: var(--font); font-weight: 600; font-size: 12px; color: var(--muted); letter-spacing: .02em; }
+.nrow.blank .nm { color: var(--muted); font-size: 11px; opacity: 0; }
+.nrow.blank:hover .nm { opacity: .7; }
+.pop input[type=text] { width: 100%; box-sizing: border-box; height: 30px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); padding: 0 8px; font: inherit; }
+.group button svg { width: 15px; height: 15px; }
+.fail-chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--fail) 45%, transparent); background: color-mix(in srgb, var(--fail) 10%, transparent); color: var(--fail); font-weight: 600; cursor: pointer; }
+.fail-chip[hidden] { display: none; }
+.failbar { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--fail) 9%, var(--panel)); color: var(--fg); font-size: 12.5px; flex-wrap: wrap; }
+.failbar[hidden], .truncbar[hidden] { display: none; }
+.failbar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fail); flex: none; }
+.failbar .msg { font-family: var(--mono); min-width: 0; overflow-wrap: anywhere; }
+.failbar .src { color: var(--fail); font-family: var(--mono); font-size: 12px; }
+.failbar .count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.failbar .btn { height: 26px; padding: 0 10px; font-size: 12px; }
+.failbar .spacer { flex: 1; }
+.truncbar { padding: 7px 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--z) 12%, var(--panel)); font-size: 12.5px; }
+.flist { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow: auto; }
+.flist button { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; text-align: left; border: 0; background: none; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.flist button:hover, .flist button.on { background: var(--soft); }
+.flist .t { font-family: var(--mono); font-size: 11px; color: var(--fail); white-space: nowrap; }
+.flist .m { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.flist .s { grid-column: 2; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.fail-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fail); }
+
+.cols { display: grid; grid-template-columns: var(--name-w) var(--val-w) minmax(0, 1fr); }
+.head { border-bottom: 1px solid var(--line); height: 30px; }
+.head > div { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; display: flex; align-items: center; padding: 0 10px; border-right: 1px solid var(--line); }
+.head canvas, .wavecol canvas { display: block; width: 100%; }
+.rows { flex: 1; overflow: auto; min-height: 0; position: relative; }
+.names, .vals { border-right: 1px solid var(--line); }
+.nrow, .vrow { height: var(--row-h); display: flex; align-items: center; box-sizing: border-box; border-bottom: 1px solid var(--grid); }
+.nrow { gap: 8px; padding: 0 4px 0 10px; cursor: pointer; user-select: none; }
+.nrow:hover, .nrow.sel, .vrow.sel { background: var(--sel); }
+.nrow.sel { box-shadow: inset 2px 0 0 var(--c); }
+.nrow.drop { box-shadow: inset 0 2px 0 var(--accent); }
+.nrow .dot { width: 8px; height: 8px; border-radius: 3px; background: var(--c); flex: none; }
+.nrow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; }
+.nrow .sc { color: var(--muted); }
+.nrow .rg { color: var(--muted); font-size: 11px; }
+/* Values end 12 px from the column's right border, as its title does, so
+   digits line up (tabular numbers). */
+.vrow { padding: 0 12px 0 8px; text-align: right; text-overflow: ellipsis; display: block; line-height: calc(var(--row-h) - 1px); font-family: var(--mono); font-size: 12px; color: var(--c); font-weight: 500; font-variant-numeric: tabular-nums; overflow: hidden; white-space: nowrap; }
+.vrow.xv { color: var(--x); }
+.wavecol { position: relative; }
+.empty { padding: 40px 20px; text-align: center; color: var(--muted); grid-column: 1 / -1; }
+.empty[hidden] { display: none; }
+
+.status { display: flex; gap: 16px; align-items: center; padding: 7px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.status b { color: var(--fg); font-weight: 500; font-family: var(--mono); }
+.status .cur b { color: var(--accent); }
+.status .mk b { color: var(--marker); }
+.status .help { margin-left: auto; }
+
+.tip { position: fixed; pointer-events: none; background: var(--fg); color: var(--panel); border-radius: 7px; padding: 6px 9px; font-size: 12px; line-height: 1.4; z-index: 30; max-width: 280px; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+.tip .t { opacity: .7; font-family: var(--mono); font-size: 11px; }
+.tip code { font-family: var(--mono); }
+
+/* Popovers and dialog */
+/* The viewer's own right-click menu. */
+.ctx { position: fixed; z-index: 70; min-width: 230px; max-width: 300px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.2); padding: 5px; display: flex; flex-direction: column; font-size: 13px; }
+.ctx .ttl { padding: 6px 10px 4px; font-family: var(--mono); font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx .it { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: none; text-align: left; padding: 6px 10px; border-radius: 6px; cursor: pointer; color: var(--fg); }
+.ctx .it:hover, .ctx .it:focus { background: var(--accent-soft); outline: none; }
+.ctx .it:disabled { opacity: .4; cursor: default; background: none; }
+.ctx .it .k { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.ctx .it.danger { color: var(--x); }
+.ctx .sep { height: 1px; background: var(--line); margin: 4px 6px; }
+.ctx .sub { padding: 4px 10px 6px; display: flex; flex-direction: column; gap: 5px; }
+.ctx .sub .lbl { font-size: 11px; color: var(--muted); }
+.ctx .seg button { font-size: 11.5px; }
+.pop { position: fixed; z-index: 40; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.18); padding: 12px; width: 250px; display: flex; flex-direction: column; gap: 12px; }
+.pop h3 { margin: 0; font-size: 12px; font-family: var(--mono); font-weight: 600; overflow-wrap: anywhere; }
+.pop .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+.seg { display: flex; flex-wrap: wrap; gap: 2px; background: var(--soft); padding: 2px; border-radius: 8px; }
+.seg button { flex: 1; border: 0; background: none; height: 26px; padding: 0 6px; border-radius: 6px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+.seg button.on { background: var(--panel); box-shadow: 0 1px 2px rgba(0,0,0,.12); font-weight: 600; }
+.swatches { display: flex; gap: 8px; }
+.swatches button { width: 22px; height: 22px; border-radius: 6px; border: 0; cursor: pointer; background: var(--c); }
+.swatches button.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--c); }
+.pop .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.pop .actions .btn { height: 28px; padding: 0 10px; font-size: 12px; }
+.btn.danger { color: var(--x); }
+.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.check input { accent-color: var(--accent); }
+
+.overlay { position: fixed; inset: 0; background: rgba(5, 12, 11, .45); display: grid; place-items: center; z-index: 50; padding: 16px; }
+.overlay[hidden] { display: none; }
+.dialog { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; width: min(560px, 100%); padding: 18px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 20px 50px rgba(0,0,0,.25); }
+.dialog h2 { margin: 0; font-size: 16px; }
+.dialog p { margin: 0; color: var(--muted); line-height: 1.5; }
+.dialog pre { margin: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px; font-family: var(--mono); font-size: 12px; max-height: 260px; overflow: auto; }
+.dialog .actions { display: flex; justify-content: flex-end; gap: 8px; }
+.drop-hint { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 18%, transparent); border: 3px dashed var(--accent); font-size: 18px; font-weight: 600; color: var(--accent); pointer-events: none; }
+.drop-hint[hidden] { display: none; }
+
+/* More room for the waves: the signal list hides, and the Signal and Value
+   columns are resized by dragging their right border. */
+.app.no-browser { grid-template-columns: 1fr; }
+.app.no-browser .browser { display: none; }
+.side-btn.on { border-color: var(--accent); color: var(--accent); }
+.head > div { position: relative; overflow: hidden; white-space: nowrap; }
+#valHead { padding: 0 12px 0 8px; justify-content: flex-end; }
+/* A hidden Value column stays as a narrow strip with a chevron: a click on
+   it brings the column back at its last width. */
+.val-open { display: none; }
+.app.val-hidden #valHead { padding: 0; }
+.app.val-hidden #valHead .vt { display: none; }
+.app.val-hidden .val-open { display: grid; place-items: center; width: 100%; height: 100%; border: 0; padding: 0; background: var(--soft); color: var(--muted); cursor: pointer; font-size: 14px; font-weight: 700; }
+.app.val-hidden .val-open:hover { color: var(--accent); }
+.app.val-hidden .vrow { padding: 0; color: transparent; background: var(--soft); cursor: pointer; }
+/* A hidden Value column keeps its handle, just right of the Signal column's, to drag it back. */
+.colgrips { position: absolute; left: 0; right: 0; top: var(--grips-top, 0px); bottom: var(--grips-bottom, 0px); pointer-events: none; z-index: 4; }
+.grip { position: absolute; top: 0; bottom: 0; width: 8px; user-select: none; cursor: col-resize; pointer-events: auto; }
+.grip[data-col="name"] { left: calc(var(--name-w) - 6px); }
+.grip[data-col="val"] { left: calc(var(--name-w) + var(--val-w) - 1px); }
+.grip::after { content: ""; position: absolute; top: 0; bottom: 0; width: 2px; background: transparent; }
+.grip[data-col="name"]::after { left: 5px; }
+.grip[data-col="val"]::after { left: 0; }
+.grip:hover::after, .grip.active::after { background: var(--accent); }
+.vrow, .nrow { overflow: hidden; }
+.cols.head { position: relative; }
+@media (max-width: 760px) {
+  :root { --name-w: 118px; --val-w: 62px; }
+  .app { grid-template-columns: 1fr; }
+  .browser { position: fixed; z-index: 45; top: 60px; bottom: 12px; left: max(16px, env(safe-area-inset-left, 0px)); width: min(280px, calc(100% - 32px)); box-shadow: 0 16px 40px rgba(0,0,0,.25); }
+  .app:not(.show-browser) .browser { display: none; }
+  .app.no-browser.show-browser .browser { display: flex; }
+  .side-btn { display: none; }
+  .browser-toggle { display: inline-flex; }
+  .status .help, .btn .txt, .file { display: none; }
+  .nrow .sc { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <header class="top">
+    <button class="btn icon-btn side-btn on" id="sideBtn" aria-label="Hide the signal list" title="Hide the signal list, for more room (S)" aria-pressed="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
+    <div class="brand">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#10B981"/><stop offset="1" stop-color="#0F766E"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#g)"/><path d="M14 40h8V24h10v16h8V24h10" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Waveforms
+    </div>
+    <div class="file"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg><b id="fileName">uart_tb.vcd</b></div>
+    <div class="spacer"></div>
+    <button class="btn browser-toggle" id="browserToggle" aria-label="Show signals">Signals</button>
+    <div class="group" role="group" aria-label="Undo">
+      <button id="undoBtn" title="Undo (⌘Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
+      <button id="redoBtn" title="Redo (⇧⌘Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg></button>
+    </div>
+    <button class="btn primary" id="saveBtn" title="Save the view: the rows, their formats and colors, and the zoom">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v6h8M7 21v-7h10v7"/></svg><span class="txt">Save view</span></button>
+    <button class="btn icon-btn" id="helpBtn" aria-label="Keyboard and mouse" title="Keyboard and mouse">?</button>
+    <button class="btn icon-btn" id="settingsBtn" aria-label="View settings" title="View settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button>
+  </header>
+
+  <aside class="browser" id="browser" aria-label="Signals in the file">
+    <h2>Signals in the file</h2>
+    <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="search" type="search" placeholder="Find a signal" aria-label="Find a signal"></div>
+    <div class="tree" id="tree"></div>
+    <p class="hint">Click a signal to show or hide it; it goes after the selected row. Drag rows to reorder them.</p>
+  </aside>
+
+  <main class="viewer" id="viewer">
+    <div class="toolbar">
+      <div class="group" role="group" aria-label="Zoom">
+        <button id="zoomOut" title="Zoom out (−)" aria-label="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+        <button id="zoomIn" title="Zoom in (+)" aria-label="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
+        <button id="fit" title="Show the whole simulation (F)">Fit</button>
+      </div>
+      <div class="group" role="group" aria-label="Move the cursor">
+        <button id="prevEdge" title="Previous change of the selected signal (←)" aria-label="Previous change"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <button id="nextEdge" title="Next change of the selected signal (→)" aria-label="Next change"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
+        <button id="setMarker" title="Put the marker at the cursor, to measure from it (M)">Marker</button>
+      </div>
+      <div class="group" role="group" aria-label="Add a row">
+        <button id="addComment" title="Add a comment row, a title for the signals under it">+ Comment</button>
+        <button id="addBlank" title="Add a blank row, to space signals apart">+ Blank</button>
+      </div>
+      <button class="fail-chip" id="failChip" hidden title="Show the first failed check"><span class="dot"></span><span id="failText">Failed check</span></button>
+    </div>
+    <div class="failbar" id="failbar" hidden>
+      <span class="dot"></span><span class="msg" id="failMsg"></span>
+      <a class="src" id="failSrc" href="#" hidden></a>
+      <span class="spacer"></span>
+      <span class="count" id="failCount"></span>
+      <button class="btn" id="failPrev" title="Previous failure">Previous</button>
+      <button class="btn" id="failNext" title="Next failure">Next</button>
+    </div>
+    <div class="truncbar" id="truncbar" hidden></div>
+    <div class="cols head">
+      <div>Signal</div>
+      <div id="valHead"><span class="vt">Value</span><button class="val-open" id="valOpen" title="Show the Value column" aria-label="Show the Value column">›</button></div>
+      <canvas id="ruler" height="30" aria-label="Time ruler"></canvas>
+    </div>
+    <div class="rows" id="rows">
+      <div class="cols">
+        <div class="names" id="names"></div>
+        <div class="vals" id="vals"></div>
+        <div class="wavecol" id="wavecol"><canvas id="waves" aria-label="Waveforms"></canvas></div>
+        <div class="empty" id="empty" hidden>No signals shown yet. Pick some from Signals in the file.</div>
+      </div>
+    </div>
+    <!-- The column borders, draggable along the whole height. -->
+    <div class="colgrips" id="colgrips">
+      <span class="grip" data-col="name" title="Drag to resize the Signal column; double-click for the default width"></span>
+      <span class="grip" data-col="val" title="Drag to resize the Value column, or almost to nothing to hide it; double-click for the default width"></span>
+    </div>
+    <div class="status" id="status"></div>
+  </main>
+</div>
+
+<div class="tip" id="tip" hidden></div>
+<div class="overlay" id="overlay" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgTitle">
+    <h2 id="dlgTitle"></h2>
+    <p id="dlgText"></p>
+    <div class="actions"><button class="btn" id="dlgClose">Close</button></div>
+  </div>
+</div>
+
+<script>
+(() => {
+const $ = (s) => document.querySelector(s);
+const S = { wave: null, file: '', rows: [], start: 0, end: 1, cursor: null, marker: null, sel: -1, rowH: 30, grid: true, theme: 'auto', marks: [] };
+// The data the engine wrote into the page.
+const DATA = /*__DATA__*/null;
+// Hosted: in a host's window or iframe, which saves the view and opens sources.
+const hosted = window.parent !== window || typeof window.logixWaveSaveView === 'function';
+function toHost(msg, fn, ...args) {
+  if (typeof window[fn] === 'function') window[fn](...args);
+  else if (window.parent !== window) window.parent.postMessage(msg, '*');
+}
+function openSource(file, line) { if (file) toHost({ type: 'logix-wave:open-source', file, line }, 'logixWaveOpenSource', file, line); }
+// Theme: ?theme=, a host's message, else the system's.
+function setTheme(t) {
+  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  else delete document.documentElement.dataset.theme;
+}
+setTheme(new URLSearchParams(location.search).get('theme'));
+window.addEventListener('message', (e) => { if (e.data && e.data.type === 'logix-wave:theme') setTheme(e.data.theme); });
+const RADIX = [['bin', 'Binary'], ['hex', 'Hex'], ['dec', 'Decimal'], ['signed', 'Signed'], ['ascii', 'ASCII']];
+
+/* ---------- VCD reading ---------- */
+function parseTimescale(s) {
+  const m = /(\d+)\s*(s|ms|us|ns|ps|fs)/.exec(s);
+  if (!m) return 1e-9;
+  return +m[1] * { s: 1, ms: 1e-3, us: 1e-6, ns: 1e-9, ps: 1e-12, fs: 1e-15 }[m[2]];
+}
+function parseVCD(text) {
+  const tok = text.split(/\s+/);
+  const root = { name: '', kind: '', children: [], vars: [] };
+  const stack = [root], scope = [], vars = [], data = new Map();
+  let ts = 1e-9, t = 0, end = 0, i = 0;
+  const push = (id, val) => {
+    const d = data.get(id); if (!d) return;
+    const n = d.t.length;
+    if (n && d.t[n - 1] === t) { d.v[n - 1] = val; return; }
+    if (n && d.v[n - 1] === val) return;
+    d.t.push(t); d.v.push(val);
+  };
+  while (i < tok.length) {
+    const w = tok[i++]; if (!w) continue;
+    if (w[0] === '$') {
+      if (w === '$timescale') { let s = ''; while (i < tok.length && tok[i] !== '$end') s += tok[i++]; i++; ts = parseTimescale(s); }
+      else if (w === '$scope') {
+        const kind = tok[i++], name = tok[i++]; while (i < tok.length && tok[i++] !== '$end');
+        const p = stack[stack.length - 1];
+        let n = p.children.find((c) => c.name === name);
+        if (!n) { n = { name, kind, children: [], vars: [] }; p.children.push(n); }
+        stack.push(n); scope.push(name);
+      }
+      else if (w === '$upscope') { while (i < tok.length && tok[i++] !== '$end'); stack.pop(); scope.pop(); }
+      else if (w === '$var') {
+        const type = tok[i++], width = +tok[i++], id = tok[i++], name = tok[i++];
+        let range = ''; while (i < tok.length && tok[i] !== '$end') range += tok[i++]; i++;
+        const v = { id, type, width, name, range, path: [...scope, name].join('.') };
+        vars.push(v); stack[stack.length - 1].vars.push(v);
+        if (!data.has(id)) data.set(id, { t: [], v: [] });
+      }
+      else if (['$dumpvars', '$dumpall', '$dumpon', '$dumpoff', '$end'].includes(w)) { /* values follow */ }
+      else { while (i < tok.length && tok[i++] !== '$end'); }
+      continue;
+    }
+    const c = w[0];
+    if (c === '#') { t = +w.slice(1); if (t > end) end = t; }
+    else if (c === 'b' || c === 'B') push(tok[i++], w.slice(1).toLowerCase());
+    else if (c === 'r' || c === 'R') push(tok[i++], 'r' + w.slice(1));
+    else push(w.slice(1), c.toLowerCase());
+  }
+  return { ts, end: Math.max(end, 1), root, vars, data };
+}
+
+/* ---------- Sample: a UART transmitter testbench with one failed check ---------- */
+function sampleVCD() {
+  const ev = [], add = (t, id, v) => ev.push([t, id, v]);
+  const bits = (n, w) => n.toString(2).padStart(w, '0');
+  add(0, '!', '0'); add(0, '"', '1'); add(0, '#', 'b000'); add(0, '$', 'bxx'); add(0, '%', 'x'); add(0, '&', 'x');
+  add(0, "'", 'bxxxxxxxx'); add(0, '(', 'b000'); add(0, ')', 'b000');
+  for (let t = 5, v = 1; t <= 2000; t += 5, v ^= 1) add(t, '!', String(v));
+  add(20, '"', '0'); add(20, '$', 'b00'); add(20, '%', '0'); add(20, '&', '1');
+  const frame = (t0, byte, late) => {
+    add(t0, '%', '1'); add(t0, '$', 'b01'); add(t0, '&', '0'); add(t0, "'", 'b' + bits(byte, 8));
+    for (let k = 0; k < 8; k++) {
+      const t = t0 + 80 * (k + 1);
+      if (k === 0) add(t, '$', 'b10');
+      add(t, '&', String((byte >> k) & 1)); add(t, '(', 'b' + bits(k, 3));
+    }
+    add(t0 + 720, '$', 'b11'); add(t0 + 720, '&', '1'); add(t0 + 720, '(', 'b000');
+    add(t0 + 800, '$', 'b00');
+    const busyEnd = t0 + 800 + late;
+    for (let t = t0 + 10, c = 1; t < busyEnd; t += 10, c = (c + 1) % 8) add(t, ')', 'b' + bits(c, 3));
+    add(busyEnd, ')', 'b000'); add(busyEnd, '%', '0');
+  };
+  frame(100, 0x48, 0);   // 'H'
+  frame(1000, 0x69, 80); // 'i': busy stays high one bit too long
+  add(500, '#', 'b001'); add(1300, '#', 'b010'); add(1890, '#', 'b100');
+  ev.sort((a, b) => a[0] - b[0]);
+  let out = `$date 2026-11-17 $end
+$version Icarus Verilog $end
+$timescale 1ns $end
+$scope module tb $end
+$var wire 1 ! clk $end
+$var reg 1 " rst $end
+$var wire 3 # led [2:0] $end
+$scope module dut $end
+$var wire 1 ! clk $end
+$var reg 2 $ state [1:0] $end
+$var reg 1 % busy $end
+$var reg 1 & tx $end
+$var reg 8 ' tx_data [7:0] $end
+$var reg 3 ( bit_count [2:0] $end
+$var reg 3 ) baud_cnt [2:0] $end
+$upscope $end
+$upscope $end
+$enddefinitions $end
+`;
+  let last = -1;
+  for (const [t, id, v] of ev) {
+    if (t !== last) { out += `#${t}\n`; last = t; }
+    out += v.length > 1 && v[0] === 'b' ? `${v} ${id}\n` : `${v}${id}\n`;
+  }
+  return out + '#2000\n';
+}
+const SAMPLE_ROWS = [
+  ['tb.clk', 'bin', 6], ['tb.rst', 'bin', 3], ['tb.dut.state', 'dec', 4], ['tb.dut.busy', 'bin', 1],
+  ['tb.dut.tx', 'bin', 2], ['tb.dut.tx_data', 'ascii', 5], ['tb.dut.bit_count', 'dec', 3], ['tb.dut.baud_cnt', 'dec', 2], ['tb.led', 'bin', 1],
+];
+
+/* ---------- Values ---------- */
+function norm(v, w) {
+  if (v.length >= w) return v.slice(-w);
+  const p = v[0] === '1' ? '0' : v[0];
+  return p.repeat(w - v.length) + v;
+}
+function fmt(v, w, radix) {
+  if (v == null) return '';
+  if (v[0] === 'r') return String(+(+v.slice(1)).toPrecision(6));
+  v = norm(v, w);
+  if (w === 1) return v;
+  const hasXZ = /[xz]/.test(v);
+  if (hasXZ && /^x+$/.test(v)) return 'x';
+  if (hasXZ && /^z+$/.test(v)) return 'z';
+  if (radix === 'bin') return v;
+  if (radix === 'hex' || hasXZ) {
+    let out = '';
+    for (let e = v.length; e > 0; e -= 4) {
+      const nib = v.slice(Math.max(0, e - 4), e);
+      out = (/x/.test(nib) ? 'X' : /z/.test(nib) ? 'Z' : parseInt(nib, 2).toString(16).toUpperCase()) + out;
+    }
+    return hasXZ && radix !== 'hex' ? 'h' + out : out;
+  }
+  let n = BigInt('0b' + v);
+  if (radix === 'dec') return n.toString();
+  if (radix === 'signed') { if (v[0] === '1') n -= 1n << BigInt(w); return n.toString(); }
+  if (radix === 'ascii') {
+    let s = '';
+    for (let e = v.length; e > 0; e -= 8) {
+      const c = parseInt(v.slice(Math.max(0, e - 8), e), 2);
+      s = (c >= 32 && c < 127 ? String.fromCharCode(c) : '·') + s;
+    }
+    return `'${s.replace(/^·+(?=.)/, '')}'`;
+  }
+  return v;
+}
+function idx(arr, t) { let lo = 0, hi = arr.length - 1, r = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (arr[m] <= t) { r = m; lo = m + 1; } else hi = m - 1; } return r; }
+function valueAt(v, t) { const d = S.wave.data.get(v.id); const k = idx(d.t, t); return k < 0 ? null : d.v[k]; }
+const isX = (v) => v != null && v[0] !== 'r' && /[xz]/.test(v);
+
+/* ---------- Time ---------- */
+const UNITS = [['s', 1], ['ms', 1e-3], ['µs', 1e-6], ['ns', 1e-9], ['ps', 1e-12], ['fs', 1e-15]];
+function unitFor() { const sec = S.wave.end * S.wave.ts; for (const u of UNITS) if (sec / u[1] >= 1 && sec / u[1] < 1e5) return u; return UNITS[3]; }
+function fmtTime(t) { const [name, f] = unitFor(); const v = t * S.wave.ts / f; return `${v.toLocaleString('en-US', { maximumFractionDigits: 3 })} ${name}`; }
+function niceStep(span, px) {
+  const target = span * 90 / Math.max(px, 1);
+  const p = 10 ** Math.floor(Math.log10(target));
+  for (const m of [1, 2, 5, 10]) if (m * p >= target) return m * p;
+  return 10 * p;
+}
+
+/* ---------- Rows and browser ---------- */
+const varByPath = () => new Map(S.wave.vars.map((v) => [v.path, v]));
+function row(i) { return S.rows[i]; }
+function rowLabel(v) {
+  const parts = v.path.split('.');
+  const sc = parts.length > 2 ? parts[parts.length - 2] + '.' : '';
+  return `<span class="sc">${esc(sc)}</span>${esc(v.name)}${v.range && !v.name.includes('[') ? `<span class="rg">${esc(v.range)}</span>` : ''}`;
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
+
+function renderRows() {
+  document.documentElement.style.setProperty('--row-h', S.rowH + 'px');
+  $('#names').innerHTML = S.rows.map((r, i) => !r.v ? `<div class="nrow ${r.kind} ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)"><span class="nm">${r.kind === 'comment' ? esc(r.text) : 'blank row'}</span></div>` : `<div class="nrow ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}</span></div>`).join('');
+  $('#empty').hidden = S.rows.length > 0;
+  renderValues(); renderTree(); draw();
+}
+function renderValues() {
+  $('#vals').innerHTML = S.rows.map((r, i) => {
+    if (!r.v) return `<div class="vrow ${i === S.sel ? 'sel' : ''}"></div>`;
+    const val = S.cursor == null ? null : valueAt(r.v, S.cursor);
+    return `<div class="vrow ${i === S.sel ? 'sel' : ''} ${isX(val) ? 'xv' : ''}" style="--c:var(--s${r.color})">${esc(fmt(val, r.v.width, r.radix))}</div>`;
+  }).join('');
+}
+function renderTree() {
+  const q = $('#search').value.trim().toLowerCase();
+  const shown = new Set(S.rows.filter((r) => r.v).map((r) => r.v.path));
+  const varBtn = (v, label) => `<button class="var ${shown.has(v.path) ? 'on' : ''}" data-path="${esc(v.path)}" title="${esc(v.path)}"><span class="chk"></span><span class="nm">${esc(label)}</span>${v.width > 1 ? `<span class="w">${v.width} bits</span>` : ''}</button>`;
+  if (q) {
+    const hits = S.wave.vars.filter((v) => v.path.toLowerCase().includes(q));
+    $('#tree').innerHTML = hits.length ? hits.map((v) => varBtn(v, v.path)).join('') : '<p class="hint" style="border:0">No signal matches.</p>';
+    return;
+  }
+  const open = S.openScopes;
+  const walk = (n, path) => n.children.map((c) => {
+    const p = path ? path + '.' + c.name : c.name;
+    const isOpen = open.has(p);
+    return `<div class="scope" data-open="${isOpen}"><button class="scope-h" data-scope="${esc(p)}" aria-expanded="${isOpen}"><svg class="chev" viewBox="0 0 10 10"><path d="M3 1.5 7 5 3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>${esc(c.name)} <span class="kind">${esc(c.kind)}</span></button><div class="kids">${inOrder(c.vars).map((v) => varBtn(v, v.name)).join('')}${walk(c, p)}</div></div>`;
+  }).join('');
+  $('#tree').innerHTML = walk(S.wave.root, '');
+}
+// The testbench's signals in its source order (S.order), the rest after.
+function inOrder(vars) {
+  if (!S.order) return vars;
+  const at = (v) => { const k = S.order.indexOf(v.path); return k < 0 ? 1e9 : k; };
+  return [...vars].sort((a, b) => at(a) - at(b));
+}
+// New signals go right after the selected row (at the end when none is
+// selected), and the last one added becomes the selection, so picking a
+// comment row, then ticking signals, builds a group in place.
+function insertSignals(vars) {
+  let at = S.sel >= 0 ? S.sel + 1 : S.rows.length;
+  for (const v of vars) { S.rows.splice(at, 0, sigRow(v, S.rows.length)); S.sel = at; at++; }
+}
+function toggleVar(path) {
+  const k = S.rows.findIndex((r) => r.v && r.v.path === path);
+  if (k >= 0) { S.rows.splice(k, 1); if (S.sel >= S.rows.length) S.sel = -1; }
+  else {
+    const v = varByPath().get(path);
+    insertSignals([v]);
+  }
+  renderRows();
+}
+
+/* ---------- Drawing ---------- */
+const ruler = $('#ruler'), waves = $('#waves');
+function tok(css, n) { return css.getPropertyValue(n).trim(); }
+function sizeCanvas(c, w, h) {
+  const dpr = window.devicePixelRatio || 1;
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  c.style.height = h + 'px';
+  const ctx = c.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return ctx;
+}
+function draw() {
+  if (!S.wave) return;
+  const W = $('#wavecol').clientWidth; if (!W) return;
+  const css = getComputedStyle(document.documentElement);
+  const C = { bg: tok(css, '--wave-bg'), grid: tok(css, '--grid'), fg: tok(css, '--fg'), muted: tok(css, '--muted'), accent: tok(css, '--accent'), x: tok(css, '--x'), z: tok(css, '--z'), fail: tok(css, '--fail'), marker: tok(css, '--marker'), sel: tok(css, '--sel'), line: tok(css, '--line'), panel: tok(css, '--panel') };
+  const span = S.end - S.start, X = (t) => (t - S.start) / span * W;
+  const step = niceStep(span, W);
+  const mono = getComputedStyle(document.body).getPropertyValue('--mono') || 'monospace';
+
+  // Ruler
+  const R = sizeCanvas(ruler, W, 30);
+  R.fillStyle = C.panel; R.fillRect(0, 0, W, 30);
+  R.font = `500 11px ${mono}`; R.textBaseline = 'middle';
+  for (let t = Math.ceil(S.start / step) * step; t <= S.end; t += step) {
+    const x = Math.round(X(t)) + .5;
+    R.strokeStyle = C.line; R.beginPath(); R.moveTo(x, 20); R.lineTo(x, 30); R.stroke();
+    R.fillStyle = C.muted; R.fillText(fmtTime(t), x + 4, 13);
+  }
+  for (const m of S.marks) if (m.t >= S.start && m.t <= S.end) {
+    const x = X(m.t); R.fillStyle = C.fail;
+    R.beginPath(); R.moveTo(x, 30); R.lineTo(x - 6, 20); R.lineTo(x + 6, 20); R.closePath(); R.fill();
+  }
+  const pill = (t, color, label) => {
+    if (t == null || t < S.start || t > S.end) return;
+    const x = X(t), txt = label + fmtTime(t); R.font = `600 11px ${mono}`;
+    const w = R.measureText(txt).width + 12, px = Math.min(Math.max(x - w / 2, 0), W - w);
+    R.fillStyle = color; R.beginPath(); R.roundRect(px, 3, w, 19, 5); R.fill();
+    R.fillStyle = C.panel; R.fillText(txt, px + 6, 13);
+  };
+  pill(S.marker, C.marker, 'M ');
+  pill(S.cursor, C.accent, '');
+
+  // Waves
+  const H = Math.max(S.rows.length * S.rowH, 1);
+  const ctx = sizeCanvas(waves, W, H);
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+  if (S.grid) {
+    ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
+    for (let t = Math.ceil(S.start / step) * step; t <= S.end; t += step) { const x = Math.round(X(t)) + .5; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  }
+  ctx.font = `500 11.5px ${mono}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+  const endX = X(S.wave.end);
+  S.rows.forEach((r, i) => {
+    const y0 = i * S.rowH;
+    if (i === S.sel) { ctx.fillStyle = C.sel; ctx.fillRect(0, y0, W, S.rowH); }
+    ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(0, y0 + S.rowH - .5); ctx.lineTo(W, y0 + S.rowH - .5); ctx.stroke();
+    if (!r.v) return;
+    const color = tok(css, '--s' + r.color);
+    const pad = Math.max(5, S.rowH * .2), hi = y0 + pad, lo = y0 + S.rowH - pad, mid = (hi + lo) / 2;
+    const d = S.wave.data.get(r.v.id);
+    let k = Math.max(idx(d.t, S.start), 0);
+    let denseA = null, denseB = null, prevLevel = null;
+    const flushDense = () => {
+      if (denseA == null) return;
+      ctx.fillStyle = color; ctx.globalAlpha = .35; ctx.fillRect(denseA, hi, Math.max(denseB - denseA, 1), lo - hi); ctx.globalAlpha = 1;
+      denseA = null; prevLevel = null;
+    };
+    ctx.lineWidth = 1.5;
+    for (; k < d.t.length && d.t[k] <= S.end; k++) {
+      const t1 = Math.max(d.t[k], S.start), t2 = Math.min(k + 1 < d.t.length ? d.t[k + 1] : S.wave.end, S.wave.end);
+      if (t2 <= t1 && k + 1 < d.t.length) continue;
+      const x1 = X(t1), x2 = Math.min(X(t2), endX), val = d.v[k];
+      if (x2 - x1 < 2) { if (denseA == null) denseA = x1; denseB = x2; continue; }
+      flushDense();
+      if (r.v.width === 1 && val[0] !== 'r') {
+        if (val === 'x' || val === 'z') {
+          const c = val === 'x' ? C.x : C.z;
+          ctx.fillStyle = c; ctx.globalAlpha = .12; ctx.fillRect(x1, hi, x2 - x1, lo - hi); ctx.globalAlpha = 1;
+          ctx.strokeStyle = c; ctx.beginPath(); ctx.moveTo(x1, mid); ctx.lineTo(x2, mid); ctx.stroke();
+          prevLevel = mid; continue;
+        }
+        const y = val === '1' ? hi : lo;
+        if (val === '1') { ctx.fillStyle = color; ctx.globalAlpha = .1; ctx.fillRect(x1, hi, x2 - x1, lo - hi); ctx.globalAlpha = 1; }
+        ctx.strokeStyle = color; ctx.beginPath();
+        if (prevLevel != null && prevLevel !== y && d.t[k] >= S.start) { ctx.moveTo(x1, prevLevel); ctx.lineTo(x1, y); } else ctx.moveTo(x1, y);
+        ctx.lineTo(x2, y); ctx.stroke(); prevLevel = y;
+      } else {
+        const bad = isX(val), c = bad ? (/^z+$/.test(norm(val, r.v.width)) ? C.z : C.x) : color;
+        const s = Math.min(4, (x2 - x1) / 2), lx = d.t[k] >= S.start ? s : 0;
+        ctx.beginPath(); ctx.moveTo(x1, mid); ctx.lineTo(x1 + lx, hi); ctx.lineTo(x2 - s, hi); ctx.lineTo(x2, mid); ctx.lineTo(x2 - s, lo); ctx.lineTo(x1 + lx, lo); ctx.closePath();
+        ctx.fillStyle = c; ctx.globalAlpha = bad ? .12 : .1; ctx.fill(); ctx.globalAlpha = 1;
+        ctx.strokeStyle = c; ctx.stroke();
+        const a = Math.max(x1, 0), b = Math.min(x2, W), room = b - a - 10;
+        if (room > 8) {
+          let txt = fmt(val, r.v.width, r.radix);
+          if (ctx.measureText(txt).width > room) { while (txt.length > 1 && ctx.measureText(txt + '…').width > room) txt = txt.slice(0, -1); txt += '…'; }
+          if (ctx.measureText(txt).width <= room) { ctx.fillStyle = bad ? c : C.fg; ctx.fillText(txt, (a + b) / 2, mid + .5); }
+        }
+        prevLevel = null;
+      }
+    }
+    flushDense();
+  });
+  // Lines
+  const vline = (t, color, dash) => {
+    if (t == null || t < S.start || t > S.end) return;
+    const x = Math.round(X(t)) + .5; ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); ctx.setLineDash([]);
+  };
+  for (const m of S.marks) vline(m.t, C.fail, [4, 4]);
+  vline(S.marker, C.marker, [2, 3]);
+  vline(S.cursor, C.accent, []);
+  if (S.hoverT != null) vline(S.hoverT, S.hoverSnap ? C.accent : C.muted, S.hoverSnap ? [3, 2] : [1, 3]);
+  renderStatus();
+}
+function renderStatus() {
+  const parts = [];
+  parts.push(`<span class="cur">Cursor <b>${S.cursor == null ? '–' : fmtTime(S.cursor)}</b></span>`);
+  if (S.marker != null) parts.push(`<span class="mk">Marker <b>${fmtTime(S.marker)}</b></span>`, `<span>Δ <b>${S.cursor == null ? '–' : fmtTime(Math.abs(S.cursor - S.marker))}</b></span>`);
+  parts.push(`<span>Showing <b>${fmtTime(S.start)} – ${fmtTime(S.end)}</b></span>`);
+  parts.push(`<span class="help">Click: cursor · Shift+click: marker · Drag: pan · Wheel or pinch: zoom · Right-click: options</span>`);
+  $('#status').innerHTML = parts.join('');
+}
+
+/* ---------- View ---------- */
+function setView(s, e) {
+  const total = S.wave.end, minSpan = Math.max(total * 1e-5, 2);
+  const span = Math.min(Math.max(e - s, minSpan), total);
+  s = Math.max(0, Math.min(s, total - span));
+  S.start = s; S.end = s + span; draw();
+}
+function zoom(f, at) {
+  const span = S.end - S.start;
+  if (at == null) at = S.cursor != null && S.cursor >= S.start && S.cursor <= S.end ? S.cursor : S.start + span / 2;
+  const r = (at - S.start) / span, ns = span * f;
+  setView(at - r * ns, at - r * ns + ns);
+}
+function setCursor(t) {
+  S.cursor = Math.max(0, Math.min(Math.round(t), S.wave.end));
+  if (S.cursor < S.start || S.cursor > S.end) { const span = S.end - S.start; setView(S.cursor - span / 2, S.cursor + span / 2); }
+  renderValues(); draw();
+}
+function edge(dir) {
+  if (!S.rows.length) return;
+  const from = S.cursor ?? S.start;
+  const rows = (S.sel >= 0 && S.rows[S.sel].v ? [S.rows[S.sel]] : S.rows).filter((r) => r.v);
+  let best = null;
+  for (const r of rows) {
+    const d = S.wave.data.get(r.v.id), k = idx(d.t, from);
+    const t = dir > 0 ? d.t[k + 1] : (d.t[k] === from ? d.t[k - 1] : d.t[k]);
+    if (t != null && (best == null || (dir > 0 ? t < best : t > best))) best = t;
+  }
+  if (best != null) setCursor(best);
+}
+
+/* ---------- Pointer on the waves ---------- */
+let drag = null;
+function timeAtX(x) { return S.start + x / waves.clientWidth * (S.end - S.start); }
+// Snapping (R40): near a transition of the signal under the pointer (within
+// SNAP_PX pixels), the time is the transition's, exactly; elsewhere it's
+// where the pointer is. Alt (Option on macOS) turns it off. The hover line
+// shows the snap before a click, so a click lands where it shows.
+const SNAP_PX = 6;
+function snapAt(x, y, alt) {
+  const t = timeAtX(x), r = S.rows[Math.floor(y / S.rowH)];
+  if (alt || !r || !r.v) return { t, snapped: false };
+  const d = S.wave.data.get(r.v.id), k = idx(d.t, t), pxPerT = waves.clientWidth / (S.end - S.start);
+  let best = null;
+  for (const j of [k, k + 1]) {
+    if (j < 1 || j >= d.t.length) continue;   // the first value isn't a transition
+    const dist = Math.abs(d.t[j] - t) * pxPerT;
+    if (dist <= SNAP_PX && (!best || dist < best.dist)) best = { t: d.t[j], dist };
+  }
+  return best ? { t: best.t, snapped: true } : { t, snapped: false };
+}
+waves.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; drag = { x: e.clientX, s: S.start, e: S.end, moved: false }; waves.setPointerCapture(e.pointerId); });
+waves.addEventListener('pointermove', (e) => {
+  const rect = waves.getBoundingClientRect(), x = e.clientX - rect.left, y = e.clientY - rect.top;
+  if (drag && (drag.moved || Math.abs(e.clientX - drag.x) > 3)) {
+    drag.moved = true; hideTip();
+    const dt = (e.clientX - drag.x) / rect.width * (drag.e - drag.s);
+    setView(drag.s - dt, drag.e - dt); waves.style.cursor = 'grabbing'; return;
+  }
+  const i = Math.floor(y / S.rowH), r = S.rows[i], sn = snapAt(x, y, e.altKey);
+  S.hoverT = sn.t; S.hoverSnap = sn.snapped; draw();
+  if (!r || !r.v) { hideTip(); return; }
+  const v = valueAt(r.v, S.hoverT);
+  let text = fmt(v, r.v.width, r.radix);
+  if (r.v.width > 1 && r.radix !== 'hex' && !isX(v)) text += `  (0x${fmt(v, r.v.width, 'hex')})`;
+  const tip = $('#tip');
+  tip.innerHTML = `<code>${esc(r.v.path)}</code> = <b><code>${esc(text)}</code></b><div class="t">${S.hoverSnap ? 'Edge at ' : ''}${fmtTime(Math.round(S.hoverT))}${S.hoverSnap ? ' (Alt: anywhere)' : ''}</div>`;
+  tip.hidden = false;
+  const tw = tip.offsetWidth;
+  tip.style.left = Math.min(e.clientX + 14, window.innerWidth - tw - 8) + 'px';
+  tip.style.top = (e.clientY + 16) + 'px';
+});
+waves.addEventListener('pointerup', (e) => {
+  waves.style.cursor = '';
+  if (drag && !drag.moved) {
+    const rect = waves.getBoundingClientRect(), i = Math.floor((e.clientY - rect.top) / S.rowH);
+    const t = snapAt(e.clientX - rect.left, e.clientY - rect.top, e.altKey).t;
+    if (e.shiftKey) { S.marker = Math.round(t); draw(); }
+    else { if (S.rows[i]) S.sel = i; setCursor(t); renderRows(); }
+  }
+  drag = null;
+});
+waves.addEventListener('pointerleave', () => { S.hoverT = null; S.hoverSnap = false; hideTip(); draw(); });
+function hideTip() { $('#tip').hidden = true; }
+$('#wavecol').addEventListener('wheel', (e) => {
+  const rect = waves.getBoundingClientRect(), at = timeAtX(e.clientX - rect.left);
+  // Wheel deltas in lines (some mice) count as 16 px.
+  const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? rect.height : 1;
+  const dx = e.deltaX * unit, dy = e.deltaY * unit;
+  e.preventDefault();
+  // Pinch (the browser sends it as Ctrl+wheel) and Ctrl/Cmd+wheel: zoom.
+  if (e.ctrlKey || e.metaKey) { zoom(Math.exp(dy * 0.01), at); return; }
+  // Sideways swipe, or Shift+wheel: move along in time.
+  if (e.shiftKey || Math.abs(dx) > Math.abs(dy)) {
+    const d = (e.shiftKey ? dy || dx : dx) / rect.width * (S.end - S.start); setView(S.start + d, S.end + d); return;
+  }
+  // The wheel, or an up-down swipe: zoom around the pointer, so the time
+  // under it stays put: zoom out, move to the part that matters, zoom in.
+  zoom(Math.exp(dy * 0.0025), at);
+}, { passive: false });
+// A failure's flag on the time ruler shows its message on hover (R26).
+ruler.addEventListener('pointermove', (e) => {
+  const r = ruler.getBoundingClientRect(), x = e.clientX - r.left, W = r.width;
+  const m = S.marks.find((m) => Math.abs((m.t - S.start) / (S.end - S.start) * W - x) <= 6);
+  if (!m) { hideTip(); return; }
+  const tip = $('#tip');
+  tip.innerHTML = `<b>Failed check</b> at ${esc(fmtTime(m.t))}<div>${esc(m.message)}</div>${m.file ? `<div class="t">${esc(m.file)}${m.line ? ':' + m.line : ''}</div>` : ''}`;
+  tip.hidden = false;
+  tip.style.left = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8) + 'px';
+  tip.style.top = (e.clientY + 16) + 'px';
+});
+ruler.addEventListener('pointerleave', hideTip);
+ruler.addEventListener('click', (e) => { const r = ruler.getBoundingClientRect(); const t = timeAtX(e.clientX - r.left); if (e.shiftKey) { S.marker = Math.round(t); draw(); } else setCursor(t); });
+
+/* ---------- Names column: select, options, reorder ---------- */
+$('#names').addEventListener('click', (e) => {
+  const rowEl = e.target.closest('.nrow'); if (!rowEl) return;
+  S.sel = +rowEl.dataset.i; renderRows();
+});
+// Double-click a comment row to edit its text. (A signal's name will open its
+// declaration in hosts that can, R27.)
+$('#names').addEventListener('dblclick', (e) => {
+  const el = e.target.closest('.nrow'); if (!el) return;
+  const r = S.rows[+el.dataset.i];
+  if (r && r.kind === 'comment') openRowPop(+el.dataset.i, el);
+  else if (r && r.v && S.decl[r.v.path]) openSource(S.decl[r.v.path].file, S.decl[r.v.path].line);
+});
+let dragRow = null;
+$('#names').addEventListener('dragstart', (e) => { const el = e.target.closest('.nrow'); if (!el) return; dragRow = +el.dataset.i; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', ''); } catch (_) {} });
+$('#names').addEventListener('dragover', (e) => { if (dragRow == null) return; e.preventDefault(); document.querySelectorAll('.nrow.drop').forEach((n) => n.classList.remove('drop')); const el = e.target.closest('.nrow'); if (el) el.classList.add('drop'); });
+$('#names').addEventListener('drop', (e) => {
+  if (dragRow == null) return; e.preventDefault(); e.stopPropagation();
+  const el = e.target.closest('.nrow'); const to = el ? +el.dataset.i : S.rows.length - 1;
+  const [r] = S.rows.splice(dragRow, 1); S.rows.splice(to, 0, r); S.sel = to; dragRow = null; renderRows();
+});
+$('#names').addEventListener('dragend', () => { dragRow = null; document.querySelectorAll('.nrow.drop').forEach((n) => n.classList.remove('drop')); });
+
+/* ---------- Popovers ---------- */
+let pop = null;
+function closePop() { if (pop) { pop.remove(); pop = null; } }
+function placePop(el, anchor) {
+  document.body.appendChild(el); pop = el;
+  const a = anchor.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight;
+  el.style.left = Math.max(8, Math.min(a.left, window.innerWidth - w - 8)) + 'px';
+  el.style.top = (a.bottom + h + 8 > window.innerHeight ? Math.max(8, a.top - h - 6) : a.bottom + 6) + 'px';
+}
+function openRowPop(i, anchor) {
+  closePop(); const r = S.rows[i]; if (!r) return;
+  if (!r.v) return openPlainRowPop(r, anchor);
+  const el = document.createElement('div'); el.className = 'pop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Signal options');
+  el.innerHTML = `<h3>${esc(r.v.path)}${r.v.range ? ' ' + esc(r.v.range) : ''}</h3>
+    ${r.v.width > 1 ? `<div><div class="lbl">Show values as</div><div class="seg">${RADIX.map(([k, n]) => `<button data-radix="${k}" class="${r.radix === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>` : ''}
+    <div><div class="lbl">Color</div><div class="swatches">${[1, 2, 3, 4, 5, 6].map((c) => `<button data-color="${c}" style="--c:var(--s${c})" class="${r.color === c ? 'on' : ''}" aria-label="Color ${c}"></button>`).join('')}</div></div>
+    <div class="actions"><button class="btn" data-act="up">Move up</button><button class="btn" data-act="down">Move down</button><button class="btn danger" data-act="remove">Hide</button></div>`;
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const cur = S.rows.indexOf(r);
+    if (b.dataset.radix) r.radix = b.dataset.radix;
+    if (b.dataset.color) r.color = +b.dataset.color;
+    if (b.dataset.act === 'remove') { S.rows.splice(cur, 1); S.sel = -1; closePop(); renderRows(); return; }
+    if (b.dataset.act === 'up' && cur > 0) { S.rows.splice(cur, 1); S.rows.splice(cur - 1, 0, r); S.sel = cur - 1; }
+    if (b.dataset.act === 'down' && cur < S.rows.length - 1) { S.rows.splice(cur, 1); S.rows.splice(cur + 1, 0, r); S.sel = cur + 1; }
+    renderRows(); openRowPop(S.rows.indexOf(r), $(`.nrow[data-i="${S.rows.indexOf(r)}"]`) || anchor);
+  });
+  placePop(el, anchor);
+}
+function openPlainRowPop(r, anchor) {
+  const el = document.createElement('div'); el.className = 'pop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Row options');
+  el.innerHTML = `<h3>${r.kind === 'comment' ? 'Comment row' : 'Blank row'}</h3>
+    ${r.kind === 'comment' ? `<div><div class="lbl">Text</div><input type="text" id="commentText" value="${esc(r.text)}"></div>` : ''}
+    <div class="actions"><button class="btn" data-act="up">Move up</button><button class="btn" data-act="down">Move down</button><button class="btn danger" data-act="remove">Remove</button></div>`;
+  el.addEventListener('input', (e) => { if (e.target.id === 'commentText') { r.text = e.target.value; const n = document.querySelector(`.nrow[data-i="${S.rows.indexOf(r)}"] .nm`); if (n) n.textContent = r.text; } });
+  el.addEventListener('change', () => commit());
+  el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { commit(); closePop(); } });
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const cur = S.rows.indexOf(r);
+    if (b.dataset.act === 'remove') { S.rows.splice(cur, 1); S.sel = -1; closePop(); renderRows(); return; }
+    if (b.dataset.act === 'up' && cur > 0) { S.rows.splice(cur, 1); S.rows.splice(cur - 1, 0, r); S.sel = cur - 1; }
+    if (b.dataset.act === 'down' && cur < S.rows.length - 1) { S.rows.splice(cur, 1); S.rows.splice(cur + 1, 0, r); S.sel = cur + 1; }
+    renderRows(); openRowPop(S.rows.indexOf(r), $(`.nrow[data-i="${S.rows.indexOf(r)}"]`) || anchor);
+  });
+  placePop(el, anchor);
+  const input = el.querySelector('#commentText'); if (input) { input.focus(); input.select(); }
+}
+function openHelp(anchor) {
+  closePop();
+  const el = document.createElement('div'); el.className = 'pop'; el.style.width = '300px'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Keyboard and mouse');
+  const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
+  const rows = [
+    ['Click', 'Put the cursor there; near an edge, on the edge'], ['Shift+click', 'Put the marker there, the same way'], ['Alt+click', 'Anywhere, without snapping to an edge'], ['Drag', 'Move along in time'],
+    ['Wheel or pinch', 'Zoom around the pointer'], ['Shift+wheel or swipe sideways', 'Move along in time'], ['Wheel over the names', 'Scroll the rows'],['+  −', 'Zoom in, out'], ['F', 'Show the whole run'],
+    ['←  →', 'Previous, next change of the selected signal'], ['↑  ↓', 'Select the signal above, below'],
+    ['M', 'Put the marker at the cursor'], ['Delete', 'Hide the selected row'], ['S', 'Hide or show the signal list'], ['Right-click', 'What you can do with what you clicked'], ['Drag a column border', 'Resize the Signal or Value column'], ['Click the narrow strip', 'Show a hidden Value column'],
+    [mod + 'Z', 'Undo'], ['⇧' + mod + 'Z', 'Redo'],
+  ];
+  el.innerHTML = `<h3 style="font-family:var(--font)">Keyboard and mouse</h3><div class="keys">${rows.map(([k, t]) => `<kbd>${esc(k)}</kbd><span>${esc(t)}</span>`).join('')}</div>`;
+  placePop(el, anchor);
+}
+function openSettings(anchor) {
+  closePop();
+  const el = document.createElement('div'); el.className = 'pop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'View settings');
+  const seg = (key, opts) => `<div class="seg">${opts.map(([v, n]) => `<button data-${key}="${v}" class="${String(S[key === 'rows' ? 'rowH' : key]) === String(v) ? 'on' : ''}">${n}</button>`).join('')}</div>`;
+  el.innerHTML = `<div><div class="lbl">Row height</div>${seg('rows', [[24, 'Compact'], [30, 'Normal'], [38, 'Roomy']])}</div>
+    <label class="check"><input type="checkbox" id="gridChk" ${S.grid ? 'checked' : ''}> Time grid lines</label>
+    <div class="actions"><button class="btn" data-act="reset" title="Back to the testbench's own signals and the whole run. You can undo it.">Reset view</button></div>
+    <div class="actions"><button class="btn" data-act="valcol">${valHidden() ? 'Show' : 'Hide'} the Value column</button><button class="btn" data-act="widths">Reset column widths</button></div>`;
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (e.target.id === 'gridChk') { S.grid = e.target.checked; draw(); return; }
+    if (!b) return;
+    if (b.dataset.rows) { S.rowH = +b.dataset.rows; renderRows(); }
+    if (b.dataset.act === 'reset') { resetLayout(); closePop(); return; }
+    if (b.dataset.act === 'valcol') { showVal(valHidden()); closePop(); return; }
+    if (b.dataset.act === 'widths') { resetWidths(); closePop(); return; }
+    openSettings(anchor);
+  });
+  placePop(el, anchor);
+}
+document.addEventListener('pointerdown', (e) => { if (pop && !pop.contains(e.target) && !e.target.closest('#settingsBtn,#helpBtn,#failChip')) closePop(); });
+$('#helpBtn').addEventListener('click', (e) => { if (pop) { closePop(); return; } openHelp(e.currentTarget); });
+$('#settingsBtn').addEventListener('click', (e) => { if (pop) { closePop(); return; } openSettings(e.currentTarget); });
+
+/* ---------- Saving the view ---------- */
+// The .view file's JSON (R23): the rows, their formats and colors, the
+// zoom, the cursor and the marker.
+function viewData() {
+  return { version: 1, waveform: S.file, rows: S.rows.map(serRow), view: { from: Math.round(S.start), to: Math.round(S.end) }, cursor: S.cursor, marker: S.marker, row_height: S.rowH };
+}
+function layoutJSON() { return JSON.stringify(viewData(), null, 2) + '\n'; }
+function saveToHost() { if (hosted) toHost({ type: 'logix-wave:view', view: viewData() }, 'logixWaveSaveView', viewData()); }
+if (hosted) $('#saveBtn').hidden = true;   // the host saves it by itself
+$('#saveBtn').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([layoutJSON()], { type: 'application/json' }));
+  a.download = (DATA && DATA.view_file) || S.file.replace(/\.vcd$/i, '') + '.view';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+});
+$('#dlgClose').addEventListener('click', () => { $('#overlay').hidden = true; });
+$('#overlay').addEventListener('click', (e) => { if (e.target.id === 'overlay') $('#overlay').hidden = true; });
+
+function openAll(root) { const s = new Set(); const walk = (n, p) => n.children.forEach((c) => { const q = p ? p + '.' + c.name : c.name; s.add(q); walk(c, q); }); walk(root, ''); return s; }
+function load() {
+  const w = parseVCD(DATA.vcd || '');
+  S.wave = w; S.file = DATA.waveform || 'waveform.vcd';
+  S.openScopes = new Set(w.root.children.slice(0, 1).map((c) => c.name));
+  // The testbench's own signals in the order the testbench declares them
+  // (R9): the simulator writes them in its own order, so the engine reads
+  // the order from the testbench's source.
+  S.order = DATA.order && DATA.order.length ? DATA.order : null;
+  S.decl = DATA.declarations || {};
+  S.marks = (DATA.failures || []).map((f) => ({ ...f, t: Math.round(f.time_ns * 1e-9 / w.ts) }));
+  $('#fileName').textContent = DATA.testbench || S.file;
+  document.title = 'Waveforms · ' + (DATA.testbench || S.file);
+  if (DATA.truncated) {
+    $('#truncbar').hidden = false;
+    $('#truncbar').textContent = `Showing the first part of the run: the waveform is ${DATA.truncated.size_mb} MB, more than the viewer holds (${DATA.truncated.limit_mb} MB).`;
+  }
+  S.rows = defaultRows(); S.start = 0; S.end = w.end;
+  const v = DATA.view;
+  if (v && Array.isArray(v.rows)) {
+    const rows = v.rows.map(deserRow).filter(Boolean);
+    if (rows.length) S.rows = rows;
+    if (v.row_height) S.rowH = v.row_height;
+    S.cursor = v.cursor ?? null; S.marker = v.marker ?? null;
+    if (v.view) { S.start = v.view.from; S.end = v.view.to; }
+  }
+  renderRows();
+  if (v && v.view) setView(v.view.from, v.view.to);
+  showFailures();
+  // A failing run opens at its first failure (R25), even with a saved view.
+  if (S.marks.length) showFail(0);
+  H.cur = snap(); updUndo();
+}
+
+/* ---------- Failures (R25, R26, R35) ---------- */
+let failAt = 0;
+function showFailures() {
+  const n = S.marks.length;
+  $('#failChip').hidden = n === 0;
+  $('#failText').textContent = n === 1 ? '1 failed check' : `${n} failed checks`;
+  if (DATA.failure_count > n) $('#failText').textContent = `${DATA.failure_count} failed checks (first ${n} shown)`;
+}
+// Zooms around failure k, with the cursor on it and its message above the
+// waveforms.
+function showFail(k) {
+  const m = S.marks[k]; if (!m) return;
+  failAt = k;
+  const span = Math.max(S.wave.end / 12, 1);
+  setView(m.t - span * 0.65, m.t + span * 0.35); setCursor(m.t);
+  $('#failbar').hidden = false;
+  $('#failMsg').textContent = `${fmtTime(m.t)}: ${m.message}`;
+  const src = $('#failSrc');
+  src.hidden = !m.file; src.textContent = m.file ? `${m.file}${m.line ? ':' + m.line : ''}` : '';
+  src.title = hosted ? 'Open this line' : '';
+  $('#failCount').textContent = S.marks.length > 1 ? `${k + 1} of ${S.marks.length}` : '';
+  $('#failPrev').hidden = $('#failNext').hidden = S.marks.length < 2;
+}
+$('#failPrev').onclick = () => showFail((failAt - 1 + S.marks.length) % S.marks.length);
+$('#failNext').onclick = () => showFail((failAt + 1) % S.marks.length);
+$('#failSrc').onclick = (e) => { e.preventDefault(); const m = S.marks[failAt]; if (m) openSource(m.file, m.line); };
+// The list of failures, from the chip.
+function openFailList(anchor) {
+  closePop();
+  const el = document.createElement('div'); el.className = 'pop'; el.style.width = '380px';
+  el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Failed checks');
+  el.innerHTML = `<h3 style="font-family:var(--font)">Failed checks</h3><div class="flist">${S.marks.map((m, k) => `<button data-k="${k}" class="${k === failAt ? 'on' : ''}"><span class="t">${esc(fmtTime(m.t))}</span><span class="m">${esc(m.message)}</span>${m.file ? `<span class="s">${esc(m.file)}${m.line ? ':' + m.line : ''}</span>` : ''}</button>`).join('')}</div>`;
+  el.addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (b) { showFail(+b.dataset.k); closePop(); } });
+  placePop(el, anchor);
+}
+
+/* ---------- Rows, layouts, undo ---------- */
+// Counts (Verilog integers) read best in decimal; other buses in hex.
+function sigRow(v, i) { return { kind: 'signal', v, radix: v.type === 'integer' ? 'dec' : v.width > 1 ? 'hex' : 'bin', color: (i % 6) + 1 }; }
+function defaultRows() {
+  const map = varByPath();
+  const top = S.wave.root.children[0];
+  const paths = S.order || top.vars.filter((v) => v.type !== 'parameter').map((v) => v.path);
+  return paths.map((p) => map.get(p)).filter(Boolean).map(sigRow);
+}
+function serRow(r) {
+  if (r.v) return { signal: r.v.path, show_as: r.radix, color: r.color };
+  return r.kind === 'comment' ? { comment: r.text } : { blank: true };
+}
+function deserRow(o) {
+  if (o.signal) { const v = varByPath().get(o.signal); return v && { kind: 'signal', v, radix: o.show_as || 'hex', color: o.color || 1 }; }
+  if (o.comment != null) return { kind: 'comment', text: String(o.comment) };
+  if (o.blank) return { kind: 'blank' };
+  return null;
+}
+function addRow(kind) { addRowAt(kind, (S.sel >= 0 ? S.sel : S.rows.length - 1) + 1); }
+function addRowAt(kind, at) {
+  const r = kind === 'comment' ? { kind, text: 'New group' } : { kind };
+  S.rows.splice(at, 0, r); S.sel = at; renderRows(); commit();
+  if (kind === 'comment') openRowPop(S.sel, $(`.nrow[data-i="${S.sel}"]`));
+}
+function resetLayout() {
+  S.rows = defaultRows(); S.sel = -1; S.cursor = null; S.marker = null;
+  S.start = 0; S.end = S.wave.end; renderRows(); commit();
+}
+// Undo and redo (R36): one history for the rows and the zoom. A snapshot
+// is taken after each gesture: a click, a drag, a key, or a wheel zoom once
+// it pauses, so a whole zoom is one step.
+const H = { past: [], future: [], cur: null, timer: null };
+function snap() { return JSON.stringify({ rows: S.rows.map(serRow), start: S.start, end: S.end, cursor: S.cursor, marker: S.marker }); }
+function commit() {
+  clearTimeout(H.timer); H.timer = null;
+  if (!S.wave) return;
+  const s = snap(); if (s === H.cur) return;
+  if (H.cur != null) H.past.push(H.cur);
+  H.cur = s; H.future = []; updUndo(); saveToHost();
+}
+function commitSoon() { clearTimeout(H.timer); H.timer = setTimeout(commit, 450); }
+function restore(s) {
+  const o = JSON.parse(s);
+  S.rows = o.rows.map(deserRow).filter(Boolean); S.cursor = o.cursor; S.marker = o.marker;
+  if (S.sel >= S.rows.length) S.sel = -1;
+  S.start = o.start; S.end = o.end; closePop(); renderRows();
+}
+function undo() { if (H.timer) commit(); if (!H.past.length) return; H.future.push(H.cur); H.cur = H.past.pop(); restore(H.cur); updUndo(); saveToHost(); }
+function redo() { if (!H.future.length) return; H.past.push(H.cur); H.cur = H.future.pop(); restore(H.cur); updUndo(); saveToHost(); }
+function updUndo() {
+  $('#undoBtn').disabled = !H.past.length && !H.timer; $('#redoBtn').disabled = !H.future.length;
+}
+// Every gesture ends in one of these; commit() records it only if something changed.
+// Typing a comment's text is one step, taken when it's done (Enter or leaving the field).
+for (const ev of ['click', 'pointerup', 'drop', 'keyup']) document.addEventListener(ev, (e) => { if (!e.target.closest?.('input')) setTimeout(commit); }, true);
+$('#wavecol').addEventListener('wheel', () => { commitSoon(); $('#undoBtn').disabled = false; }, { passive: true });
+$('#undoBtn').addEventListener('click', (e) => { e.stopPropagation(); undo(); });
+$('#redoBtn').addEventListener('click', (e) => { e.stopPropagation(); redo(); });
+$('#addComment').onclick = () => addRow('comment');
+$('#addBlank').onclick = () => addRow('blank');
+
+/* ---------- Toolbar, browser, keys ---------- */
+$('#zoomIn').onclick = () => zoom(0.5);
+$('#zoomOut').onclick = () => zoom(2);
+$('#fit').onclick = () => setView(0, S.wave.end);
+$('#prevEdge').onclick = () => edge(-1);
+$('#nextEdge').onclick = () => edge(1);
+$('#setMarker').onclick = () => { S.marker = S.cursor; draw(); };
+$('#failChip').onclick = (e) => { if (pop) { closePop(); return; } openFailList(e.currentTarget); };
+$('#tree').addEventListener('click', (e) => {
+  const v = e.target.closest('.var'); if (v) { toggleVar(v.dataset.path); return; }
+  const s = e.target.closest('.scope-h');
+  if (s) { const p = s.dataset.scope; S.openScopes.has(p) ? S.openScopes.delete(p) : S.openScopes.add(p); renderTree(); }
+});
+$('#search').addEventListener('input', renderTree);
+$('#browserToggle').onclick = () => $('#app').classList.toggle('show-browser');
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closePop(); $('#overlay').hidden = true; $('#app').classList.remove('show-browser'); return; }
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.target.closest('input, textarea')) {
+    const k = e.key.toLowerCase();
+    if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+    if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); return; }
+  }
+  if (e.target.closest('input, textarea') || !$('#overlay').hidden || e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key;
+  if (k === '+' || k === '=') zoom(0.5);
+  else if (k === '-') zoom(2);
+  else if (k === 'f' || k === 'F') setView(0, S.wave.end);
+  else if (k === 'ArrowRight') edge(1);
+  else if (k === 'ArrowLeft') edge(-1);
+  else if (k === 'ArrowDown' && S.rows.length) { S.sel = Math.min(S.sel + 1, S.rows.length - 1); renderRows(); }
+  else if (k === 'ArrowUp' && S.rows.length) { S.sel = Math.max(S.sel - 1, 0); renderRows(); }
+  else if (k === 'm' || k === 'M') { S.marker = S.cursor; draw(); }
+  else if (k === 's' || k === 'S') setBrowser($('#app').classList.contains('no-browser'));
+  else if ((k === 'Delete' || k === 'Backspace') && S.sel >= 0) { S.rows.splice(S.sel, 1); S.sel = -1; renderRows(); }
+  else return;
+  e.preventDefault();
+});
+
+/* ---------- The right-click menu ---------- */
+// The viewer's own menu, with what makes sense for what was clicked (a
+// signal's row, a comment row, the time ruler, the signal list), in place
+// of the browser's. Text fields keep the browser's menu, for Paste.
+let ctx = null;
+function closeMenu() { if (ctx) { ctx.remove(); ctx = null; } }
+function openMenu(x, y, items, title) {
+  closeMenu(); closePop(); hideTip();
+  const el = document.createElement('div'); el.className = 'ctx'; el.setAttribute('role', 'menu');
+  if (title) el.insertAdjacentHTML('beforeend', `<div class="ttl">${esc(title)}</div>`);
+  for (const it of items) {
+    if (!it) continue;
+    if (it === '-') { el.insertAdjacentHTML('beforeend', '<div class="sep"></div>'); continue; }
+    if (it.html) { const d = document.createElement('div'); d.className = 'sub'; d.innerHTML = it.html; d.addEventListener('click', (e) => { if (it.click(e) !== false) closeMenu(); }); el.appendChild(d); continue; }
+    const b = document.createElement('button'); b.className = 'it' + (it.danger ? ' danger' : ''); b.setAttribute('role', 'menuitem');
+    b.innerHTML = `<span>${esc(it.label)}</span>${it.key ? `<span class="k">${esc(it.key)}</span>` : ''}`;
+    b.disabled = !!it.disabled;
+    b.addEventListener('click', () => { closeMenu(); it.act(); });
+    el.appendChild(b);
+  }
+  document.body.appendChild(el); ctx = el;
+  const w = el.offsetWidth, h = el.offsetHeight;
+  el.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
+  el.style.top = Math.max(8, Math.min(y, window.innerHeight - h - 8)) + 'px';
+}
+document.addEventListener('pointerdown', (e) => { if (ctx && !ctx.contains(e.target)) closeMenu(); }, true);
+window.addEventListener('blur', closeMenu);
+window.addEventListener('resize', closeMenu);
+// Up and Down move through the items, Enter picks one, Escape closes.
+document.addEventListener('keydown', (e) => {
+  if (!ctx) return;
+  const its = [...ctx.querySelectorAll('.it:not(:disabled)')], k = its.indexOf(document.activeElement);
+  if (e.key === 'Escape') { closeMenu(); }
+  else if (e.key === 'ArrowDown') its[(k + 1) % its.length]?.focus();
+  else if (e.key === 'ArrowUp') its[(k - 1 + its.length) % its.length]?.focus();
+  else return;
+  e.preventDefault(); e.stopImmediatePropagation();
+}, true);
+function copyText(t) { try { navigator.clipboard.writeText(t).catch(() => {}); } catch (_) {} }
+const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
+
+function moveRow(i, d) { const j = i + d; if (j < 0 || j >= S.rows.length) return; const [r] = S.rows.splice(i, 1); S.rows.splice(j, 0, r); S.sel = j; renderRows(); }
+function removeRow(i) { S.rows.splice(i, 1); S.sel = -1; renderRows(); }
+function timeItems(t) {
+  return [
+    { label: 'Put the cursor here', key: 'Click', act: () => setCursor(t) },
+    { label: 'Put the marker here', key: 'Shift+click', act: () => { S.marker = Math.round(t); draw(); } },
+  ];
+}
+function rowMenu(i, t, x, y) {
+  const r = S.rows[i]; if (!r) return;
+  S.sel = i; renderRows();
+  const common = [
+    { label: 'Add a comment row above', act: () => addRowAt('comment', i) },
+    { label: 'Add a blank row below', act: () => addRowAt('blank', i + 1) },
+    { label: 'Move up', disabled: i === 0, act: () => moveRow(i, -1) },
+    { label: 'Move down', disabled: i === S.rows.length - 1, act: () => moveRow(i, 1) },
+  ];
+  if (!r.v) {
+    openMenu(x, y, [
+      ...(t != null ? [...timeItems(t), '-'] : []),
+      r.kind === 'comment' ? { label: 'Edit the text…', act: () => openRowPop(i, $(`.nrow[data-i="${i}"]`)) } : null,
+      ...common, '-',
+      { label: 'Remove this row', key: 'Delete', danger: true, act: () => removeRow(i) },
+    ], r.kind === 'comment' ? 'Comment: ' + r.text : 'Blank row');
+    return;
+  }
+  const at = t != null ? t : S.cursor;
+  const val = at != null ? fmt(valueAt(r.v, at), r.v.width, r.radix) : null;
+  openMenu(x, y, [
+    ...(t != null ? [...timeItems(t), '-'] : []),
+    r.v.width > 1 ? { html: `<div class="lbl">Show values as</div><div class="seg">${RADIX.map(([k, n]) => `<button data-radix="${k}" class="${r.radix === k ? 'on' : ''}">${n}</button>`).join('')}</div>`,
+      click: (e) => { const b = e.target.closest('[data-radix]'); if (!b) return false; r.radix = b.dataset.radix; renderRows(); } } : null,
+    { html: `<div class="lbl">Color</div><div class="swatches">${[1, 2, 3, 4, 5, 6].map((c) => `<button data-color="${c}" style="--c:var(--s${c})" class="${r.color === c ? 'on' : ''}" aria-label="Color ${c}"></button>`).join('')}</div>`,
+      click: (e) => { const b = e.target.closest('[data-color]'); if (!b) return false; r.color = +b.dataset.color; renderRows(); } },
+    '-', ...common, '-',
+    { label: 'Copy the name', act: () => copyText(r.v.path) },
+    { label: val != null ? `Copy the value (${val.length > 14 ? val.slice(0, 13) + '…' : val})` : 'Copy the value', disabled: val == null, act: () => copyText(val) },
+    '-',
+    { label: 'Hide this signal', key: 'Delete', danger: true, act: () => removeRow(i) },
+  ], r.v.path + (r.v.range ? ' ' + r.v.range : ''));
+}
+function timeMenu(t, x, y) {
+  openMenu(x, y, [
+    ...timeItems(t), '-',
+    { label: 'Zoom in here', key: 'Wheel', act: () => zoom(0.5, t) },
+    { label: 'Zoom out here', act: () => zoom(2, t) },
+    { label: 'Show the whole run', key: 'F', act: () => setView(0, S.wave.end) },
+    '-',
+    { label: 'Add a comment row', act: () => addRowAt('comment', S.rows.length) },
+    { label: 'Add a blank row', act: () => addRowAt('blank', S.rows.length) },
+    '-',
+    { label: 'Reset the view', act: () => resetLayout() },
+  ], fmtTime(Math.round(t)));
+}
+function treeMenu(e) {
+  const v = e.target.closest('.var'), sc = e.target.closest('.scope-h');
+  if (v) {
+    const shown = S.rows.some((r) => r.v && r.v.path === v.dataset.path);
+    openMenu(e.clientX, e.clientY, [{ label: shown ? 'Hide this signal' : 'Show this signal', act: () => toggleVar(v.dataset.path) }], v.dataset.path);
+  } else if (sc) {
+    const p = sc.dataset.scope, vars = S.wave.vars.filter((x) => x.path.split('.').slice(0, -1).join('.') === p && x.type !== 'parameter');
+    const shown = new Set(S.rows.filter((r) => r.v).map((r) => r.v.path));
+    openMenu(e.clientX, e.clientY, [
+      { label: `Show all ${vars.length} signals`, disabled: vars.every((x) => shown.has(x.path)), act: () => { insertSignals(inOrder(vars).filter((x) => !shown.has(x.path))); renderRows(); } },
+      { label: 'Hide all its signals', disabled: !vars.some((x) => shown.has(x.path)), act: () => { S.rows = S.rows.filter((r) => !r.v || !vars.includes(r.v)); S.sel = -1; renderRows(); } },
+    ], p);
+  } else return false;
+}
+document.addEventListener('contextmenu', (e) => {
+  if (e.target.closest('input, textarea, .pop, .dialog')) return;   // the browser's menu, for Paste
+  e.preventDefault();
+  const x = e.clientX, y = e.clientY;
+  if (e.target.closest('#tree')) { treeMenu(e); return; }
+  if (e.target.closest('.cols.head > div')) {
+    openMenu(x, y, [
+      { label: valHidden() ? 'Show the Value column' : 'Hide the Value column', act: () => showVal(valHidden()) },
+      { label: 'Reset column widths', act: resetWidths },
+    ]);
+    return;
+  }
+  const rowEl = e.target.closest('.nrow, .vrow');
+  if (rowEl) { const i = [...rowEl.parentNode.children].indexOf(rowEl); rowMenu(i, null, x, y); return; }
+  if (e.target === waves) {
+    const rect = waves.getBoundingClientRect(), i = Math.floor((y - rect.top) / S.rowH);
+    const t = snapAt(x - rect.left, y - rect.top, e.altKey).t;
+    if (S.rows[i]) rowMenu(i, t, x, y); else timeMenu(t, x, y);
+    return;
+  }
+  if (e.target === ruler || e.target.closest('.wavecol, .rows')) {
+    const rect = waves.getBoundingClientRect(); timeMenu(timeAtX(Math.max(0, x - rect.left)), x, y); return;
+  }
+  closeMenu();
+});
+
+/* ---------- More room for the waves ---------- */
+// Per-viewer conveniences, kept in this browser only.
+const store = { get(k) { try { return localStorage.getItem(k); } catch (_) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (_) {} } };
+const COL = { name: { prop: '--name-w', def: 210, min: 80, max: 520 }, val: { prop: '--val-w', def: 92, min: 0, max: 300 } };
+const STRIP = 12;   // the width of a hidden Value column's strip
+function setCol(col, w) {
+  const c = COL[col];
+  w = Math.round(Math.max(c.min, Math.min(c.max, w)));
+  if (col === 'val' && w < 28) w = 0;   // dragged almost to nothing: hidden
+  document.documentElement.style.setProperty(c.prop, (col === 'val' && w === 0 ? STRIP : w) + 'px');
+  if (col === 'val') {
+    $('#app').classList.toggle('val-hidden', w === 0);
+  }
+  store.set('wv.' + col, String(w));
+}
+const valHidden = () => $('#app').classList.contains('val-hidden');
+// The width the Value column comes back at: its width before it was hidden.
+function rememberVal(w) { if (w >= 28) store.set('wv.valLast', String(Math.round(w))); }
+function showVal(on) {
+  if (!on && !valHidden()) rememberVal(colWidth('val'));
+  setCol('val', on ? +(store.get('wv.valLast') || COL.val.def) : 0);
+}
+function resetWidths() { setCol('name', COL.name.def); setCol('val', COL.val.def); }
+function colWidth(col) {
+  if (col === 'val' && valHidden()) return 0;
+  const w = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(COL[col].prop));
+  return Number.isNaN(w) ? COL[col].def : w;
+}
+$('#valOpen').onclick = () => showVal(true);
+$('#vals').addEventListener('click', () => { if (valHidden()) showVal(true); });
+for (const col of ['name', 'val']) { const w = store.get('wv.' + col); if (w != null) setCol(col, +w); }
+document.querySelectorAll('.grip').forEach((g) => {
+  const col = g.dataset.col;
+  g.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const x0 = e.clientX, w0 = colWidth(col); g.classList.add('active');
+    if (col === 'val') rememberVal(w0); g.setPointerCapture(e.pointerId);
+    const move = (ev) => setCol(col, w0 + ev.clientX - x0);
+    const up = () => { g.classList.remove('active'); g.removeEventListener('pointermove', move); g.removeEventListener('pointerup', up); };
+    g.addEventListener('pointermove', move); g.addEventListener('pointerup', up);
+  });
+  g.addEventListener('dblclick', (e) => { e.stopPropagation(); setCol(col, COL[col].def); });
+});
+function setBrowser(shown) {
+  $('#app').classList.toggle('no-browser', !shown);
+  const b = $('#sideBtn'); b.classList.toggle('on', shown); b.setAttribute('aria-pressed', String(shown));
+  b.title = shown ? 'Hide the signal list, for more room (S)' : 'Show the signal list (S)';
+  b.setAttribute('aria-label', shown ? 'Hide the signal list' : 'Show the signal list');
+  store.set('wv.browser', shown ? '1' : '0');
+}
+setBrowser(store.get('wv.browser') !== '0');
+$('#sideBtn').onclick = () => setBrowser($('#app').classList.contains('no-browser'));
+
+function placeGrips() {
+  const head = document.querySelector('.cols.head'), status = $('#status'), viewer = $('#viewer');
+  viewer.style.setProperty('--grips-top', head.offsetTop + 'px');
+  viewer.style.setProperty('--grips-bottom', (viewer.clientHeight - status.offsetTop) + 'px');
+}
+new ResizeObserver(() => { placeGrips(); draw(); }).observe($('#wavecol'));
+new ResizeObserver(placeGrips).observe($('#viewer'));
+placeGrips();
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+new MutationObserver(() => draw()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+if (document.fonts) document.fonts.ready.then(draw);
+if (DATA) load();
+})();
+</script>
+</body>
+</html>

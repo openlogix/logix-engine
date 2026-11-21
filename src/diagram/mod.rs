@@ -116,9 +116,9 @@ pub struct DiagramResult {
     pub opened: bool,
 }
 
-/// Opens the page in the system's default web browser, detached, and says
-/// whether it started.
-fn open_page(page: &Path) -> bool {
+/// Opens a page in the system's default web browser, detached, and says
+/// whether it started. Also the waveform viewer's.
+pub fn open_page(page: &Path) -> bool {
     let (program, args): (&str, Vec<OsString>) = if cfg!(target_os = "macos") {
         ("/usr/bin/open", vec![page.into()])
     } else if cfg!(windows) {
