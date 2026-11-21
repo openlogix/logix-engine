@@ -98,6 +98,7 @@ button { font: inherit; color: inherit; }
 /* A comment row is a group's title: a gray band across the row, as the
    board picker's family headings, and an arrow that folds the group. */
 .nrow.comment, .vrow.comment, .nrow.comment.sel, .vrow.comment.sel, .nrow.comment:hover { background: var(--group-bg); }
+.nrow.comment { cursor: pointer; }
 .nrow .fold svg { width: 16px; height: 16px; display: block; margin: auto; }
 .nrow .fold { border: 0; background: none; color: var(--group-fg); width: 24px; height: 24px; margin-left: -6px; padding: 0; cursor: pointer; font-size: 17px; line-height: 24px; border-radius: 5px; flex: none; }
 .nrow .fold:hover { background: var(--soft); color: var(--fg); }
@@ -834,18 +835,22 @@ ruler.addEventListener('pointerleave', hideTip);
 ruler.addEventListener('click', (e) => { const r = ruler.getBoundingClientRect(); const t = timeAtX(e.clientX - r.left); if (e.shiftKey) { S.marker = Math.round(t); draw(); } else setCursor(t); });
 
 /* ---------- Names column: select, options, reorder ---------- */
+// A click selects a row; on a comment row, anywhere on it, it also folds or
+// unfolds its group, as the family headings in Logix IDE's board picker
+// (the user's request, 2026-11-21). The comment's text is edited from its
+// right-click menu, Edit the text.
 $('#names').addEventListener('click', (e) => {
-  const fold = e.target.closest('.fold'); if (fold) { toggleGroup(+fold.dataset.i); return; }
   const rowEl = e.target.closest('.nrow'); if (!rowEl) return;
-  S.sel = +rowEl.dataset.i; renderRows();
+  const i = +rowEl.dataset.i;
+  S.sel = i;
+  if (S.rows[i] && S.rows[i].kind === 'comment') toggleGroup(i);
+  else renderRows();
 });
-// Double-click a comment row to edit its text. (A signal's name will open its
-// declaration in hosts that can, R27.)
+// Double-click a signal's name: its declaration, in hosts that can (R27).
 $('#names').addEventListener('dblclick', (e) => {
   const el = e.target.closest('.nrow'); if (!el) return;
   const r = S.rows[+el.dataset.i];
-  if (r && r.kind === 'comment') openRowPop(+el.dataset.i, el);
-  else if (r && r.v && S.decl[r.v.path]) openSource(S.decl[r.v.path].file, S.decl[r.v.path].line);
+  if (r && r.v && S.decl[r.v.path]) openSource(S.decl[r.v.path].file, S.decl[r.v.path].line);
 });
 let dragRow = null;
 $('#names').addEventListener('dragstart', (e) => { const el = e.target.closest('.nrow'); if (!el) return; dragRow = +el.dataset.i; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', ''); } catch (_) {} });
