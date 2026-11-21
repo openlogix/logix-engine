@@ -80,9 +80,12 @@ button { font: inherit; color: inherit; }
 .scope[data-open="true"] > .scope-h .chev { transform: rotate(90deg); }
 .scope-h .kind { font-weight: 400; color: var(--muted); font-size: 11px; }
 .kids { padding-left: 12px; }
-.var { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; padding: 4px 6px; border-radius: 6px; cursor: pointer; text-align: left; font-family: var(--mono); font-size: 12px; }
+.var { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; padding: 4px 6px; border-radius: 6px; cursor: default; text-align: left; font-family: var(--mono); font-size: 12px; }
 .var:hover { background: var(--soft); }
-.var .chk { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid var(--line); flex: none; display: grid; place-items: center; }
+.var .chk { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid var(--line); flex: none; display: grid; place-items: center; cursor: pointer; position: relative; }
+/* A larger area to click than the box drawn. */
+.var .chk::before { content: ""; position: absolute; inset: -6px; }
+.var .chk:hover { border-color: var(--accent); }
 .var.on .chk { background: var(--accent); border-color: var(--accent); }
 .var.on .chk::after { content: ""; width: 7px; height: 4px; border: 2px solid var(--panel); border-top: 0; border-right: 0; transform: translate(0, -1px) rotate(-45deg); }
 .var .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -288,7 +291,7 @@ button { font: inherit; color: inherit; }
     <h2>Signals in the file</h2>
     <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="search" type="search" placeholder="Find a signal" aria-label="Find a signal"></div>
     <div class="tree" id="tree"></div>
-    <p class="hint">Click a signal to show or hide it; it goes after the selected row. Drag rows to reorder them.</p>
+    <p class="hint">Tick a signal's box to show or hide it; it goes after the selected row. Drag rows to reorder them.</p>
   </aside>
 
   <main class="viewer" id="viewer">
@@ -1236,7 +1239,10 @@ $('#nextEdge').onclick = () => edge(1);
 $('#setMarker').onclick = () => { S.marker = S.cursor; draw(); };
 $('#failChip').onclick = (e) => { if (pop) { closePop(); return; } openFailList(e.currentTarget); };
 $('#tree').addEventListener('click', (e) => {
-  const v = e.target.closest('.var'); if (v) { toggleVar(v.dataset.path); return; }
+  // Only the check box shows or hides a signal, not its name (the user's
+  // request, 2026-11-21); Enter or Space on the focused entry does too.
+  const v = e.target.closest('.var');
+  if (v) { if (e.target.closest('.chk') || e.detail === 0) toggleVar(v.dataset.path); return; }
   const s = e.target.closest('.scope-h');
   if (s) { const p = s.dataset.scope; S.openScopes.has(p) ? S.openScopes.delete(p) : S.openScopes.add(p); renderTree(); }
 });
