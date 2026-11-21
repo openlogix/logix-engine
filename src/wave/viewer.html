@@ -1265,9 +1265,13 @@ function timeItems(t) {
 function rowMenu(i, t, x, y) {
   const r = S.rows[i]; if (!r) return;
   S.sel = i; renderRows();
+  // Below a collapsed group means after the rows it hides, so the new row shows.
+  const v = visible(), below = v[v.indexOf(i) + 1] ?? S.rows.length;
   const common = [
     { label: 'Add a comment row above', act: () => addRowAt('comment', i) },
-    { label: 'Add a blank row below', act: () => addRowAt('blank', i + 1) },
+    { label: 'Add a comment row below', act: () => addRowAt('comment', below) },
+    { label: 'Add a blank row above', act: () => addRowAt('blank', i) },
+    { label: 'Add a blank row below', act: () => addRowAt('blank', below) },
   ];
   if (!r.v) {
     openMenu(x, y, [
