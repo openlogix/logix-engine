@@ -20,7 +20,7 @@
 /* Layout: a one-screen tool. Header bar; signal browser on the left; the viewer on the right as three aligned columns (name, value at cursor, waves) under one time ruler. */
 :root {
   --bg: #f4f6f5; --panel: #ffffff; --fg: #15201e; --muted: #5c6b68; --line: #dde4e2; --soft: #edf2f0;
-  --accent: #00838a; --accent-soft: #d8efee; --wave-bg: #ffffff; --grid: #eef2f1; --sel: #f1f7f6;
+  --accent: #00838a; --accent-soft: #d8efee; --wave-bg: #ffffff; --grid: #eef2f1; --sel: #f1f7f6; --group-bg: #e4e8e8; --group-fg: #36433f;
   --x: #d23b3b; --z: #b88400; --fail: #d23b3b; --marker: #7a52d6;
   --s1: #0f8a66; --s2: #2463c7; --s3: #b25b06; --s4: #8a3fd0; --s5: #c23478; --s6: #0d7891;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -29,13 +29,13 @@
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #0c1110; --panel: #121918; --fg: #e2ebe9; --muted: #8b9d99; --line: #22302d; --soft: #19221f;
-  --accent: #3cc8c0; --accent-soft: #143331; --wave-bg: #0f1615; --grid: #182220; --sel: #15201e;
+  --accent: #3cc8c0; --accent-soft: #143331; --wave-bg: #0f1615; --grid: #182220; --sel: #15201e; --group-bg: #232d2b; --group-fg: #c6d2cf;
   --x: #f47272; --z: #f2b52a; --fail: #f47272; --marker: #b493ff;
   --s1: #3ad69c; --s2: #72a9ff; --s3: #f5a43a; --s4: #bd92ff; --s5: #f477b5; --s6: #2fd0ea;
   color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #0c1110; --panel: #121918; --fg: #e2ebe9; --muted: #8b9d99; --line: #22302d; --soft: #19221f;
-  --accent: #3cc8c0; --accent-soft: #143331; --wave-bg: #0f1615; --grid: #182220; --sel: #15201e;
+  --accent: #3cc8c0; --accent-soft: #143331; --wave-bg: #0f1615; --grid: #182220; --sel: #15201e; --group-bg: #232d2b; --group-fg: #c6d2cf;
   --x: #f47272; --z: #f2b52a; --fail: #f47272; --marker: #b493ff;
   --s1: #3ad69c; --s2: #72a9ff; --s3: #f5a43a; --s4: #bd92ff; --s5: #f477b5; --s6: #2fd0ea;
   color-scheme: dark; }
@@ -95,10 +95,14 @@ button { font: inherit; color: inherit; }
 .group button:disabled { opacity: .35; cursor: default; }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 12px; }
 .keys kbd { font-family: var(--mono); font-size: 11px; background: var(--soft); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; white-space: nowrap; justify-self: start; }
-.nrow .fold { border: 0; background: none; color: var(--fg); width: 18px; height: 20px; margin-left: -6px; padding: 0; cursor: pointer; font-size: 13px; border-radius: 4px; flex: none; }
+/* A comment row is a group's title: a gray band across the row, as the
+   board picker's family headings, and an arrow that folds the group. */
+.nrow.comment, .vrow.comment, .nrow.comment.sel, .vrow.comment.sel, .nrow.comment:hover { background: var(--group-bg); }
+.nrow .fold svg { width: 16px; height: 16px; display: block; margin: auto; }
+.nrow .fold { border: 0; background: none; color: var(--group-fg); width: 24px; height: 24px; margin-left: -6px; padding: 0; cursor: pointer; font-size: 17px; line-height: 24px; border-radius: 5px; flex: none; }
 .nrow .fold:hover { background: var(--soft); color: var(--fg); }
 .nrow .hidden-n { font-weight: 400; font-family: var(--mono); font-size: 11px; }
-.nrow.comment .nm { font-family: var(--font); font-weight: 600; font-size: 12px; color: var(--muted); letter-spacing: .02em; }
+.nrow.comment .nm { font-family: var(--font); font-weight: 600; font-size: 12px; color: var(--group-fg); letter-spacing: .02em; }
 .nrow.blank .nm { color: var(--muted); font-size: 11px; opacity: 0; }
 .nrow.blank:hover .nm { opacity: .7; }
 .pop input[type=text] { width: 100%; box-sizing: border-box; height: 30px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); padding: 0 8px; font: inherit; }
@@ -538,14 +542,14 @@ function toggleGroup(i) {
 }
 function renderRows() {
   document.documentElement.style.setProperty('--row-h', S.rowH + 'px');
-  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'comment' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} rows of this group">${r.collapsed ? '▸' : '▾'}</button>` : ''}<span class="nm">${r.kind === 'comment' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}</span></div>`; }).join('');
+  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'comment' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} rows of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'comment' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}</span></div>`; }).join('');
   $('#empty').hidden = S.rows.length > 0;
   renderValues(); renderTree(); draw();
 }
 function renderValues() {
   $('#vals').innerHTML = visible().map((i) => {
     const r = S.rows[i];
-    if (!r.v) return `<div class="vrow ${i === S.sel ? 'sel' : ''}" data-i="${i}"></div>`;
+    if (!r.v) return `<div class="vrow ${r.kind} ${i === S.sel ? 'sel' : ''}" data-i="${i}"></div>`;
     const val = S.cursor == null ? null : valueAt(r.v, S.cursor);
     return `<div class="vrow ${i === S.sel ? 'sel' : ''} ${isX(val) ? 'xv' : ''}" data-i="${i}" style="--c:var(--s${r.color})">${esc(fmt(val, r.v.width, r.radix))}</div>`;
   }).join('');
@@ -604,7 +608,7 @@ function draw() {
   if (!S.wave) return;
   const W = $('#wavecol').clientWidth; if (!W) return;
   const css = getComputedStyle(document.documentElement);
-  const C = { bg: tok(css, '--wave-bg'), grid: tok(css, '--grid'), fg: tok(css, '--fg'), muted: tok(css, '--muted'), accent: tok(css, '--accent'), x: tok(css, '--x'), z: tok(css, '--z'), fail: tok(css, '--fail'), marker: tok(css, '--marker'), sel: tok(css, '--sel'), line: tok(css, '--line'), panel: tok(css, '--panel') };
+  const C = { bg: tok(css, '--wave-bg'), grid: tok(css, '--grid'), fg: tok(css, '--fg'), muted: tok(css, '--muted'), accent: tok(css, '--accent'), x: tok(css, '--x'), z: tok(css, '--z'), fail: tok(css, '--fail'), marker: tok(css, '--marker'), sel: tok(css, '--sel'), line: tok(css, '--line'), panel: tok(css, '--panel'), group: tok(css, '--group-bg') };
   const span = S.end - S.start, X = (t) => (t - S.start) / span * W;
   const step = niceStep(span, W);
   const mono = getComputedStyle(document.body).getPropertyValue('--mono') || 'monospace';
@@ -645,6 +649,7 @@ function draw() {
   shown.forEach((i, pos) => {
     const r = S.rows[i], y0 = pos * S.rowH;
     if (i === S.sel) { ctx.fillStyle = C.sel; ctx.fillRect(0, y0, W, S.rowH); }
+    if (r.kind === 'comment') { ctx.fillStyle = C.group; ctx.fillRect(0, y0, W, S.rowH); }
     ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(0, y0 + S.rowH - .5); ctx.lineTo(W, y0 + S.rowH - .5); ctx.stroke();
     if (!r.v) return;
     const color = tok(css, '--s' + r.color);
@@ -1181,7 +1186,8 @@ function viewSvg() {
     `<text x="10" y="15" fill="${tok('--muted')}" dominant-baseline="central" style="font:600 11px ${esc(mono)}">SIGNAL</text>`];
   if (valW > 20) out.push(`<text x="${left - 12}" y="15" fill="${tok('--muted')}" text-anchor="end" dominant-baseline="central" style="font:600 11px ${esc(mono)}">VALUE</text>`);
   shownRows.forEach((i, k) => {
-    const r = S.rows[i], y = 30 + k * S.rowH + S.rowH / 2, color = r.v ? tok('--s' + r.color) : tok('--muted');
+    const r = S.rows[i], y = 30 + k * S.rowH + S.rowH / 2, color = r.v ? tok('--s' + r.color) : tok('--group-fg');
+    if (r.kind === 'comment') out.push(`<rect x="0" y="${30 + k * S.rowH}" width="${left}" height="${S.rowH}" fill="${tok('--group-bg')}"/>`);
     const label = r.v ? r.v.path.split('.').slice(1).join('.') + (r.v.range && !r.v.name.includes('[') ? r.v.range : '') : r.kind === 'comment' ? r.text : '';
     out.push(`<text x="10" y="${y}" fill="${r.v ? tok('--fg') : color}" dominant-baseline="central" style="font:${r.v ? '' : '600 '}12px ${esc(mono)}">${esc(label)}</text>`);
     if (r.v && valW > 20 && S.cursor != null) out.push(`<text x="${left - 12}" y="${y}" fill="${color}" text-anchor="end" dominant-baseline="central" style="font:500 12px ${esc(mono)}">${esc(fmt(valueAt(r.v, S.cursor), r.v.width, r.radix))}</text>`);
