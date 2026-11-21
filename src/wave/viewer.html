@@ -161,6 +161,9 @@ button { font: inherit; color: inherit; }
 .status b { color: var(--fg); font-weight: 500; font-family: var(--mono); }
 .status .cur b { color: var(--accent); }
 .status .mk b { color: var(--marker); }
+.clockline { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+.clockline code { color: var(--fg); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.clockline .btn { height: 24px; padding: 0 8px; margin-left: auto; }
 .status .help { margin-left: auto; }
 
 /* A short message after an action that shows nothing by itself, such as a
@@ -344,7 +347,7 @@ button { font: inherit; color: inherit; }
 <script>
 (() => {
 const $ = (s) => document.querySelector(s);
-const S = { wave: null, file: '', rows: [], start: 0, end: 1, cursor: null, marker: null, sel: -1, rowH: 30, grid: true, theme: 'auto', marks: [] };
+const S = { wave: null, file: '', rows: [], start: 0, end: 1, cursor: null, clock: null, edges: [], cycles: false, marker: null, sel: -1, rowH: 30, grid: true, theme: 'auto', marks: [] };
 // The data the engine wrote into the page.
 const DATA = /*__DATA__*/null;
 // Hosted: in a host's window or iframe, which saves the view and opens sources.
@@ -520,6 +523,77 @@ function niceStep(span, px) {
   return 10 * p;
 }
 
+/* ---------- Clock cycles (R44) ---------- */
+// The ruler, cursor and marker can count cycles of a chosen clock instead of
+// time. A cycle is a clean rising edge, 0 to 1 (not from x or z), counted
+// from the clock's own transitions, so a clock that starts late, stops or
+// changes speed is still counted right. Cycle 0 is the first rising edge.
+// S.clock is the clock's path (kept while time shows, so switching back
+// needs no new choice), S.cycles whether the scale counts its cycles.
+function risingEdges(v) {
+  const d = S.wave.data.get(v.id), out = [];
+  for (let k = 1; k < d.t.length; k++) if (d.v[k] === '1' && d.v[k - 1] === '0') out.push(d.t[k]);
+  return out;
+}
+const isClockable = (v) => v && v.width === 1;
+function setClock(path) {
+  const v = path && varByPath().get(path);
+  S.clock = isClockable(v) ? path : null;
+  S.edges = S.clock ? risingEdges(v) : [];
+  if (!S.clock) S.cycles = false;
+}
+const counting = () => S.cycles && S.edges.length > 1;
+// Where a time is in cycles, as a number: 37 on the 38th rising edge, 37.5
+// halfway to the next one; before the first edge or after the last, the
+// nearest cycle's length carries on.
+function cyclePos(t) {
+  const E = S.edges, n = E.length;
+  let k = idx(E, t); if (k < 0) k = 0; else if (k > n - 2) k = n - 2;
+  return k + (t - E[k]) / (E[k + 1] - E[k]);
+}
+// The time of a cycle position, the reverse of cyclePos.
+function cycleTime(c) {
+  const E = S.edges, n = E.length, k = Math.max(0, Math.min(Math.floor(c), n - 2));
+  return E[k] + (c - k) * (E[k + 1] - E[k]);
+}
+const roundCycle = (c) => Math.round(c * 10) / 10;
+function fmtCycles(c) { const r = roundCycle(c); return `${r.toLocaleString('en-US')} cycle${r === 1 ? '' : 's'}`; }
+// A time as the scale shows it: "cycle 37" or "4.625 µs".
+function fmtAt(t) {
+  if (!counting()) return fmtTime(t);
+  const c = roundCycle(cyclePos(t));
+  return c < 0 ? 'before cycle 0' : `cycle ${c.toLocaleString('en-US')}`;
+}
+// A suggested clock: a 1-bit signal that toggles steadily, a name like clk
+// first, then the one with the most rising edges.
+function suggestClock() {
+  let best = null;
+  for (const v of S.wave.vars) {
+    if (!isClockable(v)) continue;
+    const n = risingEdges(v).length; if (n < 4) continue;
+    const score = (/(^|_)(clk|clock)(_|$|\d)/i.test(v.name) ? 1e9 : 0) + n - v.path.split('.').length;
+    if (!best || score > best.score) best = { path: v.path, score };
+  }
+  return best && best.path;
+}
+// Count cycles of a clock (null: back to time).
+function useClock(path) {
+  if (path) {
+    const was = [S.clock, S.edges, S.cycles];
+    setClock(path); S.cycles = !!S.clock;
+    if (!counting()) { [S.clock, S.edges, S.cycles] = was; toast(`${path} has fewer than two rising edges: it can't be counted as a clock.`); return; }
+  }
+  else { S.clock = null; S.edges = []; S.cycles = false; }
+  draw();
+}
+// The settings' Time / Cycles switch: Cycles with no clock yet suggests one.
+function setScale(cycles) {
+  if (!cycles) { S.cycles = false; draw(); return; }
+  const path = S.clock || suggestClock();
+  if (!path) { toast('No clock found: right-click a clock signal and choose Count cycles of this clock.'); return; }
+  useClock(path);
+}
+
 /* ---------- Rows and browser ---------- */
 const varByPath = () => new Map(S.wave.vars.map((v) => [v.path, v]));
 function row(i) { return S.rows[i]; }
@@ -622,15 +696,26 @@ function draw() {
   const span = S.end - S.start, X = (t) => (t - S.start) / span * W;
   const step = niceStep(span, W);
   const mono = getComputedStyle(document.body).getPropertyValue('--mono') || 'monospace';
+  // The ruler's and grid's marks: times, or clock edges when counting
+  // cycles (each edge when there's room, else every few).
+  const marks = [];
+  if (counting()) {
+    const c0 = cyclePos(S.start), c1 = cyclePos(S.end), cstep = Math.max(1, niceStep(c1 - c0, W));
+    for (let c = Math.max(0, Math.ceil(c0 / cstep) * cstep); c <= c1 && c < S.edges.length; c += cstep) marks.push({ t: S.edges[c], label: c.toLocaleString('en-US') });
+  } else {
+    for (let t = Math.ceil(S.start / step) * step; t <= S.end; t += step) marks.push({ t, label: fmtTime(t) });
+  }
+  const gridTimes = counting() && W / Math.max(cyclePos(S.end) - cyclePos(S.start), 1e-9) >= 8
+    ? S.edges.slice(Math.max(0, idx(S.edges, S.start)), idx(S.edges, S.end) + 1) : marks.map((m) => m.t);
 
   // Ruler
   const R = sizeCanvas(ruler, W, 30);
   R.fillStyle = C.panel; R.fillRect(0, 0, W, 30);
   R.font = `500 11px ${mono}`; R.textBaseline = 'middle';
-  for (let t = Math.ceil(S.start / step) * step; t <= S.end; t += step) {
-    const x = Math.round(X(t)) + .5;
+  for (const m of marks) {
+    const x = Math.round(X(m.t)) + .5;
     R.strokeStyle = C.line; R.beginPath(); R.moveTo(x, 20); R.lineTo(x, 30); R.stroke();
-    R.fillStyle = C.muted; R.fillText(fmtTime(t), x + 4, 13);
+    R.fillStyle = C.muted; R.fillText(m.label, x + 4, 13);
   }
   for (const m of S.marks) if (m.t >= S.start && m.t <= S.end) {
     const x = X(m.t); R.fillStyle = C.fail;
@@ -638,7 +723,7 @@ function draw() {
   }
   const pill = (t, color, label) => {
     if (t == null || t < S.start || t > S.end) return;
-    const x = X(t), txt = label + fmtTime(t); R.font = `600 11px ${mono}`;
+    const x = X(t), txt = label + fmtAt(t); R.font = `600 11px ${mono}`;
     const w = R.measureText(txt).width + 12, px = Math.min(Math.max(x - w / 2, 0), W - w);
     R.fillStyle = color; R.beginPath(); R.roundRect(px, 3, w, 19, 5); R.fill();
     R.fillStyle = C.panel; R.fillText(txt, px + 6, 13);
@@ -652,7 +737,7 @@ function draw() {
   ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
   if (S.grid) {
     ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
-    for (let t = Math.ceil(S.start / step) * step; t <= S.end; t += step) { const x = Math.round(X(t)) + .5; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (const t of gridTimes) { if (t < S.start) continue; const x = Math.round(X(t)) + .5; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
   }
   ctx.font = `500 11.5px ${mono}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
   const endX = X(S.wave.end);
@@ -721,9 +806,14 @@ function draw() {
 }
 function renderStatus() {
   const parts = [];
-  parts.push(`<span class="cur">Cursor <b>${S.cursor == null ? '–' : fmtTime(S.cursor)}</b></span>`);
-  if (S.marker != null) parts.push(`<span class="mk">Marker <b>${fmtTime(S.marker)}</b></span>`, `<span>Δ <b>${S.cursor == null ? '–' : fmtTime(Math.abs(S.cursor - S.marker))}</b></span>`);
-  parts.push(`<span>Showing <b>${fmtTime(S.start)} – ${fmtTime(S.end)}</b></span>`);
+  const delta = () => {
+    const dt = fmtTime(Math.abs(S.cursor - S.marker));
+    return counting() ? `${fmtCycles(Math.abs(cyclePos(S.cursor) - cyclePos(S.marker)))} (${dt})` : dt;
+  };
+  parts.push(`<span class="cur">Cursor <b>${S.cursor == null ? '–' : fmtAt(S.cursor)}</b></span>`);
+  if (S.marker != null) parts.push(`<span class="mk">Marker <b>${fmtAt(S.marker)}</b></span>`, `<span>Δ <b>${S.cursor == null ? '–' : delta()}</b></span>`);
+  parts.push(`<span>Showing <b>${fmtAt(S.start)} – ${fmtAt(S.end)}</b></span>`);
+  if (counting()) parts.push(`<span class="clk" title="Cycles are counted on this clock's rising edges">Clock <b>${esc(S.clock)}</b></span>`);
   parts.push(`<span class="help">Click: cursor · Shift+click: marker · Drag: pan · Wheel or pinch: zoom · Right-click: options</span>`);
   $('#status').innerHTML = parts.join('');
 }
@@ -769,14 +859,16 @@ function timeAtX(x) { return S.start + x / waves.clientWidth * (S.end - S.start)
 const SNAP_PX = 6;
 function snapAt(x, y, alt) {
   const t = timeAtX(x), r = S.rows[rowAtY(y)];
-  if (alt || !r || !r.v) return { t, snapped: false };
-  const d = S.wave.data.get(r.v.id), k = idx(d.t, t), pxPerT = waves.clientWidth / (S.end - S.start);
+  if (alt) return { t, snapped: false };
+  const pxPerT = waves.clientWidth / (S.end - S.start);
   let best = null;
-  for (const j of [k, k + 1]) {
-    if (j < 1 || j >= d.t.length) continue;   // the first value isn't a transition
-    const dist = Math.abs(d.t[j] - t) * pxPerT;
-    if (dist <= SNAP_PX && (!best || dist < best.dist)) best = { t: d.t[j], dist };
+  const near = (tt) => { const dist = Math.abs(tt - t) * pxPerT; if (dist <= SNAP_PX && (!best || dist < best.dist)) best = { t: tt, dist }; };
+  if (r && r.v) {
+    const d = S.wave.data.get(r.v.id), k = idx(d.t, t);
+    for (const j of [k, k + 1]) if (j >= 1 && j < d.t.length) near(d.t[j]);   // the first value isn't a transition
   }
+  // Counting cycles, the clock's rising edges snap too, on any row.
+  if (counting()) { const k = idx(S.edges, t); for (const j of [k, k + 1]) if (j >= 0 && j < S.edges.length) near(S.edges[j]); }
   return best ? { t: best.t, snapped: true } : { t, snapped: false };
 }
 waves.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; drag = { x: e.clientX, s: S.start, e: S.end, moved: false }; waves.setPointerCapture(e.pointerId); });
@@ -794,7 +886,7 @@ waves.addEventListener('pointermove', (e) => {
   let text = fmt(v, r.v.width, r.radix);
   if (r.v.width > 1 && r.radix !== 'hex' && !isX(v)) text += `  (0x${fmt(v, r.v.width, 'hex')})`;
   const tip = $('#tip');
-  tip.innerHTML = `<code>${esc(r.v.path)}</code> = <b><code>${esc(text)}</code></b><div class="t">${S.hoverSnap ? 'Edge at ' : ''}${fmtTime(Math.round(S.hoverT))}${S.hoverSnap ? ' (Alt: anywhere)' : ''}</div>`;
+  tip.innerHTML = `<code>${esc(r.v.path)}</code> = <b><code>${esc(text)}</code></b><div class="t">${S.hoverSnap ? 'Edge at ' : ''}${counting() ? fmtAt(Math.round(S.hoverT)) + ', ' : ''}${fmtTime(Math.round(S.hoverT))}${S.hoverSnap ? ' (Alt: anywhere)' : ''}</div>`;
   tip.hidden = false;
   const tw = tip.offsetWidth;
   tip.style.left = Math.min(e.clientX + 14, window.innerWidth - tw - 8) + 'px';
@@ -834,7 +926,7 @@ ruler.addEventListener('pointermove', (e) => {
   const m = S.marks.find((m) => Math.abs((m.t - S.start) / (S.end - S.start) * W - x) <= 6);
   if (!m) { hideTip(); return; }
   const tip = $('#tip');
-  tip.innerHTML = `<b>Failed check</b> at ${esc(fmtTime(m.t))}<div>${esc(m.message)}</div>${m.file ? `<div class="t">${esc(m.file)}${m.line ? ':' + m.line : ''}</div>` : ''}`;
+  tip.innerHTML = `<b>Failed check</b> at ${esc(fmtAt(m.t))}<div>${esc(m.message)}</div>${m.file ? `<div class="t">${esc(m.file)}${m.line ? ':' + m.line : ''}</div>` : ''}`;
   tip.hidden = false;
   tip.style.left = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8) + 'px';
   tip.style.top = (e.clientY + 16) + 'px';
@@ -932,8 +1024,10 @@ function openSettings(anchor) {
   closePop();
   const el = document.createElement('div'); el.className = 'pop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'View settings');
   const seg = (key, opts) => `<div class="seg">${opts.map(([v, n]) => `<button data-${key}="${v}" class="${String(S[key === 'rows' ? 'rowH' : key]) === String(v) ? 'on' : ''}">${n}</button>`).join('')}</div>`;
-  el.innerHTML = `<div><div class="lbl">Row height</div>${seg('rows', [[24, 'Compact'], [30, 'Normal'], [38, 'Roomy']])}</div>
-    <label class="check"><input type="checkbox" id="gridChk" ${S.grid ? 'checked' : ''}> Time grid lines</label>
+  const clockLine = S.clock ? `<div class="clockline">Clock <code>${esc(S.clock)}</code> <button class="btn" data-act="noclock" title="Stop counting cycles, and forget the clock">Clear</button></div>` : '';
+  el.innerHTML = `<div><div class="lbl">Time scale</div><div class="seg"><button data-scale="time" class="${counting() ? '' : 'on'}">Time</button><button data-scale="cycles" class="${counting() ? 'on' : ''}" title="Count clock cycles instead of time">Clock cycles</button></div>${clockLine}</div>
+    <div><div class="lbl">Row height</div>${seg('rows', [[24, 'Compact'], [30, 'Normal'], [38, 'Roomy']])}</div>
+    <label class="check"><input type="checkbox" id="gridChk" ${S.grid ? 'checked' : ''}> Grid lines</label>
     <div class="actions"><button class="btn" data-act="reset" title="Back to the testbench's own signals and the whole run. You can undo it.">Reset view</button></div>
     <div class="actions"><button class="btn" data-act="valcol">${valHidden() ? 'Show' : 'Hide'} the Value column</button><button class="btn" data-act="widths">Reset column widths</button></div>
     `;
@@ -942,6 +1036,8 @@ function openSettings(anchor) {
     if (e.target.id === 'gridChk') { S.grid = e.target.checked; draw(); return; }
     if (!b) return;
     if (b.dataset.rows) { S.rowH = +b.dataset.rows; renderRows(); }
+    if (b.dataset.scale) setScale(b.dataset.scale === 'cycles');
+    if (b.dataset.act === 'noclock') useClock(null);
     if (b.dataset.act === 'reset') { resetLayout(); closePop(); return; }
     if (b.dataset.act === 'valcol') { showVal(valHidden()); closePop(); return; }
     if (b.dataset.act === 'widths') { resetWidths(); closePop(); return; }
@@ -957,7 +1053,9 @@ $('#settingsBtn').addEventListener('click', (e) => { if (pop) { closePop(); retu
 // The .view file's JSON (R23): the rows, their formats and colors, the
 // zoom, the cursor and the marker.
 function viewData() {
-  return { version: 1, waveform: S.file, rows: S.rows.map(serRow), view: { from: Math.round(S.start), to: Math.round(S.end) }, cursor: S.cursor, marker: S.marker, row_height: S.rowH };
+  const o = { version: 1, waveform: S.file, rows: S.rows.map(serRow), view: { from: Math.round(S.start), to: Math.round(S.end) }, cursor: S.cursor, marker: S.marker, row_height: S.rowH };
+  if (S.clock) { o.clock = S.clock; o.time_scale = S.cycles ? 'cycles' : 'time'; }
+  return o;
 }
 function layoutJSON() { return JSON.stringify(viewData(), null, 2) + '\n'; }
 function saveToHost() { if (hosted) toHost({ type: 'logix-wave:view', view: viewData() }, 'logixWaveSaveView', viewData()); }
@@ -992,7 +1090,7 @@ function load() {
     $('#truncbar').hidden = false;
     $('#truncbar').textContent = `Showing the first part of the run: the waveform is ${DATA.truncated.size_mb} MB, more than the viewer holds (${DATA.truncated.limit_mb} MB).`;
   }
-  S.rows = defaultRows(); S.start = 0; S.end = w.end;
+  S.rows = defaultRows(); S.start = 0; S.end = w.end; S.clock = null; S.edges = []; S.cycles = false;
   const v = DATA.view;
   if (v && Array.isArray(v.rows)) {
     const rows = v.rows.map(deserRow).filter(Boolean);
@@ -1000,6 +1098,10 @@ function load() {
     if (v.row_height) S.rowH = v.row_height;
     S.cursor = v.cursor ?? null; S.marker = v.marker ?? null;
     if (v.view) { S.start = v.view.from; S.end = v.view.to; }
+    if (v.clock) {
+      setClock(v.clock); S.cycles = !!S.clock && v.time_scale === 'cycles';
+      if (!S.clock) setTimeout(() => toast(`The clock ${v.clock} isn't in this run: showing time.`), 0);
+    }
   }
   // What a client asked to show first (R8): signals, a time range, the cursor.
   const f = DATA.focus, ticks = (ns) => Math.round(ns * 1e-9 / w.ts);
@@ -1037,7 +1139,7 @@ function showFail(k) {
   const span = Math.max(S.wave.end / 12, 1);
   setView(m.t - span * 0.65, m.t + span * 0.35); setCursor(m.t);
   $('#failbar').hidden = false;
-  $('#failMsg').textContent = `${fmtTime(m.t)}: ${m.message}`;
+  $('#failMsg').textContent = `${fmtAt(m.t)}: ${m.message}`;
   const src = $('#failSrc');
   src.hidden = !m.file; src.textContent = m.file ? `${m.file}${m.line ? ':' + m.line : ''}` : '';
   src.title = hosted ? 'Open this line' : '';
@@ -1052,7 +1154,7 @@ function openFailList(anchor) {
   closePop();
   const el = document.createElement('div'); el.className = 'pop'; el.style.width = '380px';
   el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Failed checks');
-  el.innerHTML = `<h3 style="font-family:var(--font)">Failed checks</h3><div class="flist">${S.marks.map((m, k) => `<button data-k="${k}" class="${k === failAt ? 'on' : ''}"><span class="t">${esc(fmtTime(m.t))}</span><span class="m">${esc(m.message)}</span>${m.file ? `<span class="s">${esc(m.file)}${m.line ? ':' + m.line : ''}</span>` : ''}</button>`).join('')}</div>`;
+  el.innerHTML = `<h3 style="font-family:var(--font)">Failed checks</h3><div class="flist">${S.marks.map((m, k) => `<button data-k="${k}" class="${k === failAt ? 'on' : ''}"><span class="t">${esc(fmtAt(m.t))}</span><span class="m">${esc(m.message)}</span>${m.file ? `<span class="s">${esc(m.file)}${m.line ? ':' + m.line : ''}</span>` : ''}</button>`).join('')}</div>`;
   el.addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (b) { showFail(+b.dataset.k); closePop(); } });
   placePop(el, anchor);
 }
@@ -1092,7 +1194,7 @@ function resetLayout() {
 // is taken after each gesture: a click, a drag, a key, or a wheel zoom once
 // it pauses, so a whole zoom is one step.
 const H = { past: [], future: [], cur: null, timer: null };
-function snap() { return JSON.stringify({ rows: S.rows.map(serRow), start: S.start, end: S.end, cursor: S.cursor, marker: S.marker }); }
+function snap() { return JSON.stringify({ rows: S.rows.map(serRow), start: S.start, end: S.end, cursor: S.cursor, marker: S.marker, clock: S.clock, cycles: S.cycles }); }
 function commit() {
   clearTimeout(H.timer); H.timer = null;
   if (!S.wave) return;
@@ -1105,7 +1207,7 @@ function restore(s) {
   const o = JSON.parse(s);
   S.rows = o.rows.map(deserRow).filter(Boolean); S.cursor = o.cursor; S.marker = o.marker;
   if (S.sel >= S.rows.length) S.sel = -1;
-  S.start = o.start; S.end = o.end; closePop(); renderRows();
+  S.start = o.start; S.end = o.end; setClock(o.clock); S.cycles = !!S.clock && o.cycles; closePop(); renderRows();
 }
 function undo() { if (H.timer) commit(); if (!H.past.length) return; H.future.push(H.cur); H.cur = H.past.pop(); restore(H.cur); updUndo(); saveToHost(); }
 function redo() { if (!H.future.length) return; H.past.push(H.cur); H.cur = H.future.pop(); restore(H.cur); updUndo(); saveToHost(); }
@@ -1356,6 +1458,9 @@ function rowMenu(i, t, x, y) {
     { html: `<div class="lbl">Color</div><div class="swatches">${[1, 2, 3, 4, 5, 6].map((c) => `<button data-color="${c}" style="--c:var(--s${c})" class="${r.color === c ? 'on' : ''}" aria-label="Color ${c}"></button>`).join('')}</div>`,
       click: (e) => { const b = e.target.closest('[data-color]'); if (!b) return false; r.color = +b.dataset.color; renderRows(); } },
     '-', ...common, '-',
+    ...(isClockable(r.v) ? [counting() && S.clock === r.v.path
+      ? { label: 'Stop counting cycles of this clock', act: () => useClock(null) }
+      : { label: 'Count cycles of this clock', act: () => useClock(r.v.path) }, '-'] : []),
     { label: 'Copy the name', act: () => copyText(r.v.path) },
     { label: val != null ? `Copy the value (${val.length > 14 ? val.slice(0, 13) + '…' : val})` : 'Copy the value', disabled: val == null, act: () => copyText(val) },
     '-',
@@ -1377,7 +1482,7 @@ function timeMenu(t, x, y) {
     { label: 'Copy image', act: copyImage },
     { label: 'Save as PNG…', act: () => exportImage('png') },
     { label: 'Save as SVG…', act: () => exportImage('svg') },
-  ], fmtTime(Math.round(t)));
+  ], fmtAt(Math.round(t)));
 }
 function treeMenu(e) {
   const v = e.target.closest('.var'), sc = e.target.closest('.scope-h');
