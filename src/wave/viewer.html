@@ -1468,25 +1468,32 @@ const EXPORT_ITEMS = () => [
   { label: 'Save as PNG…', act: () => exportImage('png') },
   { label: 'Save as SVG…', act: () => exportImage('svg') },
   '-',
-  { label: 'Save as spreadsheet (CSV)…', act: exportCSV },
+  { label: 'Save all as spreadsheet (CSV)…', act: () => exportCSV(true) },
+  { label: 'Save shown as spreadsheet (CSV)…', act: () => exportCSV(false) },
   { label: 'Save as web page (HTML)…', act: exportPage, disabled: !PAGE },
 ];
 function imageMenu(x, y) { openMenu(x, y, EXPORT_ITEMS(), 'Export'); }
 
-// The shown signals as a spreadsheet (R48): a column per signal, in the
-// rows' order and formats, over the range shown; a row at each change of
-// any of them, or, counting cycles, at each rising edge of the clock (the
-// values a logic analyzer shows). Hex and binary values get 0x and 0b, so
+// A spreadsheet (R48), of all (every signal in the file over the whole run,
+// in the testbench's order, each in its usual format) or of what's shown
+// (the rows' signals, order and formats over the range on screen); a row at
+// each change of any of them, or, counting cycles, at each rising edge of
+// the clock (the values a logic analyzer shows). Hex and binary values get 0x and 0b, so
 // spreadsheets keep them as text (1E5 isn't a number, 0010 keeps its zeros).
 const MAX_CSV_ROWS = 200000;
-function exportCSV() {
-  const rows = S.rows.filter((r) => r.v);
+function exportCSV(all) {
+  let rows = S.rows.filter((r) => r.v);
+  if (all) {
+    const vars = S.wave.vars.filter((v) => v.type !== 'parameter'), first = inOrder(vars.filter((v) => v.path.split('.').length === 2));
+    rows = [...first, ...vars.filter((v) => !first.includes(v)).sort((a, b) => a.path.localeCompare(b.path))].map(sigRow);
+  }
   if (!rows.length) { toast('No signals are shown: nothing to export.'); return; }
+  const from = all ? 0 : S.start, to = all ? S.wave.end : S.end;
   let times;
-  if (counting()) times = S.edges.filter((t) => t >= S.start && t <= S.end);
+  if (counting()) times = S.edges.filter((t) => t >= from && t <= to);
   else {
-    const set = new Set([Math.max(0, Math.round(S.start))]);
-    for (const r of rows) { const d = S.wave.data.get(r.v.id); for (let k = Math.max(0, idx(d.t, S.start)); k < d.t.length && d.t[k] <= S.end; k++) if (d.t[k] >= S.start) set.add(d.t[k]); }
+    const set = new Set([Math.max(0, Math.round(from))]);
+    for (const r of rows) { const d = S.wave.data.get(r.v.id); for (let k = Math.max(0, idx(d.t, from)); k < d.t.length && d.t[k] <= to; k++) if (d.t[k] >= from) set.add(d.t[k]); }
     times = [...set].sort((a, b) => a - b);
   }
   const cut = times.length > MAX_CSV_ROWS; if (cut) times = times.slice(0, MAX_CSV_ROWS);
@@ -1503,9 +1510,11 @@ function exportCSV() {
     const time = +(t * S.wave.ts / f).toFixed(6);
     lines.push([...(counting() ? [Math.round(cyclePos(t))] : []), time, ...rows.map((r) => q(cell(r, t)))].join(','));
   }
-  const base = S.file.replace(/\.vcd$/i, '');
+  // The file's name says which: uart_tb-all.csv, uart_tb-shown.csv.
+  const base = S.file.replace(/\.vcd$/i, '') + (all ? '-all' : '-shown');
   saveFile(base + '.csv', 'text/csv', lines.join('\n') + '\n');
-  toast(`${hosted ? 'Exported' : 'Downloaded'} ${base}.csv: ${times.length.toLocaleString('en-US')} rows${cut ? ' (the first ones; zoom in for the rest)' : ''}.`);
+  const what = all ? `all ${rows.length} signals, the whole run` : `${rows.length} shown signals, ${fmtAt(from)} to ${fmtAt(to)}`;
+  toast(`${hosted ? 'Exported' : 'Downloaded'} ${base}.csv: ${what}, ${times.length.toLocaleString('en-US')} rows${cut ? ` (only the first ${MAX_CSV_ROWS.toLocaleString('en-US')}: export what's shown, zoomed in, for the rest)` : ''}.`);
 }
 
 // The view as a web page to share (R48): this page, with the view built in
