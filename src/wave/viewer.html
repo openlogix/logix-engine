@@ -358,7 +358,7 @@ button { font: inherit; color: inherit; }
 <script>
 (() => {
 const $ = (s) => document.querySelector(s);
-const S = { wave: null, file: '', rows: [], start: 0, end: 1, cursor: null, clock: null, edges: [], cycles: false, marker: null, sel: -1, rowH: 30, grid: true, theme: 'auto', marks: [] };
+const S = { wave: null, file: '', rows: [], start: 0, end: 1, cursor: null, anchor: null, clock: null, edges: [], cycles: false, marker: null, sel: -1, rowH: 30, grid: true, theme: 'auto', marks: [] };
 // The data the engine wrote into the page.
 const DATA = /*__DATA__*/null;
 // Hosted: in a host's window or iframe, which saves the view and opens sources.
@@ -632,24 +632,24 @@ function rowAtY(y) { const v = visible()[Math.floor(y / S.rowH)]; return v == nu
 function toggleGroup(i) {
   const r = S.rows[i]; if (!r || r.kind !== 'group') return;
   r.collapsed = !r.collapsed;
-  if (r.collapsed && S.sel > i && !visible().includes(S.sel)) S.sel = i;
+  if (r.collapsed && S.sel > i && !visible().includes(S.sel)) { S.anchor = null; S.sel = i; }
   renderRows(); commit();
 }
 // Next to the name of the clock whose cycles are counted.
 const CLOCK_BADGE = '<span class="clk-badge" title="Cycles are counted on this clock\'s rising edges"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 4.6V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
 function renderRows() {
   document.documentElement.style.setProperty('--row-h', S.rowH + 'px');
-  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${i === S.sel ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}${counting() && S.clock === r.v.path ? CLOCK_BADGE : ''}</span></div>`; }).join('');
+  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}${counting() && S.clock === r.v.path ? CLOCK_BADGE : ''}</span></div>`; }).join('');
   $('#empty').hidden = S.rows.length > 0;
   renderValues(); renderTree(); draw();
 }
 function renderValues() {
   $('#vals').innerHTML = visible().map((i) => {
     const r = S.rows[i];
-    if (!r.v) return `<div class="vrow ${r.kind} ${i === S.sel ? 'sel' : ''}" data-i="${i}"></div>`;
+    if (!r.v) return `<div class="vrow ${r.kind} ${isSel(i) ? 'sel' : ''}" data-i="${i}"></div>`;
     const val = S.cursor == null ? null : valueAt(r.v, S.cursor);
     const text = esc(fmt(val, r.v.width, r.radix));
-    return `<div class="vrow ${i === S.sel ? 'sel' : ''} ${isX(val) ? 'xv' : ''}" data-i="${i}" style="--c:var(--s${r.color})" title="${text}"><bdi dir="ltr">${text}</bdi></div>`;
+    return `<div class="vrow ${isSel(i) ? 'sel' : ''} ${isX(val) ? 'xv' : ''}" data-i="${i}" style="--c:var(--s${r.color})" title="${text}"><bdi dir="ltr">${text}</bdi></div>`;
   }).join('');
 }
 function renderTree() {
@@ -680,11 +680,11 @@ function inOrder(vars) {
 // group row, then ticking signals, builds a group in place.
 function insertSignals(vars) {
   let at = S.sel >= 0 ? S.sel + 1 : S.rows.length;
-  for (const v of vars) { S.rows.splice(at, 0, sigRow(v, S.rows.length)); S.sel = at; at++; }
+  for (const v of vars) { S.rows.splice(at, 0, sigRow(v, S.rows.length)); S.anchor = null; S.sel = at; at++; }
 }
 function toggleVar(path) {
   const k = S.rows.findIndex((r) => r.v && r.v.path === path);
-  if (k >= 0) { S.rows.splice(k, 1); if (S.sel >= S.rows.length) S.sel = -1; }
+  if (k >= 0) { S.rows.splice(k, 1); if (S.sel >= S.rows.length) { S.anchor = null; S.sel = -1; } }
   else {
     const v = varByPath().get(path);
     insertSignals([v]);
@@ -757,7 +757,7 @@ function draw() {
   const endX = X(S.wave.end);
   shown.forEach((i, pos) => {
     const r = S.rows[i], y0 = pos * S.rowH;
-    if (i === S.sel) { ctx.fillStyle = C.sel; ctx.fillRect(0, y0, W, S.rowH); }
+    if (isSel(i)) { ctx.fillStyle = C.sel; ctx.fillRect(0, y0, W, S.rowH); }
     ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(0, y0 + S.rowH - .5); ctx.lineTo(W, y0 + S.rowH - .5); ctx.stroke();
     if (!r.v) return;
     const color = tok(css, '--s' + r.color);
@@ -914,7 +914,7 @@ waves.addEventListener('pointerup', (e) => {
     const rect = waves.getBoundingClientRect(), i = rowAtY(e.clientY - rect.top);
     const t = snapAt(e.clientX - rect.left, e.clientY - rect.top, e.altKey).t;
     if (e.shiftKey) { S.marker = Math.round(t); draw(); }
-    else { if (S.rows[i]) S.sel = i; setCursor(t); renderRows(); }
+    else { if (S.rows[i]) { S.anchor = null; S.sel = i; } setCursor(t); renderRows(); }
   }
   drag = null;
 });
@@ -968,7 +968,9 @@ ruler.addEventListener('click', (e) => { const r = ruler.getBoundingClientRect()
 $('#names').addEventListener('click', (e) => {
   const rowEl = e.target.closest('.nrow'); if (!rowEl) return;
   const i = +rowEl.dataset.i;
-  S.sel = i;
+  // Shift+click: the range from the selected row to this one (R46).
+  if (e.shiftKey && S.sel >= 0) { if (S.anchor == null) S.anchor = S.sel; S.sel = i; renderRows(); return; }
+  S.anchor = null; S.sel = i;
   if (S.rows[i] && S.rows[i].kind === 'group') toggleGroup(i);
   else renderRows();
 });
@@ -979,7 +981,7 @@ $('#names').addEventListener('dblclick', (e) => {
   if (r && r.v && S.decl[r.v.path]) openSource(S.decl[r.v.path].file, S.decl[r.v.path].line);
 });
 let dragRow = null;
-$('#names').addEventListener('dragstart', (e) => { const el = e.target.closest('.nrow'); if (!el) return; dragRow = +el.dataset.i; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', ''); } catch (_) {} });
+$('#names').addEventListener('dragstart', (e) => { const el = e.target.closest('.nrow'); if (!el) return; dragRow = +el.dataset.i; if (!isSel(dragRow)) { S.anchor = null; S.sel = dragRow; renderRows(); } e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', ''); } catch (_) {} });
 // Where a dragged row goes, from the pointer's height: the upper half of a
 // row drops above it, the lower half below it (below a collapsed group's
 // hidden rows), and the empty space under the last row at the end.
@@ -993,8 +995,13 @@ function dropAt(y) {
 function clearDrop() { document.querySelectorAll('.nrow.drop, .nrow.drop-below').forEach((n) => n.classList.remove('drop', 'drop-below')); }
 $('#rows').addEventListener('dragover', (e) => {
   if (dragRow == null) return; e.preventDefault(); clearDrop();
-  const d = dropAt(e.clientY), el = d.el != null && $(`.nrow[data-i="${d.el}"]`);
-  if (el) el.classList.add(d.below ? 'drop-below' : 'drop');
+  // The line shows where the rows will land, after landing()'s rule.
+  const sp = selSpan(), from = dragRow, inSpan = sp && from >= sp.lo && from < sp.end;
+  const lo = inSpan ? sp.lo : from, len = inSpan ? sp.end - sp.lo : blockLen(from);
+  const at = landing(lo, len, dropAt(e.clientY).at), v = visible();
+  const before = v.find((x) => x >= at), after = [...v].reverse().find((x) => x < at);
+  const el = before != null ? $(`.nrow[data-i="${before}"]`) : after != null && $(`.nrow[data-i="${after}"]`);
+  if (el) el.classList.add(before != null ? 'drop' : 'drop-below');
 });
 $('#rows').addEventListener('drop', (e) => {
   if (dragRow == null) return; e.preventDefault(); e.stopPropagation();
@@ -1027,7 +1034,7 @@ function openPlainRowPop(r, anchor) {
   el.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const cur = S.rows.indexOf(r);
-    if (b.dataset.act === 'remove') { S.rows.splice(cur, 1); S.sel = -1; closePop(); renderRows(); }
+    if (b.dataset.act === 'remove') { S.rows.splice(cur, 1); S.anchor = null; S.sel = -1; closePop(); renderRows(); }
   });
   placePop(el, anchor);
   const input = el.querySelector('#groupName'); if (input) { input.focus(); input.select(); }
@@ -1039,8 +1046,8 @@ function openHelp(anchor) {
   const rows = [
     ['Click', 'Put the cursor there; near an edge, on the edge'], ['Shift+click', 'Put the marker there, the same way'], ['Alt+click', 'Anywhere, without snapping to an edge'], ['Drag', 'Move along in time'],
     ['Wheel or pinch', 'Zoom around the pointer'], ['Shift+wheel or swipe sideways', 'Move along in time'], ['Wheel over the names', 'Scroll the rows'],['+  −', 'Zoom in, out'], ['F', 'Show the whole run'],
-    ['←  →', 'Previous, next change of the selected signal'], ['↑  ↓', 'Select the signal above, below'], ['Alt+↑  Alt+↓', 'Move the selected row up, down (or drag it)'],
-    ['M', 'Put the marker at the cursor'], ['Delete', 'Hide the selected row'], ['S', 'Hide or show the signal list'], ['Right-click', 'What you can do with what you clicked'], ['Drag a column border', 'Resize the Signal or Value column'], ['Click the narrow strip', 'Show a hidden Value column'],
+    ['←  →', 'Previous, next change of the selected signal'], ['↑  ↓', 'Select the signal above, below'], ['Shift+click a name, Shift+↑ ↓', 'Select a range of rows'], ['Alt+↑  Alt+↓', 'Move the selected rows up, down (or drag them)'],
+    ['M', 'Put the marker at the cursor'], ['Delete', 'Hide the selected rows'], ['S', 'Hide or show the signal list'], ['Right-click', 'What you can do with what you clicked'], ['Drag a column border', 'Resize the Signal or Value column'], ['Click the narrow strip', 'Show a hidden Value column'],
     [mod + 'Z', 'Undo'], ['⇧' + mod + 'Z', 'Redo'],
   ];
   el.innerHTML = `<h3 style="font-family:var(--font)">Keyboard and mouse</h3><div class="keys">${rows.map(([k, t]) => `<kbd>${esc(k)}</kbd><span>${esc(t)}</span>`).join('')}</div>`;
@@ -1206,14 +1213,14 @@ function deserRow(o) {
 }
 function addRowAt(kind, at) {
   const r = kind === 'group' ? { kind, text: 'New group' } : { kind };
-  S.rows.splice(at, 0, r); S.sel = at;
+  S.rows.splice(at, 0, r); S.anchor = null; S.sel = at;
   // A row added inside a collapsed group (a blank row below it) opens the group, so it shows.
   if (!visible().includes(at)) for (let j = at - 1; j >= 0; j--) if (S.rows[j].kind === 'group') { S.rows[j].collapsed = false; break; }
   renderRows(); commit();
   if (kind === 'group') openRowPop(S.sel, $(`.nrow[data-i="${S.sel}"]`));
 }
 function resetLayout() {
-  S.rows = defaultRows(); S.sel = -1; S.cursor = null; S.marker = null;
+  S.rows = defaultRows(); S.anchor = null; S.sel = -1; S.cursor = null; S.marker = null;
   S.start = 0; S.end = S.wave.end; renderRows(); commit();
 }
 // Undo and redo (R36): one history for the rows and the zoom. A snapshot
@@ -1232,7 +1239,7 @@ function commitSoon() { clearTimeout(H.timer); H.timer = setTimeout(commit, 450)
 function restore(s) {
   const o = JSON.parse(s);
   S.rows = o.rows.map(deserRow).filter(Boolean); S.cursor = o.cursor; S.marker = o.marker;
-  if (S.sel >= S.rows.length) S.sel = -1;
+  if (S.sel >= S.rows.length) { S.anchor = null; S.sel = -1; }
   S.start = o.start; S.end = o.end; setClock(o.clock); S.cycles = !!S.clock && o.cycles; closePop(); renderRows();
 }
 function undo() { if (H.timer) commit(); if (!H.past.length) return; H.future.push(H.cur); H.cur = H.past.pop(); restore(H.cur); updUndo(); saveToHost(); }
@@ -1284,10 +1291,11 @@ document.addEventListener('keydown', (e) => {
   else if (k === 'f' || k === 'F') setView(0, S.wave.end);
   else if (k === 'ArrowRight') edge(1);
   else if (k === 'ArrowLeft') edge(-1);
-  else if ((k === 'ArrowDown' || k === 'ArrowUp') && S.rows.length) { const v = visible(), at = v.indexOf(S.sel); S.sel = v[Math.max(0, Math.min(v.length - 1, at < 0 ? 0 : at + (k === 'ArrowDown' ? 1 : -1)))]; renderRows(); }
+  else if ((k === 'ArrowDown' || k === 'ArrowUp') && S.rows.length && e.shiftKey && S.sel >= 0) { const v = visible(), at = v.indexOf(S.sel); if (S.anchor == null) S.anchor = S.sel; S.sel = v[Math.max(0, Math.min(v.length - 1, at + (k === 'ArrowDown' ? 1 : -1)))]; renderRows(); }
+  else if ((k === 'ArrowDown' || k === 'ArrowUp') && S.rows.length) { const v = visible(), at = v.indexOf(S.sel); S.anchor = null; S.sel = v[Math.max(0, Math.min(v.length - 1, at < 0 ? 0 : at + (k === 'ArrowDown' ? 1 : -1)))]; renderRows(); }
   else if (k === 'm' || k === 'M') { S.marker = S.cursor; draw(); }
   else if (k === 's' || k === 'S') setBrowser($('#app').classList.contains('no-browser'));
-  else if ((k === 'Delete' || k === 'Backspace') && S.sel >= 0) { S.rows.splice(S.sel, 1); S.sel = -1; renderRows(); }
+  else if ((k === 'Delete' || k === 'Backspace') && S.sel >= 0) { const sp = selSpan(); S.rows.splice(sp.lo, sp.end - sp.lo); S.anchor = null; S.sel = -1; renderRows(); }
   else return;
   e.preventDefault();
 });
@@ -1327,8 +1335,8 @@ function viewSvg() {
   const recs = [];
   EXPORT = { ctx: (c) => { const r = new SvgCtx(left, c === ruler ? 0 : 30); recs.push(r); return r; } };
   // No hover line or selected row in the image: only what the view shows.
-  const hover = S.hoverT, sel = S.sel; S.hoverT = null; S.sel = -1;
-  try { draw(); } finally { EXPORT = null; S.hoverT = hover; S.sel = sel; draw(); }
+  const hover = S.hoverT, sel = S.sel, anchor = S.anchor; S.hoverT = null; S.sel = -1; S.anchor = null;
+  try { draw(); } finally { EXPORT = null; S.hoverT = hover; S.sel = sel; S.anchor = anchor; draw(); }
   const out = [`<rect width="${left + W}" height="${H}" fill="${tok('--panel')}"/>`,
     `<text x="10" y="15" fill="${tok('--muted')}" dominant-baseline="central" style="font:600 11px ${esc(mono)}">SIGNAL</text>`];
   if (valW > 20) out.push(`<text x="${left - 12}" y="15" fill="${tok('--muted')}" text-anchor="end" dominant-baseline="central" style="font:600 11px ${esc(mono)}">VALUE</text>`);
@@ -1430,6 +1438,16 @@ document.addEventListener('keydown', (e) => {
 function copyText(t) { try { navigator.clipboard.writeText(t).catch(() => {}); } catch (_) {} }
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
 
+// The selected rows (R46): S.sel, or the range from S.anchor to S.sel
+// (Shift+click a name, Shift+Up and Shift+Down), a collapsed group's hidden
+// rows included. Its first index and the one after its end.
+function selSpan() {
+  if (S.sel < 0 || !S.rows[S.sel]) return null;
+  const a = S.anchor != null && S.rows[S.anchor] ? S.anchor : S.sel;
+  const lo = Math.min(a, S.sel), hi = Math.max(a, S.sel);
+  return { lo, end: hi + blockLen(hi) };
+}
+function isSel(i) { const sp = selSpan(); return !!sp && i >= sp.lo && i < sp.end; }
 // A row and what moves with it: a collapsed group takes its hidden rows
 // along, and stays collapsed (the user's request, 2026-11-21).
 function blockLen(i) {
@@ -1437,20 +1455,45 @@ function blockLen(i) {
   let j = i + 1; while (j < S.rows.length && S.rows[j].kind !== 'group') j++;
   return j - i;
 }
-// Moves row `from` with its block so that it lands before the row now at
-// index `at` (S.rows.length: at the end).
+// Where moved rows that hold a collapsed group may land: between groups or
+// at the end, never inside another group's rows, which would then join the
+// moved group (a group runs to the next group's row). Above the first group
+// any place goes. Other moves land where asked.
+function landing(lo, len, at) {
+  if (at == null || at >= S.rows.length || S.rows[at].kind === 'group') return at;
+  if (!S.rows.slice(lo, lo + len).some((r) => r.kind === 'group' && r.collapsed)) return at;
+  let g = at - 1; while (g >= 0 && S.rows[g].kind !== 'group') g--;
+  if (g < 0 || (g >= lo && g < lo + len)) return at;
+  if (at < lo) return g;
+  let n = at; while (n < S.rows.length && S.rows[n].kind !== 'group') n++;
+  return n;
+}
+// Moves `len` rows from `lo` so they land before the row now at index `at`
+// (S.rows.length: at the end), keeping the selection on them.
+function moveSpan(lo, len, at) {
+  at = landing(lo, len, at);
+  if (at == null || (at >= lo && at <= lo + len)) return;
+  const sOff = S.sel - lo, aOff = S.anchor != null ? S.anchor - lo : null;
+  const block = S.rows.splice(lo, len); if (at > lo) at -= len;
+  S.rows.splice(at, 0, ...block);
+  S.sel = at + sOff; S.anchor = aOff != null ? at + aOff : null; renderRows();
+}
+// Moves row `from` with its block (a collapsed group's hidden rows); a row
+// of the selected range moves the whole range.
 function moveBlockTo(from, at) {
-  const len = blockLen(from);
-  if (at == null || (at >= from && at <= from + len)) return;
-  const block = S.rows.splice(from, len); if (at > from) at -= len;
-  S.rows.splice(at, 0, ...block); S.sel = at; renderRows();
+  const sp = selSpan();
+  if (sp && from >= sp.lo && from < sp.end) { moveSpan(sp.lo, sp.end - sp.lo, at); return; }
+  S.anchor = null; S.sel = from; moveSpan(from, blockLen(from), at);
 }
-// Alt+Up and Alt+Down: past the next shown row, a collapsed group as one.
+// Alt+Up and Alt+Down: the selected rows past the next shown row, a
+// collapsed group as one.
 function moveRow(i, d) {
-  const v = visible(), n = v[v.indexOf(i) + d]; if (n == null) return;
-  moveBlockTo(i, d > 0 ? n + blockLen(n) : n);
+  const sp = selSpan(); if (!sp) return;
+  const v = visible();
+  if (d < 0) { const k = v.indexOf(sp.lo); if (k > 0) moveSpan(sp.lo, sp.end - sp.lo, v[k - 1]); return; }
+  const n = v.find((x) => x >= sp.end); if (n != null) moveSpan(sp.lo, sp.end - sp.lo, n + blockLen(n));
 }
-function removeRow(i) { S.rows.splice(i, 1); S.sel = -1; renderRows(); }
+function removeRow(i) { S.rows.splice(i, 1); S.anchor = null; S.sel = -1; renderRows(); }
 function timeItems(t) {
   return [
     { label: 'Put the cursor here', key: 'Click', act: () => setCursor(t) },
@@ -1459,7 +1502,7 @@ function timeItems(t) {
 }
 function rowMenu(i, t, x, y) {
   const r = S.rows[i]; if (!r) return;
-  S.sel = i; renderRows();
+  if (!isSel(i)) { S.anchor = null; S.sel = i; } renderRows();
   // Below a collapsed group means after the rows it hides, so the new row shows.
   const v = visible(), below = v[v.indexOf(i) + 1] ?? S.rows.length;
   const common = [
@@ -1532,7 +1575,7 @@ function treeMenu(e) {
     const shown = new Set(S.rows.filter((r) => r.v).map((r) => r.v.path));
     openMenu(e.clientX, e.clientY, [
       { label: `Show all ${vars.length} signals`, disabled: vars.every((x) => shown.has(x.path)), act: () => { insertSignals(inOrder(vars).filter((x) => !shown.has(x.path))); renderRows(); } },
-      { label: 'Hide all its signals', disabled: !vars.some((x) => shown.has(x.path)), act: () => { S.rows = S.rows.filter((r) => !r.v || !vars.includes(r.v)); S.sel = -1; renderRows(); } },
+      { label: 'Hide all its signals', disabled: !vars.some((x) => shown.has(x.path)), act: () => { S.rows = S.rows.filter((r) => !r.v || !vars.includes(r.v)); S.anchor = null; S.sel = -1; renderRows(); } },
     ], p);
   } else return false;
 }
