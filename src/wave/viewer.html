@@ -95,9 +95,9 @@ button { font: inherit; color: inherit; }
 .btns button:disabled { opacity: .35; cursor: default; }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 12px; }
 .keys kbd { font-family: var(--mono); font-size: 11px; background: var(--soft); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; white-space: nowrap; justify-self: start; }
-/* A group row is a group's title: a gray band across the row, as the
+/* A group row is a group's title: gray in the Signal column only, as the
    board picker's family headings, and an arrow that folds the group. */
-.nrow.group, .vrow.group, .nrow.group.sel, .vrow.group.sel, .nrow.group:hover { background: var(--group-bg); }
+.nrow.group, .nrow.group.sel, .nrow.group:hover { background: var(--group-bg); }
 .nrow.group { cursor: pointer; }
 .nrow .fold svg { width: 16px; height: 16px; display: block; margin: auto; }
 .nrow .fold { border: 0; background: none; color: var(--group-fg); width: 24px; height: 24px; margin-left: -6px; padding: 0; cursor: pointer; font-size: 17px; line-height: 24px; border-radius: 5px; flex: none; }
@@ -613,7 +613,7 @@ function draw() {
   if (!S.wave) return;
   const W = $('#wavecol').clientWidth; if (!W) return;
   const css = getComputedStyle(document.documentElement);
-  const C = { bg: tok(css, '--wave-bg'), grid: tok(css, '--grid'), fg: tok(css, '--fg'), muted: tok(css, '--muted'), accent: tok(css, '--accent'), x: tok(css, '--x'), z: tok(css, '--z'), fail: tok(css, '--fail'), marker: tok(css, '--marker'), sel: tok(css, '--sel'), line: tok(css, '--line'), panel: tok(css, '--panel'), group: tok(css, '--group-bg') };
+  const C = { bg: tok(css, '--wave-bg'), grid: tok(css, '--grid'), fg: tok(css, '--fg'), muted: tok(css, '--muted'), accent: tok(css, '--accent'), x: tok(css, '--x'), z: tok(css, '--z'), fail: tok(css, '--fail'), marker: tok(css, '--marker'), sel: tok(css, '--sel'), line: tok(css, '--line'), panel: tok(css, '--panel') };
   const span = S.end - S.start, X = (t) => (t - S.start) / span * W;
   const step = niceStep(span, W);
   const mono = getComputedStyle(document.body).getPropertyValue('--mono') || 'monospace';
@@ -654,7 +654,6 @@ function draw() {
   shown.forEach((i, pos) => {
     const r = S.rows[i], y0 = pos * S.rowH;
     if (i === S.sel) { ctx.fillStyle = C.sel; ctx.fillRect(0, y0, W, S.rowH); }
-    if (r.kind === 'group') { ctx.fillStyle = C.group; ctx.fillRect(0, y0, W, S.rowH); }
     ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(0, y0 + S.rowH - .5); ctx.lineTo(W, y0 + S.rowH - .5); ctx.stroke();
     if (!r.v) return;
     const color = tok(css, '--s' + r.color);
@@ -1200,7 +1199,7 @@ function viewSvg() {
   if (valW > 20) out.push(`<text x="${left - 12}" y="15" fill="${tok('--muted')}" text-anchor="end" dominant-baseline="central" style="font:600 11px ${esc(mono)}">VALUE</text>`);
   shownRows.forEach((i, k) => {
     const r = S.rows[i], y = 30 + k * S.rowH + S.rowH / 2, color = r.v ? tok('--s' + r.color) : tok('--group-fg');
-    if (r.kind === 'group') out.push(`<rect x="0" y="${30 + k * S.rowH}" width="${left}" height="${S.rowH}" fill="${tok('--group-bg')}"/>`);
+    if (r.kind === 'group') out.push(`<rect x="0" y="${30 + k * S.rowH}" width="${nameW}" height="${S.rowH}" fill="${tok('--group-bg')}"/>`);
     const label = r.v ? r.v.path.split('.').slice(1).join('.') + (r.v.range && !r.v.name.includes('[') ? r.v.range : '') : r.kind === 'group' ? r.text : '';
     out.push(`<text x="10" y="${y}" fill="${r.v ? tok('--fg') : color}" dominant-baseline="central" style="font:${r.v ? '' : '600 '}12px ${esc(mono)}">${esc(label)}</text>`);
     if (r.v && valW > 20 && S.cursor != null) out.push(`<text x="${left - 12}" y="${y}" fill="${color}" text-anchor="end" dominant-baseline="central" style="font:500 12px ${esc(mono)}">${esc(fmt(valueAt(r.v, S.cursor), r.v.width, r.radix))}</text>`);
