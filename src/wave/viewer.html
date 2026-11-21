@@ -56,6 +56,9 @@ button { font: inherit; color: inherit; }
 .file { display: flex; align-items: center; gap: 6px; color: var(--muted); font-family: var(--mono); font-size: 12px; min-width: 0; }
 .file b { color: var(--fg); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spacer { flex: 1; }
+/* hidden always hides, whatever display a class gives (the Save view
+   button showed in Logix IDE's window, the user's report, 2026-11-21). */
+[hidden] { display: none !important; }
 .btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--panel); cursor: pointer; white-space: nowrap; }
 .btn:hover { border-color: var(--accent); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }

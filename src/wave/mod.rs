@@ -648,6 +648,13 @@ endmodule
         );
     }
 
+    /// Elements the page hides, such as Save view in a host's window, stay
+    /// hidden whatever display their classes give them.
+    #[test]
+    fn hidden_always_hides() {
+        assert!(VIEWER.contains("[hidden] { display: none !important; }"));
+    }
+
     #[test]
     fn the_page_holds_its_data_safely() {
         let data = PageData {
