@@ -52,6 +52,22 @@ pub struct DownloadPackagesOutput {
     pub downloaded: Vec<String>,
     /// Every package the engine uses, with its status.
     pub packages: Vec<PackageInfo>,
+    /// What this call did, for people, a sentence each, such as
+    /// "Downloaded logix-core 2026.11.22.": one per package it downloaded,
+    /// repaired or downloaded again. Empty when there was nothing to do.
+    pub summary: Vec<String>,
+}
+
+/// "Downloaded <name> <version>." for each package downloaded, with the
+/// version it has now.
+pub fn downloaded_lines(names: &[String], packages: &[PackageInfo]) -> Vec<String> {
+    names
+        .iter()
+        .map(|name| match packages.iter().find(|p| &p.name == name) {
+            Some(p) => format!("Downloaded {name} {}.", p.version),
+            None => format!("Downloaded {name}."),
+        })
+        .collect()
 }
 
 pub async fn run(
@@ -105,8 +121,11 @@ pub async fn run(
             .ensure(&needed, true, &phases, &call.cancel)
             .await?;
     }
+    let downloaded: Vec<String> = needed.into_iter().map(|s| s.name).collect();
+    let packages = package_list(state);
     Ok(DownloadPackagesOutput {
-        downloaded: needed.into_iter().map(|s| s.name).collect(),
-        packages: package_list(state),
+        summary: downloaded_lines(&downloaded, &packages),
+        downloaded,
+        packages,
     })
 }

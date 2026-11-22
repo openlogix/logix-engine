@@ -496,12 +496,20 @@
           "items": {
             "$ref": "#/$defs/PackageInfo"
           }
+        },
+        "summary": {
+          "description": "What this call did, for people, a sentence each, such as\n\"Downloaded logix-core 2026.11.22.\": one per package it downloaded,\nrepaired or downloaded again. Empty when there was nothing to do.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false,
       "required": [
         "downloaded",
-        "packages"
+        "packages",
+        "summary"
       ],
       "$defs": {
         "PackageInfo": {
@@ -637,6 +645,13 @@
               "type": "null"
             }
           ]
+        },
+        "summary": {
+          "description": "What changed, for people, a sentence each: \"Updated logix-core to\n2026.11.22.\" for each package whose release changed, \"Downloaded\nlogix-catalog 2026.11.22.\" for one only downloaded or repaired, or\n\"Logix Engine's packages are up to date.\" when nothing changed.\nPackages are named by their package names. A newer engine isn't in\nit: see newer_engine.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false,
@@ -644,7 +659,8 @@
         "updates",
         "downloaded",
         "packages",
-        "remote_config"
+        "remote_config",
+        "summary"
       ],
       "$defs": {
         "UpdateInfo": {

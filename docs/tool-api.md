@@ -1295,6 +1295,7 @@ Downloads or repairs the Logix Engine's packages, reading its remote config firs
 | --- | --- | --- |
 | `downloaded` | list of text | Names of the packages this call downloaded, repaired or downloaded again. Empty when they were all downloaded already and `force` was off |
 | `packages` | list of packages | Every package the engine uses, with its status afterwards, as in `get_engine_info` |
+| `summary` | list of text | What the call did, for people, a sentence each: "Downloaded logix-core 2026.11.10." for each package in `downloaded`, with its version now. Empty when there was nothing to do. Show it as is; programs read the fields above |
 
 **Errors:** request errors for unknown package names. Setup errors with `download_packages` when a download fails. Engine errors and cancellation.
 
@@ -1314,7 +1315,8 @@ Output:
   "packages": [
     { "name": "logix-catalog", "version": "2026.11.10", "status": "ready" },
     { "name": "logix-core", "version": "2026.11.10", "status": "ready", "components": [ ... ] }
-  ]
+  ],
+  "summary": ["Downloaded logix-core 2026.11.10."]
 }
 ```
 
@@ -1336,6 +1338,7 @@ Checks now for newer releases of the Logix Engine's packages: reads its remote c
 | `downloaded` | list of text | Names of the packages this call downloaded or repaired |
 | `packages` | list of packages | Every package the engine uses, with its status afterwards, as in `get_engine_info` |
 | `remote_config` | object | The remote config just read, as in `get_engine_info` |
+| `summary` | list of text | What changed, for people, a sentence each: "Updated logix-catalog to 2026.11.30." for each of `updates`, "Downloaded logix-core 2026.11.10." for a package only downloaded or repaired, or "Logix Engine's packages are up to date." when nothing changed. Packages are named by their package names. A newer engine isn't in it (see `newer_engine`). Show it as is; programs read the fields above |
 | `newer_engine` | object | Optional. A newer Logix Engine release on this engine's channel: `version` (`yyyy.mm.dd`) and `page` (its release page, with its install steps). The engine never updates itself, so a host or AI agent tells the user, with the page. From `latest` in the newest config version folder that has the engine's channel (Remote updates, in the website repo's `CLAUDE.md`, A newer version of the product); omitted when this engine is the newest, and when that can't be read |
 
 **Errors:** setup errors with `download_packages` when the remote config can't be read and there's none to use, or a download fails. Engine errors and cancellation.
@@ -1359,7 +1362,8 @@ Output:
     "channel_reason": "listed",
     "config_file": "prod-channel.jsonc",
     "read_at": "2026-12-01T09:30:00Z"
-  }
+  },
+  "summary": ["Updated logix-catalog to 2026.11.30."]
 }
 ```
 
@@ -1650,7 +1654,7 @@ Logic that every frontend would need and that doesn't depend on a frontend's own
 
 1. Launch the Logix Engine with `--engine-folder`, and, to keep its logs with yours (the Open Logix log layout, Logs in [Command line](command-line.md)), with `--log-folder` (your session folder) and `--log-name` (your name, a dot, then `logix-engine`). Do the MCP handshake, then call `get_engine_info`. If you follow the layout, call `clean_logs` with your logs folder, keeping your session folder.
 2. Check that `engine_version` is one your frontend supports, by its own rule, such as a version range or a list of tested releases. If it isn't, call no other tools: tell the user which Logix Engine versions the frontend needs, then stop or fall back as the frontend decides.
-3. Call `download_packages` and show its progress. It reads the engine's remote config when that's due and downloads only what's missing, so it returns at once when everything is ready, and it's how a first start downloads the packages with the host's own progress screen. (Tools would download what they need on first use anyway.) Then show package status from its `packages`. To check for newer packages now, call `check_updates`.
+3. Call `download_packages` and show its progress. It reads the engine's remote config when that's due and downloads only what's missing, so it returns at once when everything is ready, and it's how a first start downloads the packages with the host's own progress screen. (Tools would download what they need on first use anyway.) Then show package status from its `packages`, and its `summary` lines, if any, in a console. To check for newer packages now, call `check_updates` and show its `summary`, a line each.
 
 ### Show whether the board is connected
 

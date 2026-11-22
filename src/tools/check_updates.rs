@@ -53,7 +53,38 @@ pub struct CheckUpdatesOutput {
     /// one. The engine never updates itself: tell the user, with its page.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub newer_engine: Option<NewerEngine>,
+    /// What changed, for people, a sentence each: "Updated logix-core to
+    /// 2026.11.22." for each package whose release changed, "Downloaded
+    /// logix-catalog 2026.11.22." for one only downloaded or repaired, or
+    /// "Logix Engine's packages are up to date." when nothing changed.
+    /// Packages are named by their package names. A newer engine isn't in
+    /// it: see newer_engine.
+    pub summary: Vec<String>,
 }
+
+/// The summary of a check: each update, then each other download, else
+/// that nothing changed.
+fn summary(updates: &[UpdateInfo], downloaded: &[String], packages: &[PackageInfo]) -> Vec<String> {
+    let mut lines: Vec<String> = updates
+        .iter()
+        .map(|u| format!("Updated {} to {}.", u.name, u.to))
+        .collect();
+    let others: Vec<String> = downloaded
+        .iter()
+        .filter(|d| !updates.iter().any(|u| &u.name == *d))
+        .cloned()
+        .collect();
+    lines.extend(super::download_packages::downloaded_lines(
+        &others, packages,
+    ));
+    if lines.is_empty() {
+        lines.push(UP_TO_DATE.into());
+    }
+    lines
+}
+
+/// The summary when nothing changed.
+const UP_TO_DATE: &str = "Logix Engine's packages are up to date.";
 
 /// A newer Logix Engine release than this one.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -149,10 +180,14 @@ pub async fn run(
             None
         }
     };
+    let updates: Vec<UpdateInfo> = updates.into_iter().map(UpdateInfo::from).collect();
+    let downloaded: Vec<String> = needed.into_iter().map(|s| s.name).collect();
+    let packages = package_list(state);
     Ok(CheckUpdatesOutput {
-        updates: updates.into_iter().map(UpdateInfo::from).collect(),
-        downloaded: needed.into_iter().map(|s| s.name).collect(),
-        packages: package_list(state),
+        summary: summary(&updates, &downloaded, &packages),
+        updates,
+        downloaded,
+        packages,
         remote_config: config,
         newer_engine,
     })
@@ -161,6 +196,45 @@ pub async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_summary_says_what_changed() {
+        use super::super::get_engine_info::PackageStatus;
+        let package = |name: &str, version: &str| PackageInfo {
+            name: name.into(),
+            version: version.into(),
+            status: PackageStatus::Ready,
+            components: Vec::new(),
+        };
+        let packages = [
+            package("logix-catalog", "2026.11.30"),
+            package("logix-core", "2026.11.22"),
+        ];
+        let update = UpdateInfo {
+            name: "logix-catalog".into(),
+            from: Some("2026.11.24".into()),
+            to: "2026.11.30".into(),
+        };
+        assert_eq!(
+            summary(
+                &[update],
+                &["logix-catalog".into(), "logix-core".into()],
+                &packages
+            ),
+            [
+                "Updated logix-catalog to 2026.11.30.",
+                "Downloaded logix-core 2026.11.22.",
+            ]
+        );
+        assert_eq!(
+            summary(&[], &[], &packages),
+            ["Logix Engine's packages are up to date."]
+        );
+        assert_eq!(
+            super::super::download_packages::downloaded_lines(&["logix-core".into()], &packages),
+            ["Downloaded logix-core 2026.11.22."]
+        );
+    }
 
     #[test]
     fn a_newer_engine_is_reported_with_its_page() {
