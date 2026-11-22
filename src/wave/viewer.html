@@ -6,16 +6,18 @@
 <title>Logix Waveforms</title>
 <!-- Written by Logix Engine's simulate tool (docs/tool-api.md, "The
      waveform viewer"). Self-contained: it needs no network and nothing
-     installed. Hosts can embed it in an iframe or a window of their own:
-     ?theme=light|dark sets the theme, and it accepts
-     {type: "logix-wave:theme", theme}. It posts
-     {type: "logix-wave:open-source", file, line} when a signal's name or a
-     failure is double-clicked or clicked, and {type: "logix-wave:view", view}
-     with the view (the .view file's JSON) after every change, so a host saves
-     it. A host that loads it directly can define
-     window.logixWaveOpenSource(file, line) and window.logixWaveSaveView(view)
-     instead. Save as image posts {type: "logix-wave:save-file", name, mime,
-     data} (SVG text, or PNG as base64), or calls window.logixWaveSaveFile. With no host, as in a browser, the view isn't saved: there's no Save view button (the user's decision, 2026-11-21, until a clear use for one). -->
+     installed. A host showing it in a window of its own offers the page
+     contract, window.logixHost (docs/tool-api.md, Logix Viewer): the view
+     goes to writeDeclared("view", text) after every change, images to
+     saveAs(name, mime, data), and a signal's or a failure's place in the
+     source to openSource(file, line). In an iframe, it posts the same as
+     messages to its parent instead: {type: "logix-wave:view", view},
+     {type: "logix-wave:save-file", name, mime, data} and
+     {type: "logix-wave:open-source", file, line}, and accepts
+     {type: "logix-wave:theme", theme}. ?theme=light|dark sets the theme.
+     With no host, as in a browser, the view isn't saved: there's no Save
+     view button (the user's decision, 2026-11-21, until a clear use for
+     one). -->
 <style>
 /* Layout: a one-screen tool. Header bar; signal browser on the left; the viewer on the right as three aligned columns (name, value at cursor, waves) under one time ruler. */
 :root {
@@ -397,13 +399,18 @@ const $ = (s) => document.querySelector(s);
 const S = { wave: null, file: '', rows: [], start: 0, end: 1, cursor: null, anchor: null, clock: null, edges: [], cycles: false, marker: null, sel: -1, rowH: 30, grid: true, theme: 'auto', marks: [] };
 // The data the engine wrote into the page.
 const DATA = /*__DATA__*/null;
-// Hosted: in a host's window or iframe, which saves the view and opens sources.
-const hosted = window.parent !== window || typeof window.logixWaveSaveView === 'function';
-function toHost(msg, fn, ...args) {
-  if (typeof window[fn] === 'function') window[fn](...args);
-  else if (window.parent !== window) window.parent.postMessage(msg, '*');
+// The page's host: window.logixHost (the page contract, version 1) in a
+// host's own window, such as Logix IDE's or Logix Viewer's; messages to the
+// parent in an iframe; nothing in a plain browser. Hosted: the view is
+// saved and sources can be opened.
+const host = () => (window.logixHost && window.logixHost.version >= 1 ? window.logixHost : null);
+const inFrame = window.parent !== window;
+const hosted = !!host() || inFrame;
+function openSource(file, line) {
+  if (!file) return;
+  if (host()) host().openSource(file, line);
+  else if (inFrame) window.parent.postMessage({ type: 'logix-wave:open-source', file, line }, '*');
 }
-function openSource(file, line) { if (file) toHost({ type: 'logix-wave:open-source', file, line }, 'logixWaveOpenSource', file, line); }
 // Theme: ?theme=, a host's message, else the system's.
 function setTheme(t) {
   if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
@@ -1237,15 +1244,23 @@ ruler.addEventListener('click', (e) => { const r = ruler.getBoundingClientRect()
 // Shift+click would also select text in the browser: rows only.
 $('#names').addEventListener('mousedown', (e) => { if (e.shiftKey) e.preventDefault(); });
 $('#names').addEventListener('mousemove', () => $('#names').classList.remove('after-drop'));
+// Shows the selection without rebuilding the list: a rebuild between the
+// two clicks of a double-click, or as a drag starts, replaces the row under
+// the pointer, and WebKit then drops the double-click (opening a signal's
+// declaration, R27) or the drag (the user's reports, 2026-11-22).
+function showSelection() {
+  document.querySelectorAll('#names .nrow').forEach((n) => n.classList.toggle('sel', isSel(+n.dataset.i)));
+  renderValues(); draw();
+}
 $('#names').addEventListener('click', (e) => {
   const fold = e.target.closest('.fold.bits'); if (fold) { toggleBits(+fold.dataset.bits); return; }
   const rowEl = e.target.closest('.nrow'); if (!rowEl) return;
   const i = +rowEl.dataset.i;
   // Shift+click: the range from the selected row to this one (R46).
-  if (e.shiftKey && S.sel >= 0) { if (S.anchor == null) S.anchor = S.sel; S.sel = i; renderRows(); return; }
+  if (e.shiftKey && S.sel >= 0) { if (S.anchor == null) S.anchor = S.sel; S.sel = i; showSelection(); return; }
   S.anchor = null; S.sel = i;
   if (S.rows[i] && S.rows[i].kind === 'group') toggleGroup(i);
-  else renderRows();
+  else showSelection();
 });
 // Double-click a signal's name: its declaration, in hosts that can (R27).
 $('#names').addEventListener('dblclick', (e) => {
@@ -1258,7 +1273,7 @@ $('#names').addEventListener('dragstart', (e) => { const el = e.target.closest('
   // Selects the row in place: redrawing the list would replace the row being
   // dragged, and WebKit then cancels the drag (only a selected row could be
   // dragged; the user's report, 2026-11-22).
-  if (!isSel(dragRow)) { S.anchor = null; S.sel = dragRow; document.querySelectorAll('#names .nrow').forEach((n) => n.classList.toggle('sel', isSel(+n.dataset.i))); renderValues(); draw(); }
+  if (!isSel(dragRow)) { S.anchor = null; S.sel = dragRow; showSelection(); }
   e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', ''); } catch (_) {} });
 // Where a dragged row goes, from the pointer's height: the upper half of a
 // row drops above it, the lower half below it (below a collapsed group's
@@ -1368,7 +1383,12 @@ function viewData() {
   o.time_base = counting() ? 'cycles' : 'time'; if (S.clock) o.clock = S.clock;
   return o;
 }
-function saveToHost() { if (hosted) toHost({ type: 'logix-wave:view', view: viewData() }, 'logixWaveSaveView', viewData()); }
+// The view to the host, as the .view file's text (pretty-printed, for
+// people reading the project's files).
+function saveToHost() {
+  if (host()) host().writeDeclared('view', JSON.stringify(viewData(), null, 2) + '\n');
+  else if (inFrame) window.parent.postMessage({ type: 'logix-wave:view', view: viewData() }, '*');
+}
 let toastTimer = null;
 function toast(text) {
   const t = $('#toast'); t.textContent = text; t.hidden = false;
@@ -1637,7 +1657,8 @@ function viewSvg() {
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${left + W}" height="${H}" viewBox="0 0 ${left + W} ${H}">${out.join('')}</svg>`, w: left + W, h: H };
 }
 function saveFile(name, mime, data) {
-  if (hosted) { toHost({ type: 'logix-wave:save-file', name, mime, data }, 'logixWaveSaveFile', name, mime, data); return; }
+  if (host()) { host().saveAs(name, mime, data); return; }
+  if (inFrame) { window.parent.postMessage({ type: 'logix-wave:save-file', name, mime, data }, '*'); return; }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type: mime }));
   a.download = name; document.body.appendChild(a); a.click(); a.remove();
