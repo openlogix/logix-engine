@@ -127,7 +127,7 @@ Open Logix's own frontends, starting with Logix IDE, and other open source FPGA 
 | Board pinouts | Each board's pins and their names in the catalog, so a graphical host can let users pick pins | IceStudio |
 | Setup from a GUI | Downloading and updating toolchain packages, and installing drivers, with progress reporting, without a terminal | IceStudio, Logix IDE |
 | Bundled engine | A host shipping a specific engine version, with its own engine folder | IceStudio, Logix IDE |
-| Packaged tools for hosts | Letting local hosts run packaged tools themselves, such as the Verible language server for live checks in an editor. An engine request returns the tool's command and environment, so hosts never depend on the engine folder's layout | Logix IDE |
+| Packaged tools for hosts | Letting local hosts run packaged tools themselves, such as the Verible language server for live checks in an editor. An engine request returns the tool's command and environment, so hosts never depend on the engine folder's layout (done 2026-11-22: `get_engine_info`'s `language_server`, `command`, `args` and `env`) | Logix IDE |
 | Parallel work | Running a check while a build is in progress, met by the host running a second engine instance | Logix IDE (to confirm) |
 
 **AI agents as hosts.** A generic MCP client, such as an AI coding agent, must be able to act as the host itself, with no frontend. It launches the engine with an engine folder and needs nothing else. It learns the tools from their names, descriptions and input schemas alone, and acts on the structured errors and suggested actions. This means every tool and field needs a clear, self-contained description.

@@ -84,6 +84,17 @@
           "description": "The file extensions of the HDL files the tools take, without the\ndot, so a frontend knows which files are sources: source (design\nand testbench files: v, sv) and include (files they include: vh,\nsvh). Pin files are per FPGA family: get_catalog's families give\neach its constraint_extension and constraint_comment.",
           "$ref": "#/$defs/HdlExtensions"
         },
+        "language_server": {
+          "description": "Verible's Verilog language server, for a host that runs it itself\nfor live errors and other help while the user types: the command\n(its absolute path), its arguments and the environment variables to\nset for it, on top of the host's own (none today). Its arguments\ncheck syntax only (Verible's style rules would flood beginners;\nlint finds design problems) and turn hover info on. Omitted until\nthe FPGA tools (logix-core) are downloaded.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LanguageServer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "developer_settings": {
           "description": "The developer settings in effect: the environment variables the\nengine reads for development and diagnostics (LOGIX_ENGINE_CHANNEL,\nLOGIX_ENGINE_DEV_REMOTE_CONFIG, LOGIX_ENGINE_DEV_CATALOG_FOLDER), each\nwith its value, when set. Omitted when none is, as for users.",
           "type": "array",
@@ -182,7 +193,7 @@
               "type": "string"
             },
             "bin_folder": {
-              "description": "The folder with the component's programs, as an absolute path. For\nhosts that run one of its programs directly, such as Verible's\nlanguage server verible-verilog-ls from the verible component.",
+              "description": "The folder with the component's programs, as an absolute path. For\nhosts that run one of its programs directly (for Verible's language\nserver, use language_server, which has its arguments too).",
               "type": "string"
             }
           },
@@ -285,6 +296,36 @@
           "required": [
             "source",
             "include"
+          ]
+        },
+        "LanguageServer": {
+          "description": "A program a host runs itself, with its arguments and environment.",
+          "type": "object",
+          "properties": {
+            "command": {
+              "description": "The program, as an absolute path, such as\n.../packages/logix-core/2026-11-22/verible/bin/verible-verilog-ls.",
+              "type": "string"
+            },
+            "args": {
+              "description": "Its arguments, in order: --ruleset=none --lsp_enable_hover=true.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "env": {
+              "description": "Environment variables to set for it, on top of the host's own.\nEmpty today.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "command",
+            "args",
+            "env"
           ]
         },
         "DeveloperSetting": {
@@ -526,7 +567,7 @@
               "type": "string"
             },
             "bin_folder": {
-              "description": "The folder with the component's programs, as an absolute path. For\nhosts that run one of its programs directly, such as Verible's\nlanguage server verible-verilog-ls from the verible component.",
+              "description": "The folder with the component's programs, as an absolute path. For\nhosts that run one of its programs directly (for Verible's language\nserver, use language_server, which has its arguments too).",
               "type": "string"
             }
           },
@@ -695,7 +736,7 @@
               "type": "string"
             },
             "bin_folder": {
-              "description": "The folder with the component's programs, as an absolute path. For\nhosts that run one of its programs directly, such as Verible's\nlanguage server verible-verilog-ls from the verible component.",
+              "description": "The folder with the component's programs, as an absolute path. For\nhosts that run one of its programs directly (for Verible's language\nserver, use language_server, which has its arguments too).",
               "type": "string"
             }
           },
