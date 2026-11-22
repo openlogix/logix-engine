@@ -80,6 +80,8 @@ fn input(src: &Path, extra: Value) -> diagram::DiagramInput {
         "source_folder": src,
         "source_files": ["main.v"],
         "build_folder": src.join("_build"),
+        // Tests never open windows.
+        "open": false,
     });
     for (k, val) in extra.as_object().unwrap() {
         v[k] = val.clone();
@@ -439,6 +441,7 @@ async fn diagram_source_places_follow_display_paths() {
         "source_folder": src,
         "source_files": ["main.v"],
         "build_folder": src.join("_build"),
+        "open": false,
         "display_paths": {"folders": [{"path": src, "as": "PROJECT"}]},
     });
     let result = logix_engine::tools::call(&state, "diagram", args.as_object().cloned(), &call())

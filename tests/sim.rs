@@ -502,7 +502,7 @@ fn simulate_input(src: &Path, extra: Value) -> simulate::SimulateInput {
         "source_files": ["main.v", "rtl/counter.v"],
         "testbench_file": "main_tb.v",
         "build_folder": src.join("_build"),
-        "open_viewer": false,
+        "open": false,
     });
     serde_json::from_value(with(v, extra)).expect("a valid simulate input")
 }
@@ -526,9 +526,9 @@ async fn simulate_writes_the_waveform_and_the_viewer_page_and_no_gtkwave_layout(
     assert!(out.passed, "{out:#?}");
     assert_eq!(out.waveform_file, "main_tb.vcd");
     assert!(src.join("_build/main_tb.vcd").is_file());
-    assert_eq!(out.viewer_file, "main_tb.html");
+    assert_eq!(out.page_file, "main_tb.html");
     assert!(src.join("_build/main_tb.html").is_file());
-    assert!(!out.viewer_opened);
+    assert!(!out.opened);
     // GTKWave is gone (R32): no layout anywhere, and its options are refused.
     assert!(!src.join("main_tb.gtkw").exists());
     assert!(!src.join("_build/main_tb.gtkw").exists());
@@ -763,8 +763,8 @@ async fn simulate_writes_the_waveform_viewer_with_the_failures_and_the_saved_vie
     let out = simulate::run(&state, input(json!({})), &call())
         .await
         .unwrap();
-    assert_eq!(out.viewer_file, "main_tb.html");
-    assert!(!out.viewer_opened);
+    assert_eq!(out.page_file, "main_tb.html");
+    assert!(!out.opened);
     let data = page_data(&src.join("_build/main_tb.html"));
     // The testbench's own signals, in the order it declares them, and where.
     assert_eq!(data["order"], json!(["main_tb.clk", "main_tb.q"]));
@@ -808,7 +808,7 @@ async fn open_waveform_shows_any_waveform_at_a_place_a_client_chooses() {
         let v = json!({
             "waveform_file": vcd,
             "build_folder": src.join("_view_build"),
-            "open_viewer": false,
+            "open": false,
         });
         serde_json::from_value(with(v, extra)).unwrap()
     };
@@ -820,8 +820,8 @@ async fn open_waveform_shows_any_waveform_at_a_place_a_client_chooses() {
     assert_eq!(out.unknown_signals, ["main_tb.nope"]);
     assert!(out.signal_count >= 2, "{out:?}");
     assert!(out.end_ns >= 95.0, "{out:?}");
-    assert!(!out.viewer_opened);
-    let data = page_data(Path::new(&out.viewer_file));
+    assert!(!out.opened);
+    let data = page_data(Path::new(&out.page_file));
     assert_eq!(
         data["focus"]["signals"],
         json!(["main_tb.q", "main_tb.nope"])
@@ -1331,7 +1331,7 @@ async fn writes_the_waveform_pages_the_browser_tests_use() {
             "source_files": ["morse.v"],
             "testbench_file": "morse_tb.v",
             "build_folder": src.join("_build"),
-            "open_viewer": false,
+            "open": false,
         });
         if let Some(v) = view {
             std::fs::write(src.join("morse_tb.view"), v.to_string()).unwrap();
@@ -1342,7 +1342,7 @@ async fn writes_the_waveform_pages_the_browser_tests_use() {
             .unwrap();
         assert!(out.passed, "{name}: {out:#?}");
         std::fs::copy(
-            src.join("_build").join(&out.viewer_file),
+            src.join("_build").join(&out.page_file),
             out_dir.join(format!("{name}.html")),
         )
         .unwrap();

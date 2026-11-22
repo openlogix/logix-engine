@@ -3382,7 +3382,7 @@
   },
   {
     "name": "simulate",
-    "description": "Simulates one testbench with Icarus Verilog and opens its waveform in Open Logix's waveform viewer: compiles the design files with the testbench, runs it to write the waveform (.vcd) into the build folder, writes the viewer, a self-contained page with the waveform in it (viewer_file), and opens it in a window of its own (Logix Waveforms). The testbench must call $dumpvars and $finish, and must not call $dumpfile. The viewer shows the testbench's own signals, opens at the first failure, and saves the person's view as they change it, in view_file (<testbench>.view), unless save_view is false. If the window can't open, viewer_problem says why. Set open_viewer to false to only write the waveform and the page, such as when no one is at the screen or the host shows the page in a window of its own. A failing testbench runs to the end and is shown, with passed false. Compile errors are a design error with diagnostics at file and line. To just check whether testbenches pass, use test.",
+    "description": "Simulates one testbench with Icarus Verilog and opens its waveform in Open Logix's waveform viewer: compiles the design files with the testbench, runs it to write the waveform (.vcd) into the build folder, writes the viewer, a self-contained page with the waveform in it (page_file), and opens it in a window of its own (Logix Waveforms). The testbench must call $dumpvars and $finish, and must not call $dumpfile. The viewer shows the testbench's own signals, opens at the first failure, and saves the person's view as they change it, in view_file (<testbench>.view), unless save_view is false. If the window can't open, viewer_problem says why. Set open to false to only write the waveform and the page, such as when no one is at the screen or the host shows the page in a window of its own. A failing testbench runs to the end and is shown, with passed false. Compile errors are a design error with diagnostics at file and line. To just check whether testbenches pass, use test.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "SimulateInput",
@@ -3445,8 +3445,8 @@
           "description": "Where the compiled testbench and its waveform go, as an absolute path.\nOne of its last two folder names must contain \"build\", such as\n/home/user/proj/_build. It is created if needed.",
           "type": "string"
         },
-        "open_viewer": {
-          "description": "Open the waveform viewer's page (viewer_file) in a window of its own\n(Logix Waveforms), for the person at the screen. Defaults to true.\nFalse only writes the waveform and the page, such as for a host that\nshows the page in a window of its own.",
+        "open": {
+          "description": "Open the waveform viewer's page (page_file) in a window of its own\n(Logix Waveforms), for the person at the screen. Defaults to true.\nFalse only writes the waveform and the page, such as for a host that\nshows the page in a window of its own.",
           "type": "boolean",
           "default": true
         },
@@ -3610,18 +3610,18 @@
           "description": "The waveform (.vcd), relative to the build folder.",
           "type": "string"
         },
-        "viewer_opened": {
+        "opened": {
           "description": "True if the waveform viewer's page opened in a window.",
           "type": "boolean"
         },
         "viewer_problem": {
-          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library; only when open_viewer was true\nand it didn't open.",
+          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library; only when open was true\nand it didn't open.",
           "type": [
             "string",
             "null"
           ]
         },
-        "viewer_file": {
+        "page_file": {
           "description": "Open Logix's waveform viewer, a self-contained page with the\nwaveform in it, relative to the build folder, such as main_tb.html.",
           "type": "string"
         },
@@ -3648,8 +3648,8 @@
         "failure_count",
         "ending",
         "waveform_file",
-        "viewer_opened",
-        "viewer_file",
+        "opened",
+        "page_file",
         "checked_files",
         "commands"
       ],
@@ -3863,7 +3863,7 @@
           ],
           "default": null
         },
-        "open_viewer": {
+        "open": {
           "description": "Open the page in a window of its own (Logix Waveforms) for the person\nat the screen. Defaults to true. False only writes it, such as for a\nhost that shows the page itself.",
           "type": "boolean",
           "default": true
@@ -3880,16 +3880,16 @@
       "description": "The viewer's page.",
       "type": "object",
       "properties": {
-        "viewer_file": {
+        "page_file": {
           "description": "The viewer's page, as an absolute path: self-contained, with the\nwaveform in it.",
           "type": "string"
         },
-        "viewer_opened": {
+        "opened": {
           "description": "True if the page opened in a window.",
           "type": "boolean"
         },
         "viewer_problem": {
-          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library; only when open_viewer was true\nand it didn't open.",
+          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library; only when open was true\nand it didn't open.",
           "type": [
             "string",
             "null"
@@ -3914,8 +3914,8 @@
       },
       "additionalProperties": false,
       "required": [
-        "viewer_file",
-        "viewer_opened",
+        "page_file",
+        "opened",
         "signal_count",
         "end_ns",
         "unknown_signals"
@@ -4221,7 +4221,7 @@
   },
   {
     "name": "diagram",
-    "description": "Draws the design as schematic diagrams, one per module: registers, adders, comparators, multiplexers, memories, the FPGA's own blocks and other modules as symbols, with the wires between them. Yosys reads the design as written, without synthesizing it, and the engine lays out and draws every module itself. Writes, in the build folder, diagram-<top_module>.html, one self-contained page with every module (click a module to open it, drag to pan, scroll to zoom, hover anything for its details; it needs no network or other software, so any web browser shows it), and in its diagram/ folder (replaced by each call) each module's SVG and diagram.json, a model of every module's blocks, ports, signals and source lines. To show the user the diagram, set open to true, which opens the page in a window of its own (Logix Diagrams; if it can't, viewer_problem says why), or give them page_file's path. List the design files; the engine doesn't search for them. Errors in the design, such as a syntax error or a top module that isn't in the files, are design errors with diagnostics at file and line. The first call may download the toolchain package first, which takes a few minutes.",
+    "description": "Draws the design as schematic diagrams, one per module: registers, adders, comparators, multiplexers, memories, the FPGA's own blocks and other modules as symbols, with the wires between them. Yosys reads the design as written, without synthesizing it, and the engine lays out and draws every module itself. Writes, in the build folder, diagram-<top_module>.html, one self-contained page with every module (click a module to open it, drag to pan, scroll to zoom, hover anything for its details; it needs no network or other software, so any web browser shows it), and in its diagram/ folder (replaced by each call) each module's SVG and diagram.json, a model of every module's blocks, ports, signals and source lines. It then opens the page in a window of its own (Logix Diagrams) for the person at the screen; if it can't, viewer_problem says why. Set open to false to only write it, such as when no one is at the screen or the host shows the page itself (page_file). List the design files; the engine doesn't search for them. Errors in the design, such as a syntax error or a top module that isn't in the files, are design errors with diagnostics at file and line. The first call may download the toolchain package first, which takes a few minutes.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "DiagramInput",
@@ -4281,9 +4281,9 @@
           "default": {}
         },
         "open": {
-          "description": "Open the page in a window of its own (Logix Diagrams) when it's\nwritten, so the person at the screen sees the diagram at once; a\nlater call for the same page reloads that window. Defaults to false.\nopened says whether it was.",
+          "description": "Open the page in a window of its own (Logix Diagrams) when it's\nwritten, so the person at the screen sees the diagram at once; a\nlater call for the same page reloads that window. Defaults to true;\nfalse only writes it, such as for a host that shows the page in a\nwindow of its own. opened says whether it was.",
           "type": "boolean",
-          "default": false
+          "default": true
         },
         "levels": {
           "description": "How many levels of modules below top_module are drawn, such as 1\nfor top_module and the modules it uses. Deeper modules are in the\nmodel with a note, not drawn; a diagram with top_module set to one of\nthem shows it. Defaults to 3.",

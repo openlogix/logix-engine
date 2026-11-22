@@ -21,11 +21,11 @@ impl EngineTool for Simulate {
     const DESCRIPTION: &'static str = "Simulates one testbench with Icarus Verilog and opens \
         its waveform in Open Logix's waveform viewer: compiles the design files with the \
         testbench, runs it to write the waveform (.vcd) into the build folder, writes the \
-        viewer, a self-contained page with the waveform in it (viewer_file), and opens it in \
+        viewer, a self-contained page with the waveform in it (page_file), and opens it in \
         a window of its own (Logix Waveforms). The testbench must call $dumpvars and $finish, and must not \
         call $dumpfile. The viewer shows the testbench's own signals, opens at the first \
         failure, and saves the person's view as they change it, in view_file (<testbench>.view), \
-        unless save_view is false. If the window can't open, viewer_problem says why. Set open_viewer to \
+        unless save_view is false. If the window can't open, viewer_problem says why. Set open to \
         false to only write the waveform and the page, such as when no one is at the screen \
         or the host shows the page in a window of its own. A failing testbench runs to the end \
         and is shown, with passed false. Compile errors are a design error with diagnostics at \
@@ -91,12 +91,12 @@ pub struct SimulateInput {
     /// One of its last two folder names must contain "build", such as
     /// /home/user/proj/_build. It is created if needed.
     pub build_folder: String,
-    /// Open the waveform viewer's page (viewer_file) in a window of its own
+    /// Open the waveform viewer's page (page_file) in a window of its own
     /// (Logix Waveforms), for the person at the screen. Defaults to true.
     /// False only writes the waveform and the page, such as for a host that
     /// shows the page in a window of its own.
     #[serde(default = "default_true")]
-    pub open_viewer: bool,
+    pub open: bool,
     /// The view the waveform viewer opens and saves (the signals shown,
     /// their formats and colors, the zoom), relative to the source folder,
     /// such as main_tb.view. Its folder must exist; the file may not yet.
@@ -160,15 +160,15 @@ pub struct SimulateOutput {
     /// The waveform (.vcd), relative to the build folder.
     pub waveform_file: String,
     /// True if the waveform viewer's page opened in a window.
-    pub viewer_opened: bool,
+    pub opened: bool,
     /// Why the page didn't open, in plain words for the person at the
-    /// screen, such as a missing library; only when open_viewer was true
+    /// screen, such as a missing library; only when open was true
     /// and it didn't open.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub viewer_problem: Option<String>,
     /// Open Logix's waveform viewer, a self-contained page with the
     /// waveform in it, relative to the build folder, such as main_tb.html.
-    pub viewer_file: String,
+    pub page_file: String,
     /// The files this call read and checked, named as the request names
     /// files: the listed files, the files they include and the testbench. A host
     /// replaces these files' earlier problems with this result's; other
@@ -195,7 +195,7 @@ pub async fn run(
     let tb = input.testbench_file.clone();
     let input_rest = Rest {
         testbench_file: tb.clone(),
-        open_viewer: input.open_viewer,
+        open: input.open,
         save_view: input.save_view,
         max_sim_time_ns: input.max_sim_time_ns,
         timeout_seconds: input.timeout_seconds,
@@ -307,7 +307,7 @@ async fn simulate_and_show(
 
     // Open Logix's waveform viewer: its page, with the waveform in it.
     let stem = build_stem(&tb);
-    let viewer_file = crate::wave::page_name(&stem);
+    let page_file = crate::wave::page_name(&stem);
     let (text, truncated) = crate::wave::read_waveform(&vcd, crate::wave::MAX_WAVEFORM_BYTES)?;
     // The view: the request's, else <testbench>.view in the build folder.
     let view_path = view_file
@@ -329,10 +329,10 @@ async fn simulate_and_show(
         view: crate::wave::read_view(&view_path),
     }
     .page_data();
-    let page = build_folder.join(&viewer_file);
+    let page = build_folder.join(&page_file);
     crate::wave::write_page(&page, &data)?;
 
-    let viewer_problem = input.open_viewer.then(|| {
+    let viewer_problem = input.open.then(|| {
         let name = crate::viewer::app_name(&state.packages, crate::viewer::WAVEFORMS);
         let project = src
             .file_name()
@@ -353,7 +353,7 @@ async fn simulate_and_show(
             },
         )
     });
-    let viewer_opened = input.open_viewer && viewer_problem.as_ref().is_some_and(Option::is_none);
+    let opened = input.open && viewer_problem.as_ref().is_some_and(Option::is_none);
     Ok(SimulateOutput {
         commands: call.commands.take(),
         passed: r.passed,
@@ -363,9 +363,9 @@ async fn simulate_and_show(
         ending_text: r.ending.text(&tb),
         ending: r.ending,
         waveform_file,
-        viewer_opened,
+        opened,
         viewer_problem: viewer_problem.flatten(),
-        viewer_file,
+        page_file,
         checked_files: Vec::new(),
     })
 }
@@ -373,7 +373,7 @@ async fn simulate_and_show(
 /// What simulate_and_show needs of the request after the checks.
 struct Rest {
     testbench_file: String,
-    open_viewer: bool,
+    open: bool,
     save_view: bool,
     max_sim_time_ns: Option<u64>,
     timeout_seconds: Option<u64>,

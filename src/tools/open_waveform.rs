@@ -79,7 +79,7 @@ pub struct OpenWaveformInput {
     /// at the screen. Defaults to true. False only writes it, such as for a
     /// host that shows the page itself.
     #[serde(default = "default_true")]
-    pub open_viewer: bool,
+    pub open: bool,
 }
 
 /// The viewer's page.
@@ -88,11 +88,11 @@ pub struct OpenWaveformInput {
 pub struct OpenWaveformOutput {
     /// The viewer's page, as an absolute path: self-contained, with the
     /// waveform in it.
-    pub viewer_file: String,
+    pub page_file: String,
     /// True if the page opened in a window.
-    pub viewer_opened: bool,
+    pub opened: bool,
     /// Why the page didn't open, in plain words for the person at the
-    /// screen, such as a missing library; only when open_viewer was true
+    /// screen, such as a missing library; only when open was true
     /// and it didn't open.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub viewer_problem: Option<String>,
@@ -256,7 +256,7 @@ pub fn run(state: &EngineState, input: OpenWaveformInput) -> Result<OpenWaveform
         }),
     };
     wave::write_page(&page, &data)?;
-    let viewer_problem = input.open_viewer.then(|| {
+    let viewer_problem = input.open.then(|| {
         let name = crate::viewer::app_name(&state.packages, crate::viewer::WAVEFORMS);
         let mut declared = std::collections::BTreeMap::new();
         if input.save_view {
@@ -273,10 +273,10 @@ pub fn run(state: &EngineState, input: OpenWaveformInput) -> Result<OpenWaveform
             },
         )
     });
-    let viewer_opened = input.open_viewer && viewer_problem.as_ref().is_some_and(Option::is_none);
+    let opened = input.open && viewer_problem.as_ref().is_some_and(Option::is_none);
     Ok(OpenWaveformOutput {
-        viewer_file: page.to_string_lossy().into_owned(),
-        viewer_opened,
+        page_file: page.to_string_lossy().into_owned(),
+        opened,
         viewer_problem: viewer_problem.flatten(),
         signal_count: all.len(),
         end_ns,
