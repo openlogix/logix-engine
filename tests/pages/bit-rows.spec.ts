@@ -1,7 +1,7 @@
 // A bus's bits are part of its row (R58, the user's rules, 2026-11-22), and
 // bits and analog turn each other off (R59).
 import { test, expect, type Page } from "@playwright/test";
-import { open, rows, row, items, menuOf, showSignal } from "./helpers";
+import { open, rows, row, menuOf, showSignal, hostCalls } from "./helpers";
 
 const BITS = ["pattern[5]", "pattern[4]", "pattern[3]", "pattern[2]", "pattern[1]", "pattern[0]"];
 
@@ -129,14 +129,12 @@ test("hiding the bus hides its bits, and undo brings both back", async ({ page }
 
 test("a saved view keeps the bus expanded and its bits by path", async ({ page }) => {
   await withBits(page);
-  // The page hands its host the view (an object, or JSON text).
-  const savedView = () =>
-    page.evaluate(() => {
-      const v = (window as unknown as { __saved?: unknown }).__saved;
-      return v == null ? null : typeof v === "string" ? JSON.parse(v) : v;
-    });
-  await expect.poll(async () => JSON.stringify(await savedView())).toContain("pattern[0]");
-  const saved = await savedView();
-  const bus = saved.rows.find((r: { signal?: string }) => r.signal === "morse_tb.dut.pattern");
+  // The view goes to the host's writeDeclared("view", text), as the .view file's text.
+  const lastView = async () => {
+    const views = (await hostCalls(page)).filter((c) => c[0] === "writeDeclared" && c[1] === "view");
+    return views.length ? JSON.parse(views[views.length - 1][2] as string) : null;
+  };
+  await expect.poll(async () => JSON.stringify(await lastView())).toContain("pattern[0]");
+  const bus = (await lastView()).rows.find((r: { signal?: string }) => r.signal === "morse_tb.dut.pattern");
   expect(bus.expanded).toBe(true);
 });

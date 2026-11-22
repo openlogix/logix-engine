@@ -8,20 +8,36 @@ import * as fs from "node:fs";
 export const PAGES = path.resolve(__dirname, "../../target/tmp/pages");
 
 /**
- * Opens a page (its name in PAGES, without .html) and collects its errors;
- * `saved` gets the views the page saves through its host.
+ * A stand-in for a host's page contract, window.logixHost (version 1), as
+ * Logix IDE and Logix Viewer offer it: it records every call in
+ * window.__calls, as [method, ...arguments].
  */
+export function hostScript() {
+  const w = window as unknown as { __calls: unknown[][]; logixHost: unknown };
+  w.__calls = [];
+  const record = (m: string) => (...args: unknown[]) => { w.__calls.push([m, ...args]); };
+  w.logixHost = {
+    version: 1,
+    features: ["saveAs", "writeDeclared", "openSource", "openUrl"],
+    saveAs: record("saveAs"),
+    writeDeclared: record("writeDeclared"),
+    openSource: record("openSource"),
+    openUrl: record("openUrl"),
+  };
+}
+
+/** The calls the page made to its host, oldest first. */
+export const hostCalls = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __calls: unknown[][] }).__calls);
+
+/** Opens a page (its name in PAGES, without .html), with a host, and collects its errors. */
 export async function open(page: Page, name: string) {
   const file = path.join(PAGES, name.endsWith(".html") ? name : `${name}.html`);
   if (!fs.existsSync(file)) throw new Error(`${file} is missing: run cargo test first`);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
-  await page.addInitScript(() => {
-    (window as unknown as { logixWaveSaveView: (v: unknown) => void }).logixWaveSaveView = (v) => {
-      (window as unknown as { __saved: unknown }).__saved = v;
-    };
-  });
+  await page.addInitScript(hostScript);
   await page.goto("file://" + file + "?theme=light");
   await expect(page.locator("#names")).toBeVisible();
   return { errors };

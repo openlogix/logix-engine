@@ -5,13 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Logix Diagram</title>
 <!-- Written by Logix Engine's diagram tool. Self-contained: it needs no
-     network and nothing installed. Hosts can embed it in an iframe:
-     ?theme=light|dark sets the theme, #main/sub opens a module, and it posts
+     network and nothing installed. A host showing it in a window of its
+     own offers the page contract, window.logixHost (docs/tool-api.md, Logix
+     Viewer): a block's place in the source goes to openSource(file, line),
+     and Export's images to saveAs(name, mime, data). In an iframe, it posts
      {type: "logix-diagram:open-source", file, line} when a block is
-     double-clicked
-     and {type: "logix-diagram:module", path} when the module changes; it
-     accepts {type: "logix-diagram:theme", theme}. A host that loads it
-     directly can define window.logixDiagramOpenSource(file, line). -->
+     double-clicked and {type: "logix-diagram:module", path} when the module
+     changes, and accepts {type: "logix-diagram:theme", theme}.
+     ?theme=light|dark sets the theme, #main/sub opens a module. -->
 <style>
 :root {
   /* The page's own colors are the waveform page's, so the engine's pages
@@ -121,7 +122,12 @@ button[hidden] { display: none; }
   const DATA = /*__DATA__*/null;
   const $ = (id) => document.getElementById(id);
   const canvas = $("canvas"), pop = $("pop");
-  const hosted = window.parent !== window || typeof window.logixDiagramOpenSource === "function";
+  // The page's host: window.logixHost (the page contract, version 1) in a
+  // host's own window, such as Logix IDE's or Logix Viewer's; messages to
+  // the parent in an iframe; nothing in a plain browser.
+  const host = () => (window.logixHost && window.logixHost.version >= 1 ? window.logixHost : null);
+  const inFrame = window.parent !== window;
+  const hosted = !!host() || inFrame;
   let path = [];
   let vb = null, home = null;
 
@@ -147,12 +153,12 @@ button[hidden] { display: none; }
   const signal = (bit) => (mod().signals || {})[bit];
 
   function post(msg) {
-    if (window.parent !== window) window.parent.postMessage(msg, "*");
+    if (inFrame) window.parent.postMessage(msg, "*");
   }
   function openSource(src) {
     if (!src) return;
-    if (typeof window.logixDiagramOpenSource === "function") window.logixDiagramOpenSource(src.file, src.line);
-    post({ type: "logix-diagram:open-source", file: src.file, line: src.line });
+    if (host()) host().openSource(src.file, src.line);
+    else post({ type: "logix-diagram:open-source", file: src.file, line: src.line });
   }
 
   function crumbs() {
@@ -282,7 +288,7 @@ button[hidden] { display: none; }
   // waveform page's Export (the user's request, 2026-11-22). Saving goes
   // through the host (window.logixHost, Logix Viewer); in a plain browser
   // it downloads; a host with neither can only copy.
-  const canSave = () => !!(window.logixHost && window.logixHost.saveAs) || !hosted;
+  const canSave = () => !!(host() && host().saveAs) || !hosted;
   function toast(text) {
     const t = document.createElement("div"); t.className = "toast"; t.textContent = text;
     document.body.appendChild(t); setTimeout(() => t.remove(), 3000);
@@ -314,7 +320,7 @@ button[hidden] { display: none; }
   }
   const baseName = () => "diagram-" + [DATA.top, ...path].map((k) => (DATA.modules[k] || {}).name || k).join("-");
   function save(name, mime, data) {
-    if (window.logixHost && window.logixHost.saveAs) { window.logixHost.saveAs(name, mime, data); return; }
+    if (host() && host().saveAs) { host().saveAs(name, mime, data); return; }
     const a = document.createElement("a");
     a.href = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type: mime }));
     a.download = name; document.body.appendChild(a); a.click(); a.remove();
@@ -333,7 +339,7 @@ button[hidden] { display: none; }
     const name = baseName() + "." + kind;
     if (kind === "svg") { const s = shownSvg(); if (s) save(name, "image/svg+xml", s.text); return; }
     pngCanvas((c) => {
-      if (window.logixHost && window.logixHost.saveAs) save(name, "image/png", c.toDataURL("image/png").split(",")[1]);
+      if (host() && host().saveAs) save(name, "image/png", c.toDataURL("image/png").split(",")[1]);
       else c.toBlob((b) => save(name, "image/png", b), "image/png");
     });
   }
