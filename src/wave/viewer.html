@@ -113,6 +113,11 @@ button { font: inherit; color: inherit; }
 .nrow .fold svg { width: 16px; height: 16px; display: block; margin: auto; }
 .nrow .fold { border: 0; background: none; color: var(--group-fg); width: 24px; height: 24px; margin-left: -6px; padding: 0; cursor: pointer; font-size: 17px; line-height: 24px; border-radius: 5px; flex: none; }
 .nrow .fold:hover { background: var(--soft); color: var(--fg); }
+/* A bus's fold arrow shows its bits (R58); the bits sit indented under it. */
+.nrow .fold.bits { width: 18px; height: 20px; margin: 0 -4px 0 -8px; color: var(--muted); }
+.nrow .fold.bits svg { width: 13px; height: 13px; }
+.nrow.bit { padding-left: 30px; }
+.nrow.bit .nm { color: var(--muted); }
 .nrow .hidden-n { font-weight: 400; font-family: var(--mono); font-size: 11px; }
 .nrow.group .nm { font-family: var(--font); font-weight: 600; font-size: 12px; color: var(--group-fg); letter-spacing: .02em; }
 .nrow.blank .nm { color: var(--muted); font-size: 11px; opacity: 0; }
@@ -664,7 +669,88 @@ $('#tbCycles').addEventListener('click', () => setCycles(true));
 $('#clockPick').addEventListener('click', (e) => { const r = e.currentTarget.getBoundingClientRect(); clockMenu(r.left, r.bottom + 4); });
 
 /* ---------- Rows and browser ---------- */
-const varByPath = () => new Map(S.wave.vars.map((v) => [v.path, v]));
+// Signals by path; a bus's bits too (main_tb.q[3]), for views that show them.
+class VarMap extends Map { get(p) { return super.get(p) || bitByPath(this, p); } }
+const varByPath = () => new VarMap(S.wave.vars.map((v) => [v.path, v]));
+// A bus's bit as a 1-bit signal of its own (R58: the user's request,
+// 2026-11-21, as GTKWave shows a bus's bits), with its values taken from
+// the bus's, so it draws, exports and snaps like any signal. k counts from
+// the least significant bit; the label follows the declared range.
+const BITS = new Map();
+function bitLabel(v, k) {
+  const m = /\[(-?\d+):(-?\d+)\]/.exec(v.range || '');
+  if (!m) return k;
+  const msb = +m[1], lsb = +m[2];
+  return lsb <= msb ? lsb + k : lsb - k;
+}
+function bitVar(v, k) {
+  const id = v.id + '#' + k;
+  if (BITS.has(id)) return BITS.get(id);
+  const label = bitLabel(v, k);
+  const b = { id, type: 'wire', width: 1, name: `${v.name}[${label}]`, range: '', path: `${v.path}[${label}]`, bitOf: v.path, bitK: k };
+  const d = S.wave.data.get(v.id), out = { t: [], v: [] };
+  for (let j = 0; j < d.t.length; j++) {
+    const val = d.v[j][0] === 'r' ? 'x' : norm(d.v[j], v.width)[v.width - 1 - k];
+    if (out.v.length && out.v[out.v.length - 1] === val) continue;
+    out.t.push(d.t[j]); out.v.push(val);
+  }
+  S.wave.data.set(id, out); BITS.set(id, b);
+  return b;
+}
+function bitByPath(map, p) {
+  const m = /^(.*)\[(-?\d+)\]$/.exec(p || '');
+  const v = m && map.get(m[1]);
+  if (!v || v.width < 2 || v.name.includes('[')) return undefined;
+  for (let k = 0; k < v.width; k++) if (String(bitLabel(v, k)) === m[2]) return bitVar(v, k);
+  return undefined;
+}
+// Shows a bus's bits under it, most significant first, or hides them again.
+const MAX_BITS = 64;
+function toggleBits(i) {
+  const r = S.rows[i]; if (!r || !r.v || r.v.width < 2 || r.v.bitOf) return;
+  if (r.expanded) {
+    let n = 0; while (S.rows[i + 1 + n] && S.rows[i + 1 + n].v && S.rows[i + 1 + n].v.bitOf === r.v.path) n++;
+    S.rows.splice(i + 1, n); r.expanded = false;
+  } else {
+    if (r.v.width > MAX_BITS) { toast(`Showing the bits works for up to ${MAX_BITS} bits; this signal has ${r.v.width}.`); return; }
+    const bits = [];
+    for (let k = r.v.width - 1; k >= 0; k--) bits.push({ kind: 'signal', v: bitVar(r.v, k), radix: 'bin', color: r.color });
+    S.rows.splice(i + 1, 0, ...bits); r.expanded = true;
+  }
+  S.anchor = null; S.sel = i; renderRows(); commit();
+}
+
+// An analog row draws its values as a line, three rows tall (R59: the
+// user's request, 2026-11-21, as GTKWave's analog formats).
+const ANALOG_ROWS = 3;
+const rowHeight = (r) => (r && r.v && r.analog ? S.rowH * ANALOG_ROWS : S.rowH);
+// Where each shown row is: its index in S.rows, its top and its height.
+function layout() {
+  let y = 0;
+  return visible().map((i) => { const h = rowHeight(S.rows[i]), o = { i, y, h }; y += h; return o; });
+}
+// A value as a number for the analog line: reals as they are, vectors
+// unsigned, or signed when the row shows signed values; null for x and z.
+function analogNumber(val, w, radix) {
+  if (val == null) return null;
+  if (val[0] === 'r') return +val.slice(1);
+  const bits = norm(val, w);
+  if (/[xz]/.test(bits)) return null;
+  let n = BigInt('0b' + bits);
+  if (radix === 'signed' && bits[0] === '1') n -= 1n << BigInt(w);
+  return Number(n);
+}
+// The range the line spans: the values the run has.
+const RANGES = new Map();
+function analogRange(r) {
+  const key = r.v.id + '|' + r.radix;
+  if (RANGES.has(key)) return RANGES.get(key);
+  const d = S.wave.data.get(r.v.id); let lo = Infinity, hi = -Infinity;
+  for (const val of d.v) { const n = analogNumber(val, r.v.width, r.radix); if (n == null || !isFinite(n)) continue; if (n < lo) lo = n; if (n > hi) hi = n; }
+  if (lo === Infinity) { lo = 0; hi = 1; }
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const out = { lo, hi }; RANGES.set(key, out); return out;
+}
 function row(i) { return S.rows[i]; }
 // A signal's name as the rows show it (sys_clk, dut.clk), without the
 // testbench's own name; the full path is on hover.
@@ -693,7 +779,7 @@ function visible() {
 // How many signals a group has (its blank rows aren't counted).
 function groupSize(i) { let n = 0; for (let j = i + 1; j < S.rows.length && S.rows[j].kind !== 'group'; j++) if (S.rows[j].v) n++; return n; }
 // The row (an index into S.rows) at a height in the rows area, or -1.
-function rowAtY(y) { const v = visible()[Math.floor(y / S.rowH)]; return v == null ? -1 : v; }
+function rowAtY(y) { const o = layout().find((o) => y >= o.y && y < o.y + o.h); return o ? o.i : -1; }
 function toggleGroup(i) {
   const r = S.rows[i]; if (!r || r.kind !== 'group') return;
   r.collapsed = !r.collapsed;
@@ -712,7 +798,7 @@ function clockBadge(path) {
 }
 function renderRows() {
   document.documentElement.style.setProperty('--row-h', S.rowH + 'px');
-  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color})" title="${esc(r.v.path)}"><span class="dot"></span><span class="nm">${rowLabel(r.v)}${clockBadge(r.v.path)}</span></div>`; }).join('');
+  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${isSel(i) ? 'sel' : ''} ${r.v.bitOf ? 'bit' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color});${r.analog ? `height:${rowHeight(r)}px` : ''}" title="${esc(r.v.path)}">${r.v.width > 1 && !r.v.bitOf ? `<button class="fold bits" data-bits="${i}" aria-expanded="${!!r.expanded}" title="${r.expanded ? 'Hide' : 'Show'} each bit (${r.v.width})"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.expanded ? 'M3.5 6 8 10.5 12.5 6' : 'M6 3.5 10.5 8 6 12.5'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="dot"></span><span class="nm">${rowLabel(r.v)}${clockBadge(r.v.path)}</span></div>`; }).join('');
   $('#empty').hidden = S.rows.length > 0;
   renderValues(); renderTree(); renderTimeBase(); draw();
 }
@@ -722,7 +808,7 @@ function renderValues() {
     if (!r.v) return `<div class="vrow ${r.kind} ${isSel(i) ? 'sel' : ''}" data-i="${i}"></div>`;
     const val = S.cursor == null ? null : valueAt(r.v, S.cursor);
     const text = esc(fmt(val, r.v.width, r.radix));
-    return `<div class="vrow ${isSel(i) ? 'sel' : ''} ${isX(val) ? 'xv' : ''}" data-i="${i}" style="--c:var(--s${r.color})" title="${text}"><bdi dir="ltr">${text}</bdi></div>`;
+    return `<div class="vrow ${isSel(i) ? 'sel' : ''} ${isX(val) ? 'xv' : ''}" data-i="${i}" style="--c:var(--s${r.color});${r.analog ? `height:${rowHeight(r)}px` : ''}" title="${text}"><bdi dir="ltr">${text}</bdi></div>`;
   }).join('');
 }
 function renderTree() {
@@ -819,7 +905,7 @@ function draw() {
   pill(S.cursor, C.accent, '');
 
   // Waves
-  const shown = visible(), H = Math.max(shown.length * S.rowH, 1);
+  const shown = layout(), H = Math.max(shown.reduce((h, o) => h + o.h, 0), 1);
   const ctx = sizeCanvas(waves, W, H);
   ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
   if (S.grid) {
@@ -828,14 +914,44 @@ function draw() {
   }
   ctx.font = `500 11.5px ${mono}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
   const endX = X(S.wave.end);
-  shown.forEach((i, pos) => {
-    const r = S.rows[i], y0 = pos * S.rowH;
-    if (isSel(i)) { ctx.fillStyle = C.sel; ctx.fillRect(0, y0, W, S.rowH); }
-    ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(0, y0 + S.rowH - .5); ctx.lineTo(W, y0 + S.rowH - .5); ctx.stroke();
+  shown.forEach(({ i, y: y0, h: RH }) => {
+    const r = S.rows[i];
+    if (isSel(i)) { ctx.fillStyle = C.sel; ctx.fillRect(0, y0, W, RH); }
+    ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(0, y0 + RH - .5); ctx.lineTo(W, y0 + RH - .5); ctx.stroke();
     if (!r.v) return;
     const color = tok(css, '--s' + r.color);
-    const pad = Math.max(5, S.rowH * .2), hi = y0 + pad, lo = y0 + S.rowH - pad, mid = (hi + lo) / 2;
+    const pad = Math.max(5, S.rowH * .2), hi = y0 + pad, lo = y0 + RH - pad, mid = (hi + lo) / 2;
     const d = S.wave.data.get(r.v.id);
+    if (r.analog) {
+      // The values as a step line across the row, scaled to the run's
+      // range (printed at the row's left), x and z as gaps (R59).
+      const { lo: vmin, hi: vmax } = analogRange(r), Y = (n) => lo - (n - vmin) / (vmax - vmin) * (lo - hi);
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+      let a = Math.max(idx(d.t, S.start), 0), prevY = null;
+      ctx.beginPath();
+      for (; a < d.t.length && d.t[a] <= S.end; a++) {
+        const t1 = Math.max(d.t[a], S.start), t2 = Math.min(a + 1 < d.t.length ? d.t[a + 1] : S.wave.end, S.wave.end);
+        const x1 = X(t1), x2 = Math.min(X(t2), endX), n = analogNumber(d.v[a], r.v.width, r.radix);
+        if (n == null) {
+          ctx.stroke(); ctx.beginPath(); prevY = null;
+          ctx.fillStyle = C.x; ctx.globalAlpha = .12; ctx.fillRect(x1, hi, Math.max(x2 - x1, 1), lo - hi); ctx.globalAlpha = 1;
+          continue;
+        }
+        const y = Y(n);
+        if (prevY == null) ctx.moveTo(x1, y); else ctx.lineTo(x1, y);
+        ctx.lineTo(x2, y); prevY = y;
+      }
+      ctx.stroke();
+      // The scale, over the line, on the row's background.
+      ctx.font = `500 10px ${mono}`; ctx.textAlign = 'left';
+      for (const [n, y] of [[vmax, hi + 6], [vmin, lo - 6]]) {
+        const txt = String(+n.toPrecision(6)), w = ctx.measureText(txt).width;
+        ctx.fillStyle = isSel(i) ? C.sel : C.bg; ctx.globalAlpha = .85; ctx.fillRect(2, y - 7, w + 6, 14); ctx.globalAlpha = 1;
+        ctx.fillStyle = C.muted; ctx.fillText(txt, 5, y);
+      }
+      ctx.font = `500 11.5px ${mono}`; ctx.textAlign = 'center';
+      return;
+    }
     let k = Math.max(idx(d.t, S.start), 0);
     let denseA = null, denseB = null, prevLevel = null;
     const flushDense = () => {
@@ -1055,6 +1171,7 @@ ruler.addEventListener('click', (e) => { const r = ruler.getBoundingClientRect()
 $('#names').addEventListener('mousedown', (e) => { if (e.shiftKey) e.preventDefault(); });
 $('#names').addEventListener('mousemove', () => $('#names').classList.remove('after-drop'));
 $('#names').addEventListener('click', (e) => {
+  const fold = e.target.closest('.fold.bits'); if (fold) { toggleBits(+fold.dataset.bits); return; }
   const rowEl = e.target.closest('.nrow'); if (!rowEl) return;
   const i = +rowEl.dataset.i;
   // Shift+click: the range from the selected row to this one (R46).
@@ -1075,10 +1192,11 @@ $('#names').addEventListener('dragstart', (e) => { const el = e.target.closest('
 // row drops above it, the lower half below it (below a collapsed group's
 // hidden rows), and the empty space under the last row at the end.
 function dropAt(y) {
-  const v = visible(), top = $('#names').getBoundingClientRect().top;
-  const k = Math.floor((y - top) / S.rowH);
+  const L = layout(), v = L.map((o) => o.i), top = $('#names').getBoundingClientRect().top;
+  const yy = y - top, found = L.findIndex((o) => yy >= o.y && yy < o.y + o.h);
+  const k = found >= 0 ? found : (yy < 0 ? -1 : L.length);
   if (k >= v.length) return { at: S.rows.length, el: v.length ? v[v.length - 1] : null, below: true };
-  const t = v[Math.max(0, k)], below = (y - top) - Math.max(0, k) * S.rowH >= S.rowH / 2;
+  const o = L[Math.max(0, k)], t = o.i, below = yy - o.y >= o.h / 2;
   return { at: below ? t + blockLen(t) : t, el: t, below };
 }
 function clearDrop() { document.querySelectorAll('.nrow.drop, .nrow.drop-below').forEach((n) => n.classList.remove('drop', 'drop-below')); }
@@ -1285,11 +1403,11 @@ function defaultRows() {
   return paths.map((p) => map.get(p)).filter(Boolean).map(sigRow);
 }
 function serRow(r) {
-  if (r.v) return { signal: r.v.path, show_as: r.radix, color: r.color };
+  if (r.v) return Object.assign({ signal: r.v.path, show_as: r.radix, color: r.color }, r.expanded ? { expanded: true } : {}, r.analog ? { analog: true } : {});
   return r.kind === 'group' ? (r.collapsed ? { group: r.text, collapsed: true } : { group: r.text }) : { blank: true };
 }
 function deserRow(o) {
-  if (o.signal) { const v = varByPath().get(o.signal); return v && { kind: 'signal', v, radix: o.show_as || 'hex', color: o.color || 1 }; }
+  if (o.signal) { const v = varByPath().get(o.signal); return v && { kind: 'signal', v, radix: o.show_as || 'hex', color: o.color || 1, expanded: !!o.expanded, analog: !!o.analog }; }
   if (o.group != null) return { kind: 'group', text: String(o.group), collapsed: !!o.collapsed };
   if (o.blank) return { kind: 'blank' };
   return null;
@@ -1413,7 +1531,7 @@ class SvgCtx {
 function viewSvg() {
   const css = getComputedStyle(document.documentElement), tok = (n) => css.getPropertyValue(n).trim();
   const nameW = $('#names').offsetWidth, valW = $('#vals').offsetWidth, W = $('#wavecol').clientWidth;
-  const shownRows = visible(), left = nameW + valW, H = 30 + shownRows.length * S.rowH, mono = tok('--mono') || 'monospace';
+  const shownRows = layout(), left = nameW + valW, H = 30 + shownRows.reduce((h, o) => h + o.h, 0), mono = tok('--mono') || 'monospace';
   const recs = [];
   EXPORT = { ctx: (c) => { const r = new SvgCtx(left, c === ruler ? 0 : 30); recs.push(r); return r; } };
   // No hover line or selected row in the image: only what the view shows.
@@ -1422,9 +1540,9 @@ function viewSvg() {
   const out = [`<rect width="${left + W}" height="${H}" fill="${tok('--panel')}"/>`,
     `<text x="10" y="15" fill="${tok('--muted')}" dominant-baseline="central" style="font:600 11px ${esc(mono)}">SIGNAL</text>`];
   if (valW > 20) out.push(`<text x="${left - 12}" y="15" fill="${tok('--muted')}" text-anchor="end" dominant-baseline="central" style="font:600 11px ${esc(mono)}">VALUE</text>`);
-  shownRows.forEach((i, k) => {
-    const r = S.rows[i], y = 30 + k * S.rowH + S.rowH / 2, color = r.v ? tok('--s' + r.color) : tok('--group-fg');
-    if (r.kind === 'group') out.push(`<rect x="0" y="${30 + k * S.rowH}" width="${nameW}" height="${S.rowH}" fill="${tok('--group-bg')}"/>`);
+  shownRows.forEach(({ i, y: top, h }) => {
+    const r = S.rows[i], y = 30 + top + h / 2, color = r.v ? tok('--s' + r.color) : tok('--group-fg');
+    if (r.kind === 'group') out.push(`<rect x="0" y="${30 + top}" width="${nameW}" height="${h}" fill="${tok('--group-bg')}"/>`);
     const label = r.v ? r.v.path.split('.').slice(1).join('.') + (r.v.range && !r.v.name.includes('[') ? r.v.range : '') : r.kind === 'group' ? r.text : '';
     out.push(`<text x="10" y="${y}" fill="${r.v ? tok('--fg') : color}" dominant-baseline="central" style="font:${r.v ? '' : '600 '}12px ${esc(mono)}">${esc(label)}</text>`);
     if (r.v && valW > 20 && S.cursor != null) out.push(`<text x="${left - 12}" y="${y}" fill="${color}" text-anchor="end" dominant-baseline="central" style="font:500 12px ${esc(mono)}">${esc(fmt(valueAt(r.v, S.cursor), r.v.width, r.radix))}</text>`);
@@ -1715,6 +1833,8 @@ function rowMenu(i, t, x, y) {
     ...(t != null ? [...timeItems(t), '-'] : []),
     r.v.width > 1 ? { html: `<div class="lbl">Show values as</div><div class="seg">${RADIX.map(([k, n]) => `<button data-radix="${k}" class="${r.radix === k ? 'on' : ''}">${n}</button>`).join('')}</div>`,
       click: (e) => { const b = e.target.closest('[data-radix]'); if (!b) return false; r.radix = b.dataset.radix; renderRows(); } } : null,
+    r.v.width > 1 && !r.v.bitOf ? { label: r.expanded ? 'Hide the bits' : `Show each bit (${r.v.width})`, act: () => toggleBits(i) } : null,
+    r.v.width > 1 || r.v.type === 'real' ? { label: r.analog ? 'Show as values' : 'Show as analog (a line)', act: () => { r.analog = !r.analog; renderRows(); commit(); } } : null,
     { html: `<div class="lbl">Color</div><div class="swatches">${[1, 2, 3, 4, 5, 6].map((c) => `<button data-color="${c}" style="--c:var(--s${c})" class="${r.color === c ? 'on' : ''}" aria-label="Color ${c}"></button>`).join('')}</div>`,
       click: (e) => { const b = e.target.closest('[data-color]'); if (!b) return false; r.color = +b.dataset.color; renderRows(); } },
     '-', ...common, '-',
