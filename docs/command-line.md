@@ -26,7 +26,7 @@ logix-engine --engine-folder /Users/user/.myhost/engine --log-level debug
 - **Bad arguments.** An unknown argument, a missing `--engine-folder` or an engine folder that fails the path checks makes the engine exit before starting MCP, with a non-zero exit code and a message on stderr.
 - **Launch settings are fixed.** The arguments apply for the life of the process. A host that wants different settings launches a new instance.
 - **Internal: the layout worker.** The engine starts itself as `logix-engine --diagram-layout-worker <ELK bundle>` to lay out diagrams in a process of its own (one JSON graph per line in, one result per line out), so a layout that fails can't stop the engine. It isn't for hosts and may change at any time.
-- **Internal: the driver helper (Windows).** `install_driver` and `uninstall_driver` start the engine again as an administrator, as `logix-engine --elevated-driver-helper <request.json>`, to install or remove a board's WinUSB driver. It isn't for hosts and may change at any time.
+- **Internal: the driver helper (Windows and Linux).** `install_driver` and `uninstall_driver` start the engine again as an administrator (through `pkexec` on Linux), as `logix-engine --elevated-driver-helper <request.json>`, to install or remove a board's WinUSB driver or udev rule. It isn't for hosts and may change at any time.
 
 ## Diagnostic settings
 

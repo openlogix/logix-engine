@@ -235,13 +235,16 @@ fn friendly(ty: &str) -> Option<&'static str> {
         "$pos" => "Buffer",
         "$concat" => "Concatenation",
         "$tribuf" => "Tri-state buffer",
+        super::as_written::REG => "Register",
+        super::as_written::LOGIC => "Logic",
         _ => return None,
     })
 }
 
 /// A cell type's color category.
 fn category(ty: &str) -> &'static str {
-    if ty.starts_with("$dff")
+    if ty == super::as_written::REG
+        || ty.starts_with("$dff")
         || ty.starts_with("$adff")
         || ty.starts_with("$sdff")
         || ty.starts_with("$aldff")
@@ -765,8 +768,11 @@ pub fn build(
                 },
             );
         }
-        // A register is named after the signal it holds.
-        if block.category == "reg"
+        // A register is named after the signal it holds; a block drawn as
+        // written, after its signal.
+        if let Some(n) = netlist::text(w.cell.parameters.get(super::as_written::NAME)) {
+            block.name = Some(n.to_string());
+        } else if block.category == "reg"
             && let Some(q) = block.ports.get("Q")
             && !q.signal.is_empty()
         {
@@ -805,6 +811,10 @@ pub fn build(
         if shape == Shape::Generic && block.kind == BlockKind::Logic {
             n.glyph = glyph(&w.ty).map(str::to_string);
         }
+        // Submodules and blocks drawn as written name their inputs; a
+        // module's outputs too (a written block's output is its title).
+        n.port_names = block.kind == BlockKind::Module || w.ty.starts_with("$logix_");
+        n.output_names = block.kind == BlockKind::Module;
         n.memory = block.memory.clone();
         nodes.push(n);
     }

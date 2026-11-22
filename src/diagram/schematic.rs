@@ -89,6 +89,13 @@ pub struct Node {
     /// A memory port's memory: hovering one of its blocks lights up the
     /// others.
     pub memory: Option<String>,
+    /// A generic block that shows its ports' names inside it, inputs on the
+    /// left and outputs on the right, and is as wide as they need: module
+    /// instances and blocks drawn as written (the user's decision,
+    /// 2026-11-22: a module's own logic as one block per signal).
+    pub port_names: bool,
+    /// With `port_names`, its outputs' names too.
+    pub output_names: bool,
 }
 
 impl Node {
@@ -105,6 +112,8 @@ impl Node {
             is_dff: false,
             glyph: None,
             memory: None,
+            port_names: false,
+            output_names: false,
         }
     }
 
@@ -116,7 +125,29 @@ impl Node {
         }
         let (ins, outs) = (self.inputs.len() as f64, self.outputs.len() as f64);
         let n = if ins > outs { ins } else { outs };
-        (w, (h + PORT_GAP * (n - 2.0)).max(20.0))
+        (self.width(w), (h + PORT_GAP * (n - 2.0)).max(20.0))
+    }
+
+    /// A generic block's width: wide enough for its port names and its
+    /// sign when it shows them.
+    fn width(&self, w: f64) -> f64 {
+        if !(self.port_names && self.shape == Shape::Generic) {
+            return w;
+        }
+        let widest = |ports: &[Port]| {
+            ports
+                .iter()
+                .map(|p| text_width(&p.key))
+                .fold(0.0_f64, f64::max)
+        };
+        let outs = if self.output_names {
+            widest(&self.outputs)
+        } else {
+            0.0
+        };
+        let names = widest(&self.inputs) + outs;
+        let sign = self.glyph.as_deref().map_or(0.0, |g| text_width(g) + 8.0);
+        w.max(names + sign + 16.0)
     }
 
     /// Where a port is, relative to the node.
@@ -129,7 +160,7 @@ impl Node {
         let stacked = FIRST_PORT_Y + i * PORT_GAP;
         Some(match (self.shape, input) {
             (Shape::Generic, true) => (0.0, stacked),
-            (Shape::Generic, false) => (30.0, stacked),
+            (Shape::Generic, false) => (self.size().0, stacked),
             (Shape::Split, true) => (0.0, FIRST_PORT_Y),
             (Shape::Split, false) => (4.0, stacked),
             (Shape::Join, true) => (0.0, stacked),
@@ -443,6 +474,8 @@ impl Schematic {
             render_node(n, x, y, label, &mut blocks, &mut boxes);
         }
         let mut wires = String::new();
+        // Buses already marked: a bus that fans out gets one mark, not one per branch.
+        let mut marked_buses = std::collections::HashSet::new();
         for (e, net) in edges.iter().zip(&layout.nets) {
             let bits: Vec<u64> = parse_signature(net).iter().filter_map(Bit::net).collect();
             let list = bits
@@ -450,14 +483,28 @@ impl Schematic {
                 .map(u64::to_string)
                 .collect::<Vec<_>>()
                 .join(",");
-            let class = match classes(&bits) {
+            let mut class = match classes(&bits) {
                 Some(c) => format!("wire {c}"),
                 None => "wire".into(),
             };
+            // A bus (more than one bit) is drawn thicker, with the usual
+            // slash and its width near its start (the user's request,
+            // 2026-11-22: buses looked like single wires).
+            let bus = bits.len() > 1;
+            if bus {
+                class.push_str(" bus");
+            }
+            let mut marked = !bus || !marked_buses.insert(bits.clone());
             for s in e["sections"].as_array().into_iter().flatten() {
                 let mut points = vec![point(&s["startPoint"])];
                 points.extend(s["bendPoints"].as_array().into_iter().flatten().map(point));
                 points.push(point(&s["endPoint"]));
+                if !marked
+                    && let Some(pair) = points.windows(2).find(|p| seg_len(p[0], p[1]) >= 20.0)
+                {
+                    bus_mark(&mut wires, pair[0], pair[1], bits.len());
+                    marked = true;
+                }
                 for pair in points.windows(2) {
                     let ((x1, y1), (x2, y2)) = (pair[0], pair[1]);
                     write!(
@@ -475,9 +522,10 @@ impl Schematic {
                 let (x, y) = point(j);
                 write!(
                     wires,
-                    r#"<circle cx="{}" cy="{}" r="2" class="{class} junction" data-bits="{list}"/>"#,
+                    r#"<circle cx="{}" cy="{}" r="{}" class="{class} junction" data-bits="{list}"/>"#,
                     num(x),
-                    num(y)
+                    num(y),
+                    if bus { "3" } else { "2" }
                 )
                 .unwrap();
             }
@@ -511,12 +559,6 @@ pub struct LayoutGraph {
     /// Each edge's meeting point, if any: the dummy node's number and
     /// whether the edge starts there.
     pub meets: Vec<Option<(usize, bool)>>,
-}
-
-impl LayoutGraph {
-    pub fn node_count(&self) -> usize {
-        self.graph["children"].as_array().map_or(0, Vec::len)
-    }
 }
 
 fn edge_index(e: &Value) -> Option<usize> {
@@ -583,9 +625,38 @@ fn render_node(
         r#"<g class="{class}"{data} transform="translate({},{})">{}"#,
         num(x),
         num(y),
-        n.shape.draw(h)
+        match n.shape {
+            Shape::Generic => format!(
+                r#"<rect width="{}" height="{}" class="body"/>"#,
+                num(w),
+                num(h)
+            ),
+            _ => n.shape.draw(h),
+        }
     )
     .unwrap();
+    if n.port_names && n.shape == Shape::Generic {
+        // Each port's name, inside the block next to its port.
+        let outputs: &[Port] = if n.output_names { &n.outputs } else { &[] };
+        for (ports, input) in [(n.inputs.as_slice(), true), (outputs, false)] {
+            for (i, p) in ports.iter().enumerate() {
+                let y = FIRST_PORT_Y + i as f64 * PORT_GAP + 3.5;
+                let (x, anchor) = if input {
+                    (4.0, "start")
+                } else {
+                    (w - 4.0, "end")
+                };
+                write!(
+                    out,
+                    r#"<text x="{}" y="{}" text-anchor="{anchor}" class="portname">{}</text>"#,
+                    num(x),
+                    num(y),
+                    esc(&p.key)
+                )
+                .unwrap();
+            }
+        }
+    }
     if let Some(t) = &n.title {
         // Where ELK put it, else centered just above the block.
         let (tx, ty) = match label {
@@ -602,10 +673,17 @@ fn render_node(
         .unwrap();
     }
     if let Some(g) = &n.glyph {
+        // In the middle; with input names, on the right, clear of them
+        // (outputs aren't named there).
+        let x = if n.port_names {
+            w - 5.0 - text_width(g) / 2.0
+        } else {
+            w / 2.0
+        };
         write!(
             out,
             r#"<text x="{}" y="{}" class="glyph">{}</text>"#,
-            num(w / 2.0),
+            num(x),
             num(h / 2.0 + 3.5),
             esc(g)
         )
@@ -893,6 +971,44 @@ fn remove_dummy_edges(edges: &mut [Value], meets: &[Option<(usize, bool)>]) {
 const TITLE_HEIGHT: f64 = 11.0;
 fn text_width(t: &str) -> f64 {
     t.chars().count() as f64 * 6.0
+}
+
+/// A segment's length.
+fn seg_len(a: (f64, f64), b: (f64, f64)) -> f64 {
+    ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt()
+}
+
+/// A bus's mark, 10 units along its first long segment: a short slash
+/// across it and the bus's width beside it.
+fn bus_mark(out: &mut String, a: (f64, f64), b: (f64, f64), width: usize) {
+    let len = seg_len(a, b);
+    let (dx, dy) = ((b.0 - a.0) / len, (b.1 - a.1) / len);
+    let (cx, cy) = (a.0 + dx * 10.0, a.1 + dy * 10.0);
+    // Across the wire, leaning forward: perpendicular plus a little along.
+    let (px, py) = (-dy, dx);
+    let (sx, sy) = ((px + dx * 0.6) * 4.0, (py + dy * 0.6) * 4.0);
+    write!(
+        out,
+        r#"<line x1="{}" y1="{}" x2="{}" y2="{}" class="busmark"/>"#,
+        num(cx - sx),
+        num(cy - sy),
+        num(cx + sx),
+        num(cy + sy)
+    )
+    .unwrap();
+    // The width above a horizontal wire, beside a vertical one.
+    let (tx, ty) = if dx.abs() >= dy.abs() {
+        (cx + 2.0, cy - 5.0)
+    } else {
+        (cx + 5.0, cy + 3.0)
+    };
+    write!(
+        out,
+        r#"<text x="{}" y="{}" class="buswidth">{width}</text>"#,
+        num(tx),
+        num(ty)
+    )
+    .unwrap();
 }
 
 /// A coordinate, rounded to hundredths.

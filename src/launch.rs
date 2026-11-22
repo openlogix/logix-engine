@@ -1,6 +1,6 @@
-//! Starting a program that outlives the call, such as the program that opens
-//! a page in the default web browser (the diagram's and the waveform
-//! viewer's pages).
+//! Starting a program that outlives the call, such as Logix Viewer's apps
+//! (Logix Waveforms, Logix Diagrams), which show the waveform viewer's and
+//! the diagram's pages.
 
 use std::ffi::OsString;
 use std::path::Path;

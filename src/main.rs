@@ -30,8 +30,7 @@ struct Args {
     log_level: LogLevel,
 
     /// The host's log session folder, as an absolute path: the engine
-    /// writes its log there, and its programs' (GTKWave's), and deletes
-    /// nothing in it. Without it, the engine is at the top and makes its
+    /// writes its log there, and deletes nothing in it. Without it, the engine is at the top and makes its
     /// own session folder in <engine folder>/logs.
     #[arg(long, value_name = "absolute path")]
     log_folder: Option<String>,

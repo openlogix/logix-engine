@@ -4,6 +4,7 @@
 //! the engine writes each module's SVG, a model of the design and a page
 //! that shows them all.
 
+pub mod as_written;
 pub mod layout;
 pub mod netlist;
 pub mod rules;
@@ -84,7 +85,7 @@ pub struct DiagramRequest {
     pub defines: BTreeMap<String, String>,
     pub board: ResolvedBoard,
     pub verbose: bool,
-    /// Open the page in the system's web browser when it's written.
+    /// Open the page in Logix Diagrams (Logix Viewer) when it's written.
     pub open: bool,
     /// How many levels of modules below the top module are drawn.
     pub levels: usize,
@@ -574,7 +575,9 @@ async fn draw_all(
     // diagram is large.
     let mut built = vec![];
     for name in &names {
-        let (mut schematic, model, classes) = rules::build(name, &net.modules[name], &cx);
+        // Each module as written: one block per signal its code drives.
+        let module = as_written::as_written(&net.modules[name]);
+        let (mut schematic, model, classes) = rules::build(name, &module, &cx);
         schematic.add_constants();
         schematic.add_splits_joins();
         let deep = depth.get(name).is_none_or(|d| *d > levels);
