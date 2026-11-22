@@ -736,8 +736,11 @@ pub mod tests {
         assert!(same_ids(&with_release(Some("0500"), false), &bl702));
         assert!(!same_ids(&with_release(Some("0700"), false), &bl702));
         assert!(matches(&with_release(Some("0700"), true), &filter(None)));
-        // Matching data only: hosts don't see it.
+        // Reported to hosts too, so a device listing says what a board
+        // request needs; left out when the device doesn't report it.
         let json = serde_json::to_value(with_release(Some("0500"), true)).unwrap();
+        assert_eq!(json["release"], "0500", "{json}");
+        let json = serde_json::to_value(with_release(None, true)).unwrap();
         assert!(json.get("release").is_none(), "{json}");
 
         // iCESugar boards share IDs and product name; the serial tells them apart.
