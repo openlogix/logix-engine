@@ -216,6 +216,12 @@ button { font: inherit; color: inherit; }
 .ctx .it:disabled { opacity: .4; cursor: default; background: none; }
 .ctx .it .k { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: 11px; }
 .ctx .it.danger { color: var(--x); }
+/* A menu item that's on or off, drawn as a checkbox (the user's request, 2026-11-22). */
+.ctx .it.chk { gap: 9px; }
+.ctx .it .box { flex: none; width: 14px; height: 14px; border: 1.5px solid var(--muted); border-radius: 3px; display: grid; place-items: center; }
+.ctx .it[aria-checked="true"] .box { background: var(--accent); border-color: var(--accent); }
+.ctx .it .box svg { width: 10px; height: 10px; visibility: hidden; }
+.ctx .it[aria-checked="true"] .box svg { visibility: visible; }
 .ctx .sep { height: 1px; background: var(--line); margin: 4px 6px; }
 .ctx .sub { padding: 4px 10px 6px; display: flex; flex-direction: column; gap: 5px; }
 .ctx .sub .lbl { font-size: 11px; color: var(--muted); }
@@ -708,6 +714,8 @@ function bitByPath(map, p) {
 const MAX_BITS = 64;
 function toggleBits(i) {
   const r = S.rows[i]; if (!r || !r.v || r.v.width < 2 || r.v.bitOf) return;
+  // An analog row is a line, not bits (the user's rule, 2026-11-22).
+  if (!r.expanded && r.analog) return;
   if (r.expanded) {
     let n = 0; while (S.rows[i + 1 + n] && S.rows[i + 1 + n].v && S.rows[i + 1 + n].v.bitOf === r.v.path) n++;
     S.rows.splice(i + 1, n); r.expanded = false;
@@ -796,9 +804,34 @@ function clockBadge(path) {
   return counting() ? CLOCK_BADGE
     : CLOCK_BADGE.replace('class="clk-badge"', 'class="clk-badge idle"').replace(/title="[^"]*"/, 'title="The clock. Cycles, in the toolbar, counts its cycles."');
 }
+// A bus's bits are part of its row, not rows of their own (the user's
+// rule, 2026-11-22): they sit right under their expanded bus, in order,
+// in its color, and nothing goes between them. Puts every bit back there
+// (after a load, an undo or a removal), dropping bits whose bus is gone.
+function bitsInPlace() {
+  const sel = S.rows[S.sel], anchor = S.anchor != null ? S.rows[S.anchor] : null;
+  const out = [];
+  for (const r of S.rows) {
+    if (r.v && r.v.bitOf) continue;
+    out.push(r);
+    if (!r.v || !r.expanded) continue;
+    if (r.v.width < 2 || r.v.width > MAX_BITS || r.analog) { r.expanded = false; continue; }
+    for (let k = r.v.width - 1; k >= 0; k--) {
+      const v = bitVar(r.v, k), old = S.rows.find((x) => x.v === v);
+      out.push(Object.assign(old || { kind: 'signal', v, radix: 'bin' }, { color: r.color, analog: false }));
+    }
+  }
+  if (out.length === S.rows.length && out.every((r, i) => r === S.rows[i])) return;
+  S.rows = out; S.sel = sel ? out.indexOf(sel) : -1;
+  S.anchor = anchor && out.includes(anchor) ? out.indexOf(anchor) : null;
+}
+const isBit = (i) => !!(S.rows[i] && S.rows[i].v && S.rows[i].v.bitOf);
+// The bus row a bit row belongs to.
+function busOf(i) { while (i > 0 && isBit(i)) i--; return i; }
 function renderRows() {
+  bitsInPlace();
   document.documentElement.style.setProperty('--row-h', S.rowH + 'px');
-  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${isSel(i) ? 'sel' : ''} ${r.v.bitOf ? 'bit' : ''}" draggable="true" data-i="${i}" style="--c:var(--s${r.color});${r.analog ? `height:${rowHeight(r)}px` : ''}" title="${esc(r.v.path)}">${r.v.width > 1 && !r.v.bitOf ? `<button class="fold bits" data-bits="${i}" aria-expanded="${!!r.expanded}" title="${r.expanded ? 'Hide' : 'Show'} each bit (${r.v.width})"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.expanded ? 'M3.5 6 8 10.5 12.5 6' : 'M6 3.5 10.5 8 6 12.5'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="dot"></span><span class="nm">${rowLabel(r.v)}${clockBadge(r.v.path)}</span></div>`; }).join('');
+  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${isSel(i) ? 'sel' : ''} ${r.v.bitOf ? 'bit' : ''}" draggable="${!r.v.bitOf}" data-i="${i}" style="--c:var(--s${r.color});${r.analog ? `height:${rowHeight(r)}px` : ''}" title="${esc(r.v.path)}">${r.v.width > 1 && !r.v.bitOf && !r.analog ? `<button class="fold bits" data-bits="${i}" aria-expanded="${!!r.expanded}" title="${r.expanded ? 'Hide' : 'Show'} each bit (${r.v.width})"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.expanded ? 'M3.5 6 8 10.5 12.5 6' : 'M6 3.5 10.5 8 6 12.5'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="dot"></span><span class="nm">${rowLabel(r.v)}${clockBadge(r.v.path)}</span></div>`; }).join('');
   $('#empty').hidden = S.rows.length > 0;
   renderValues(); renderTree(); renderTimeBase(); draw();
 }
@@ -838,7 +871,7 @@ function inOrder(vars) {
 // selected), and the last one added becomes the selection, so picking a
 // group row, then ticking signals, builds a group in place.
 function insertSignals(vars) {
-  let at = S.sel >= 0 ? S.sel + 1 : S.rows.length;
+  let at = S.sel < 0 ? S.rows.length : S.rows[S.sel].v ? busOf(S.sel) + blockLen(busOf(S.sel)) : S.sel + 1;
   for (const v of vars) { S.rows.splice(at, 0, sigRow(v, S.rows.length)); S.anchor = null; S.sel = at; at++; }
 }
 function toggleVar(path) {
@@ -1187,7 +1220,7 @@ $('#names').addEventListener('dblclick', (e) => {
   if (r && r.v && S.decl[r.v.path]) openSource(S.decl[r.v.path].file, S.decl[r.v.path].line);
 });
 let dragRow = null;
-$('#names').addEventListener('dragstart', (e) => { const el = e.target.closest('.nrow'); if (!el) return; dragRow = +el.dataset.i; if (!isSel(dragRow)) { S.anchor = null; S.sel = dragRow; renderRows(); } e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', ''); } catch (_) {} });
+$('#names').addEventListener('dragstart', (e) => { const el = e.target.closest('.nrow'); if (!el || isBit(+el.dataset.i)) { e.preventDefault(); return; } dragRow = +el.dataset.i; if (!isSel(dragRow)) { S.anchor = null; S.sel = dragRow; renderRows(); } e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', ''); } catch (_) {} });
 // Where a dragged row goes, from the pointer's height: the upper half of a
 // row drops above it, the lower half below it (below a collapsed group's
 // hidden rows), and the empty space under the last row at the end.
@@ -1203,7 +1236,7 @@ function clearDrop() { document.querySelectorAll('.nrow.drop, .nrow.drop-below')
 $('#rows').addEventListener('dragover', (e) => {
   if (dragRow == null) return; e.preventDefault(); clearDrop();
   // The line shows where the rows will land, after landing()'s rule.
-  const sp = selSpan(), from = dragRow, inSpan = sp && from >= sp.lo && from < sp.end;
+  const sp = editSpan(), from = dragRow, inSpan = sp && from >= sp.lo && from < sp.end;
   const lo = inSpan ? sp.lo : from, len = inSpan ? sp.end - sp.lo : blockLen(from);
   const at = landing(lo, len, dropAt(e.clientY).at), v = visible();
   const before = v.find((x) => x >= at), after = [...v].reverse().find((x) => x < at);
@@ -1495,7 +1528,7 @@ document.addEventListener('keydown', (e) => {
   else if ((k === 'ArrowDown' || k === 'ArrowUp') && S.rows.length) { const v = visible(), at = v.indexOf(S.sel); S.anchor = null; S.sel = v[Math.max(0, Math.min(v.length - 1, at < 0 ? 0 : at + (k === 'ArrowDown' ? 1 : -1)))]; renderRows(); }
   else if (k === 'm' || k === 'M') { S.marker = S.cursor; draw(); }
   else if (k === 's' || k === 'S') toggleBrowser();
-  else if ((k === 'Delete' || k === 'Backspace') && S.sel >= 0) { const sp = selSpan(); S.rows.splice(sp.lo, sp.end - sp.lo); S.anchor = null; S.sel = -1; renderRows(); }
+  else if ((k === 'Delete' || k === 'Backspace') && S.sel >= 0) { const sp = editSpan(); if (!sp) return; S.rows.splice(sp.lo, sp.end - sp.lo); S.anchor = null; S.sel = -1; renderRows(); }
   else return;
   e.preventDefault();
 });
@@ -1717,8 +1750,11 @@ function openMenu(x, y, items, title) {
     if (!it) continue;
     if (it === '-') { el.insertAdjacentHTML('beforeend', '<div class="sep"></div>'); continue; }
     if (it.html) { const d = document.createElement('div'); d.className = 'sub'; d.innerHTML = it.html; d.addEventListener('click', (e) => { if (it.click(e) !== false) closeMenu(); }); el.appendChild(d); continue; }
-    const b = document.createElement('button'); b.className = 'it' + (it.danger ? ' danger' : ''); b.setAttribute('role', 'menuitem');
-    b.innerHTML = `<span>${esc(it.label)}</span>${it.key ? `<span class="k">${esc(it.key)}</span>` : ''}`;
+    // An item with `checked` is a checkbox: on or off, its label the same either way.
+    const box = it.checked != null;
+    const b = document.createElement('button'); b.className = 'it' + (it.danger ? ' danger' : '') + (box ? ' chk' : ''); b.setAttribute('role', box ? 'menuitemcheckbox' : 'menuitem');
+    if (box) b.setAttribute('aria-checked', String(!!it.checked));
+    b.innerHTML = `${box ? '<span class="box"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 5.2 4.1 7.3 8 2.8" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>' : ''}<span>${esc(it.label)}</span>${it.key ? `<span class="k">${esc(it.key)}</span>` : ''}`;
     b.disabled = !!it.disabled;
     b.addEventListener('click', () => { closeMenu(); it.act(); });
     el.appendChild(b);
@@ -1753,11 +1789,22 @@ function selSpan() {
   const lo = Math.min(a, S.sel), hi = Math.max(a, S.sel);
   return { lo, end: hi + blockLen(hi) };
 }
+// The selected rows as moves and removals take them: a bit's bus with all
+// its bits; null when only bits of one bus are selected (they can't be
+// moved or removed alone).
+function editSpan() {
+  const sp = selSpan(); if (!sp) return null;
+  const lo = busOf(sp.lo), last = busOf(sp.end - 1);
+  if (lo === last && isBit(sp.lo)) return null;
+  return { lo, end: last + blockLen(last) };
+}
 function isSel(i) { const sp = selSpan(); return !!sp && i >= sp.lo && i < sp.end; }
 // A row and what moves with it: a collapsed group takes its hidden rows
 // along, and stays collapsed (the user's request, 2026-11-21).
 function blockLen(i) {
-  const r = S.rows[i]; if (!r || r.kind !== 'group' || !r.collapsed) return 1;
+  const r = S.rows[i];
+  if (r && r.v && r.expanded) { let n = 1; while (isBit(i + n)) n++; return n; }
+  if (!r || r.kind !== 'group' || !r.collapsed) return 1;
   let j = i + 1; while (j < S.rows.length && S.rows[j].kind !== 'group') j++;
   return j - i;
 }
@@ -1766,6 +1813,8 @@ function blockLen(i) {
 // moved group (a group runs to the next group's row). Above the first group
 // any place goes. Other moves land where asked.
 function landing(lo, len, at) {
+  // Never between a bus's bits: after them.
+  while (at != null && isBit(at)) at++;
   if (at == null || at >= S.rows.length || S.rows[at].kind === 'group') return at;
   if (!S.rows.slice(lo, lo + len).some((r) => r.kind === 'group' && r.collapsed)) return at;
   let g = at - 1; while (g >= 0 && S.rows[g].kind !== 'group') g--;
@@ -1787,19 +1836,19 @@ function moveSpan(lo, len, at) {
 // Moves row `from` with its block (a collapsed group's hidden rows); a row
 // of the selected range moves the whole range.
 function moveBlockTo(from, at) {
-  const sp = selSpan();
+  const sp = editSpan();
   if (sp && from >= sp.lo && from < sp.end) { moveSpan(sp.lo, sp.end - sp.lo, at); return; }
   S.anchor = null; S.sel = from; moveSpan(from, blockLen(from), at);
 }
 // Alt+Up and Alt+Down: the selected rows past the next shown row, a
 // collapsed group as one.
 function moveRow(i, d) {
-  const sp = selSpan(); if (!sp) return;
+  const sp = editSpan(); if (!sp) return;
   const v = visible();
-  if (d < 0) { const k = v.indexOf(sp.lo); if (k > 0) moveSpan(sp.lo, sp.end - sp.lo, v[k - 1]); return; }
+  if (d < 0) { const k = v.indexOf(sp.lo); if (k > 0) moveSpan(sp.lo, sp.end - sp.lo, busOf(v[k - 1])); return; }
   const n = v.find((x) => x >= sp.end); if (n != null) moveSpan(sp.lo, sp.end - sp.lo, n + blockLen(n));
 }
-function removeRow(i) { S.rows.splice(i, 1); S.anchor = null; S.sel = -1; renderRows(); }
+function removeRow(i) { S.rows.splice(i, S.rows[i] && S.rows[i].v ? blockLen(i) : 1); S.anchor = null; S.sel = -1; renderRows(); }
 function timeItems(t) {
   return [
     { label: 'Put the cursor here', key: 'Click', act: () => setCursor(t) },
@@ -1810,12 +1859,12 @@ function rowMenu(i, t, x, y) {
   const r = S.rows[i]; if (!r) return;
   if (!isSel(i)) { S.anchor = null; S.sel = i; } renderRows();
   // Below a collapsed group means after the rows it hides, so the new row shows.
-  const v = visible(), below = v[v.indexOf(i) + 1] ?? S.rows.length;
+  const v = visible(), below = v[v.indexOf(i) + 1] ?? S.rows.length, after = Math.max(below, i + blockLen(i));
   const common = [
     { label: 'Add a group above', act: () => addRowAt('group', i) },
-    { label: 'Add a group below', act: () => addRowAt('group', below) },
+    { label: 'Add a group below', act: () => addRowAt('group', after) },
     { label: 'Add a blank row above', act: () => addRowAt('blank', i) },
-    { label: 'Add a blank row below', act: () => addRowAt('blank', below) },
+    { label: 'Add a blank row below', act: () => addRowAt('blank', after) },
   ];
   if (!r.v) {
     openMenu(x, y, [
@@ -1829,18 +1878,34 @@ function rowMenu(i, t, x, y) {
   }
   const at = t != null ? t : S.cursor;
   const val = at != null ? fmt(valueAt(r.v, at), r.v.width, r.radix) : null;
+  const copyItems = [
+    { label: 'Copy the name', act: () => copyText(r.v.path) },
+    { label: val != null ? `Copy the value (${val.length > 14 ? val.slice(0, 13) + '…' : val})` : 'Copy the value', disabled: val == null, act: () => copyText(val) },
+  ];
+  if (r.v.bitOf) {
+    // A bit is part of its bus's row: it follows the bus, so its menu only
+    // reads it (the user's rule, 2026-11-22).
+    const bus = busOf(i);
+    openMenu(x, y, [
+      ...(t != null ? [...timeItems(t), '-'] : []),
+      ...(isClockable(r.v) ? [clockItem(r.v.path), '-'] : []),
+      ...copyItems, '-',
+      { label: `Show each bit (${S.rows[bus].v.width})`, checked: true, act: () => toggleBits(bus) },
+    ], r.v.path);
+    return;
+  }
   openMenu(x, y, [
     ...(t != null ? [...timeItems(t), '-'] : []),
     r.v.width > 1 ? { html: `<div class="lbl">Show values as</div><div class="seg">${RADIX.map(([k, n]) => `<button data-radix="${k}" class="${r.radix === k ? 'on' : ''}">${n}</button>`).join('')}</div>`,
       click: (e) => { const b = e.target.closest('[data-radix]'); if (!b) return false; r.radix = b.dataset.radix; renderRows(); } } : null,
-    r.v.width > 1 && !r.v.bitOf ? { label: r.expanded ? 'Hide the bits' : `Show each bit (${r.v.width})`, act: () => toggleBits(i) } : null,
-    r.v.width > 1 || r.v.type === 'real' ? { label: r.analog ? 'Show as values' : 'Show as analog (a line)', act: () => { r.analog = !r.analog; renderRows(); commit(); } } : null,
+    // Checkboxes; an analog row is a line, not bits, so Show each bit is off then.
+    r.v.width > 1 ? { label: `Show each bit (${r.v.width})`, checked: !!r.expanded, disabled: !!r.analog, act: () => toggleBits(i) } : null,
+    r.v.width > 1 || r.v.type === 'real' ? { label: 'Show as analog (a line)', checked: !!r.analog, act: () => { r.analog = !r.analog; renderRows(); commit(); } } : null,
     { html: `<div class="lbl">Color</div><div class="swatches">${[1, 2, 3, 4, 5, 6].map((c) => `<button data-color="${c}" style="--c:var(--s${c})" class="${r.color === c ? 'on' : ''}" aria-label="Color ${c}"></button>`).join('')}</div>`,
       click: (e) => { const b = e.target.closest('[data-color]'); if (!b) return false; r.color = +b.dataset.color; renderRows(); } },
     '-', ...common, '-',
     ...(isClockable(r.v) ? [clockItem(r.v.path), '-'] : []),
-    { label: 'Copy the name', act: () => copyText(r.v.path) },
-    { label: val != null ? `Copy the value (${val.length > 14 ? val.slice(0, 13) + '…' : val})` : 'Copy the value', disabled: val == null, act: () => copyText(val) },
+    ...copyItems,
     '-',
     { label: 'Hide this signal', key: 'Delete', danger: true, act: () => removeRow(i) },
   ], r.v.path + (r.v.range ? ' ' + r.v.range : ''));
