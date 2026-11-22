@@ -1814,8 +1814,8 @@ function blockLen(i) {
 // moved group (a group runs to the next group's row). Above the first group
 // any place goes. Other moves land where asked.
 function landing(lo, len, at) {
-  // Never between a bus's bits: after them.
-  while (at != null && isBit(at)) at++;
+  // Never between a bus's bits: above the bus (the user's rule, 2026-11-22).
+  if (at != null && isBit(at)) at = busOf(at);
   if (at == null || at >= S.rows.length || S.rows[at].kind === 'group') return at;
   if (!S.rows.slice(lo, lo + len).some((r) => r.kind === 'group' && r.collapsed)) return at;
   let g = at - 1; while (g >= 0 && S.rows[g].kind !== 'group') g--;
