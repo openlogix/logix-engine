@@ -23,7 +23,7 @@ use crate::progress::Phases;
 use crate::state::EngineState;
 use crate::tools::Call;
 
-/// The package with Verilator, Icarus Verilog and GTKWave.
+/// The package with Verilator and Icarus Verilog.
 pub const TOOLCHAIN: &str = crate::build::TOOLCHAIN;
 
 /// What every lint, test and simulate request has.

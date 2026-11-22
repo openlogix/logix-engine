@@ -2,7 +2,7 @@
 //! "The waveform viewer"): a page the engine writes next to a simulation's
 //! waveform, with the waveform in it, so it opens anywhere, offline, and
 //! outlives the engine. Hosts show it in a window of their own; other
-//! clients open it in the default web browser.
+//! clients open it in Logix Waveforms (Logix Viewer).
 //!
 //! The page itself is `viewer.html`; this module fills in its data: the
 //! waveform, the testbench's own signals in the order it declares them (the

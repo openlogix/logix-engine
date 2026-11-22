@@ -16,7 +16,8 @@ FPGA tools it needs, builds for every one of the [supported FPGAs](https://www.o
 and knows the [supported boards](https://www.openlogix.org/logix-catalog/boards/) and their pins, and any board
 you describe yourself.
 
-Logix Engine is in development, on macOS with Apple Silicon for now. It's
+Logix Engine is in development, on macOS with Apple Silicon, Windows x64 and
+Linux x64. It's
 part of [Open Logix](https://www.openlogix.org), free and open source under
 MIT or Apache 2.0.
 

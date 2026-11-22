@@ -229,7 +229,7 @@ async function build(projectDir) {
   // Launch the engine as a child process, passing its engine folder.
   const transport = new StdioClientTransport({
     command: "logix-engine",                       // engine binary bundled with the extension
-    args: ["--engine-folder", path.join(os.homedir(), ".logix", "engine")],
+    args: ["--engine-folder", path.join(os.homedir(), ".logix", "vscode", "engine-data")],
   });
   const client = new Client({ name: "logix-vscode", version: "1.0.0" });
   await client.connect(transport);

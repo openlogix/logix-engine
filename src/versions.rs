@@ -102,6 +102,7 @@ const THIRD_PARTY: &[(&str, &str, &[&str])] = &[
             "nextpnr-himbaechel",
             "icepack",
             "iceprog",
+            "icesprog",
             "ecppack",
             "gowin_pack",
             "iverilog",

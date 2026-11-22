@@ -27,6 +27,8 @@ In development: macOS on Apple Silicon, Windows x64 and Linux x64.
 - **Milestone 2, done:** Logix IDE running on the engine, keeping every feature it had: lint, test, simulate, format, diagram, live tool output, and the same boards across the iCE40, ECP5, Gowin and Xilinx 7-series FPGA families. See [Acceptance and phasing](docs/requirements.md#acceptance-and-phasing).
 - **Milestone 3, released (2026-11-16):** the engine and Logix IDE on Windows.
 - **Milestone 4, released (2026-11-18):** the engine and Logix IDE on Linux.
+- **Milestone 5, released (2026-11-21):** Open Logix's own waveform viewer in place of GTKWave.
+- **Milestone 6, in progress:** cleanup and fixes before the public launch.
 
 Daily development builds are on the [Releases](https://github.com/openlogix/logix-engine/releases) page.
 
@@ -53,7 +55,7 @@ Check the setup with `cargo --version`.
 
 | Script | What it does |
 | --- | --- |
-| `scripts/test.sh` | All checks and tests: format, lint, unit, schema, command-line, build and end-to-end MCP tests. Run it before committing. CI runs it too. The first run downloads the FPGA tools (the `logix-core` package) for the build tests |
+| `scripts/test.sh` | All checks and tests: format, lint, unit, schema, command-line, build and end-to-end MCP tests, then the page tests in WebKit (they need Node). Run it before committing. CI runs it too. The first run downloads the FPGA tools (the `logix-core` package) for the build tests |
 | `scripts/build.sh` | Builds the release binary, `target/release/logix-engine` |
 | `scripts/run-in-claude.sh` | Builds if needed and starts Claude Code with the engine connected, so you can prompt it. Claude works in `~/.logix/engine-dev/playground`, and the engine uses `~/.logix/engine-dev/engine-data` |
 | `scripts/run-in-grok.sh` | The same with Grok as the host. It writes the engine into the playground's `.grok/config.toml` |
