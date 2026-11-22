@@ -412,6 +412,7 @@ Testbenches run in the source folder, so they read data files, such as with `$re
 | `output` | multiline text | What the testbench printed, such as with `$display`. When it printed more than 5,000 lines, the first and last 2,500, with a line saying how many were left out between them |
 | `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder, when the testbench wrote one with `$dumpvars` |
 | `ending` | enum | How the run ended: `finished` (the testbench ended itself, with `$finish` or `$fatal`), `first_failure`, `sim_time_limit` or `timeout` (the engine stopped it; its output and waveform end there), or `no_finish` (it ran out of things to simulate without calling `$finish`, which usually means it stopped early by mistake) |
+| `ending_text` | text | Optional. For people, when the engine stopped the run at a limit or it never called `$finish` (`ending` `timeout`, `sim_time_limit` or `no_finish`), naming the testbench: "main_tb.v was stopped because it ran too long. Does it end with $finish?", "main_tb.v was stopped at its simulation time limit. Does it end with $finish?" or "main_tb.v ended without calling $finish, which usually means it stopped early by mistake." Omitted for the other endings, whose diagnostics say what happened |
 | `failure_count` | integer | How many failures the testbench reported. `diagnostics` lists the first 100, each with its time; a check that fails again at another time is another failure |
 
 **Errors:** design errors for compile errors and `$dumpfile`. Setup errors with `download_packages`. Request errors, such as an unknown board, a missing file or a build folder that breaks the keyword rules. Tool failures, engine errors and cancellation.
@@ -493,6 +494,7 @@ Simulates one testbench and opens its waveform in Open Logix's waveform viewer (
 | `output` | multiline text | What the testbench printed |
 | `failure_count` | integer | How many failures the testbench reported, as in the test tool |
 | `ending` | enum | How the run ended, as in the test tool. Never `first_failure` |
+| `ending_text` | text | Optional. How it ended, for people, as in the test tool |
 | `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder |
 | `viewer_opened` | boolean | True if the waveform viewer's page opened in a window |
 | `viewer_problem` | text | Optional. Why it didn't open, in plain words for the person at the screen, such as a missing library, with what fixes it. Only when `open_viewer` was true and it didn't open |
@@ -1667,7 +1669,7 @@ On Windows, a device whose `driver` isn't `ready` (in `devices` or `unreachable`
 
 ### Run and debug testbenches
 
-1. "Run tests" calls `test` with every testbench. Each stops at its first failure, so a failing run ends fast, and each result says where and when it failed.
+1. "Run tests" calls `test` with every testbench. Each stops at its first failure, so a failing run ends fast, and each result says where and when it failed. Show a result's `ending_text` too, when it has one: a run stopped at a limit, or one that never called `$finish`, fails without a failure of its own.
 2. "Debug" on a failing testbench calls `simulate` with a `view_file` next to the testbench, such as `main_tb.view`. The waveform viewer opens at the first failure.
 3. The viewer saves the user's view through the host, which writes it to `view_file`, so the next simulation opens with it.
 

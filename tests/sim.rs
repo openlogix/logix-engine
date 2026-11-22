@@ -636,6 +636,7 @@ async fn test_stops_at_the_first_failure_unless_asked_not_to() {
     let tb = &out.testbenches[0];
     assert!(!tb.passed);
     assert_eq!(tb.ending, Ending::FirstFailure);
+    assert_eq!(tb.ending_text, None, "a failure says it already");
     assert!(!tb.output.contains("still running"), "{}", tb.output);
     assert_eq!(tb.diagnostics.len(), 1, "{:#?}", tb.diagnostics);
     assert_eq!(tb.diagnostics[0].text, "first failure");
@@ -649,6 +650,7 @@ async fn test_stops_at_the_first_failure_unless_asked_not_to() {
     let tb = &out.testbenches[0];
     assert!(!tb.passed);
     assert_eq!(tb.ending, Ending::Finished);
+    assert_eq!(tb.ending_text, None);
     assert!(tb.output.contains("still running"), "{}", tb.output);
     let times: Vec<_> = tb.diagnostics.iter().map(|d| d.time_ns).collect();
     assert_eq!(times, [Some(10.0), Some(15.0)]);
@@ -849,6 +851,10 @@ async fn runs_that_dont_end_are_stopped_by_the_limits() {
     let out = test::run(&state, input, &call()).await.unwrap();
     let tb = &out.testbenches[0];
     assert_eq!(tb.ending, Ending::SimTimeLimit, "{tb:#?}");
+    assert_eq!(
+        tb.ending_text.as_deref(),
+        Some("main_tb.v was stopped at its simulation time limit. Does it end with $finish?")
+    );
     assert!(!tb.passed);
     assert!(
         tb.diagnostics.is_empty(),
@@ -862,6 +868,10 @@ async fn runs_that_dont_end_are_stopped_by_the_limits() {
     let input = test_input(&src, json!({"timeout_seconds": 1}));
     let out = test::run(&state, input, &call()).await.unwrap();
     assert_eq!(out.testbenches[0].ending, Ending::Timeout);
+    assert_eq!(
+        out.testbenches[0].ending_text.as_deref(),
+        Some("main_tb.v was stopped because it ran too long. Does it end with $finish?")
+    );
     assert!(!out.passed);
     assert!(start.elapsed() < std::time::Duration::from_secs(8));
 
@@ -871,6 +881,11 @@ async fn runs_that_dont_end_are_stopped_by_the_limits() {
     let input = simulate_input(&src, json!({"timeout_seconds": 1}));
     let out = simulate::run(&state, input, &call()).await.unwrap();
     assert_eq!(out.ending, Ending::Timeout);
+    assert!(
+        out.ending_text
+            .as_deref()
+            .is_some_and(|t| t.starts_with("main_tb.v was stopped because it ran too long."))
+    );
 
     for (extra, needle) in [
         (json!({"max_sim_time_ns": 0}), "max_sim_time_ns"),
@@ -898,6 +913,12 @@ async fn a_testbench_without_finish_fails_and_long_output_is_shortened() {
         .unwrap();
     let tb = &out.testbenches[0];
     assert_eq!(tb.ending, Ending::NoFinish);
+    assert_eq!(
+        tb.ending_text.as_deref(),
+        Some(
+            "main_tb.v ended without calling $finish, which usually means it stopped early by mistake."
+        )
+    );
     assert!(!tb.passed);
     assert!(tb.output.starts_with("line 0\n"));
     assert!(

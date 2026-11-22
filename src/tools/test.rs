@@ -150,6 +150,12 @@ pub struct TestbenchResult {
     /// its output and waveform end there), or no_finish (it ran out of
     /// things to simulate without calling $finish, a failure).
     pub ending: Ending,
+    /// For people, when the engine stopped it at a limit or it never called
+    /// $finish (ending timeout, sim_time_limit or no_finish), such as
+    /// "main_tb.v was stopped because it ran too long. Does it end with
+    /// $finish?". Omitted otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ending_text: Option<String>,
     /// How many failures the testbench reported. diagnostics lists the first
     /// 100 of them, each with its time.
     pub failure_count: u64,
@@ -158,6 +164,7 @@ pub struct TestbenchResult {
 impl From<TestbenchRun> for TestbenchResult {
     fn from(r: TestbenchRun) -> Self {
         TestbenchResult {
+            ending_text: r.ending.text(&r.file),
             file: r.file,
             passed: r.passed,
             diagnostics: r.diagnostics,

@@ -3144,6 +3144,13 @@
               "description": "How the run ended: finished (the testbench ended itself),\nfirst_failure, sim_time_limit or timeout (the engine stopped it, and\nits output and waveform end there), or no_finish (it ran out of\nthings to simulate without calling $finish, a failure).",
               "$ref": "#/$defs/Ending"
             },
+            "ending_text": {
+              "description": "For people, when the engine stopped it at a limit or it never called\n$finish (ending timeout, sim_time_limit or no_finish), such as\n\"main_tb.v was stopped because it ran too long. Does it end with\n$finish?\". Omitted otherwise.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "failure_count": {
               "description": "How many failures the testbench reported. diagnostics lists the first\n100 of them, each with its time.",
               "type": "integer",
@@ -3518,6 +3525,13 @@
         "ending": {
           "description": "How the run ended: finished (the testbench ended itself),\nsim_time_limit or timeout (the engine stopped it), or no_finish (it\nran out of things to simulate without calling $finish, a failure).",
           "$ref": "#/$defs/Ending"
+        },
+        "ending_text": {
+          "description": "For people, when the engine stopped it at a limit or it never called\n$finish (ending timeout, sim_time_limit or no_finish), as in test.\nOmitted otherwise.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "waveform_file": {
           "description": "The waveform (.vcd), relative to the build folder.",

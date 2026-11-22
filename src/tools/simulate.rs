@@ -152,6 +152,11 @@ pub struct SimulateOutput {
     /// sim_time_limit or timeout (the engine stopped it), or no_finish (it
     /// ran out of things to simulate without calling $finish, a failure).
     pub ending: Ending,
+    /// For people, when the engine stopped it at a limit or it never called
+    /// $finish (ending timeout, sim_time_limit or no_finish), as in test.
+    /// Omitted otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ending_text: Option<String>,
     /// The waveform (.vcd), relative to the build folder.
     pub waveform_file: String,
     /// True if the waveform viewer's page opened in a window.
@@ -309,6 +314,7 @@ pub async fn run(
         diagnostics: r.diagnostics,
         output: r.output,
         failure_count: r.failure_count,
+        ending_text: r.ending.text(&tb),
         ending: r.ending,
         waveform_file,
         viewer_opened,
