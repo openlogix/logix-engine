@@ -474,6 +474,8 @@ impl Schematic {
             render_node(n, x, y, label, &mut blocks, &mut boxes);
         }
         let mut wires = String::new();
+        // Buses already marked: a bus that fans out gets one mark, not one per branch.
+        let mut marked_buses = std::collections::HashSet::new();
         for (e, net) in edges.iter().zip(&layout.nets) {
             let bits: Vec<u64> = parse_signature(net).iter().filter_map(Bit::net).collect();
             let list = bits
@@ -481,14 +483,28 @@ impl Schematic {
                 .map(u64::to_string)
                 .collect::<Vec<_>>()
                 .join(",");
-            let class = match classes(&bits) {
+            let mut class = match classes(&bits) {
                 Some(c) => format!("wire {c}"),
                 None => "wire".into(),
             };
+            // A bus (more than one bit) is drawn thicker, with the usual
+            // slash and its width near its start (the user's request,
+            // 2026-11-22: buses looked like single wires).
+            let bus = bits.len() > 1;
+            if bus {
+                class.push_str(" bus");
+            }
+            let mut marked = !bus || !marked_buses.insert(bits.clone());
             for s in e["sections"].as_array().into_iter().flatten() {
                 let mut points = vec![point(&s["startPoint"])];
                 points.extend(s["bendPoints"].as_array().into_iter().flatten().map(point));
                 points.push(point(&s["endPoint"]));
+                if !marked
+                    && let Some(pair) = points.windows(2).find(|p| seg_len(p[0], p[1]) >= 20.0)
+                {
+                    bus_mark(&mut wires, pair[0], pair[1], bits.len());
+                    marked = true;
+                }
                 for pair in points.windows(2) {
                     let ((x1, y1), (x2, y2)) = (pair[0], pair[1]);
                     write!(
@@ -506,9 +522,10 @@ impl Schematic {
                 let (x, y) = point(j);
                 write!(
                     wires,
-                    r#"<circle cx="{}" cy="{}" r="2" class="{class} junction" data-bits="{list}"/>"#,
+                    r#"<circle cx="{}" cy="{}" r="{}" class="{class} junction" data-bits="{list}"/>"#,
                     num(x),
-                    num(y)
+                    num(y),
+                    if bus { "3" } else { "2" }
                 )
                 .unwrap();
             }
@@ -960,6 +977,44 @@ fn remove_dummy_edges(edges: &mut [Value], meets: &[Option<(usize, bool)>]) {
 const TITLE_HEIGHT: f64 = 11.0;
 fn text_width(t: &str) -> f64 {
     t.chars().count() as f64 * 6.0
+}
+
+/// A segment's length.
+fn seg_len(a: (f64, f64), b: (f64, f64)) -> f64 {
+    ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt()
+}
+
+/// A bus's mark, 10 units along its first long segment: a short slash
+/// across it and the bus's width beside it.
+fn bus_mark(out: &mut String, a: (f64, f64), b: (f64, f64), width: usize) {
+    let len = seg_len(a, b);
+    let (dx, dy) = ((b.0 - a.0) / len, (b.1 - a.1) / len);
+    let (cx, cy) = (a.0 + dx * 10.0, a.1 + dy * 10.0);
+    // Across the wire, leaning forward: perpendicular plus a little along.
+    let (px, py) = (-dy, dx);
+    let (sx, sy) = ((px + dx * 0.6) * 4.0, (py + dy * 0.6) * 4.0);
+    write!(
+        out,
+        r#"<line x1="{}" y1="{}" x2="{}" y2="{}" class="busmark"/>"#,
+        num(cx - sx),
+        num(cy - sy),
+        num(cx + sx),
+        num(cy + sy)
+    )
+    .unwrap();
+    // The width above a horizontal wire, beside a vertical one.
+    let (tx, ty) = if dx.abs() >= dy.abs() {
+        (cx + 2.0, cy - 5.0)
+    } else {
+        (cx + 5.0, cy + 3.0)
+    };
+    write!(
+        out,
+        r#"<text x="{}" y="{}" class="buswidth">{width}</text>"#,
+        num(tx),
+        num(ty)
+    )
+    .unwrap();
 }
 
 /// A coordinate, rounded to hundredths.

@@ -23,3 +23,6 @@ svg.logix-diagram text.signal{fill:var(--logix-diagram-clock,#2463b5)}
 svg.logix-diagram text.fixed{fill:var(--logix-diagram-fixed,#7b8794)}
 svg.logix-diagram .portbox{fill:var(--logix-diagram-sheet,#fff);stroke:var(--logix-diagram-wire,#23303c);stroke-width:1.2}
 svg.logix-diagram text.portname{font-size:9px;fill:var(--logix-diagram-fixed,#7b8794)}
+svg.logix-diagram .wire.bus{stroke-width:2.6}
+svg.logix-diagram .busmark{stroke-width:1.2}
+svg.logix-diagram text.buswidth{font-size:8px}

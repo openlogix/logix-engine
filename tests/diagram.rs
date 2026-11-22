@@ -130,6 +130,21 @@ async fn diagram_draws_the_design() {
     // register block, named after it, reading itself; no adder.
     assert!(svg.contains(r#"data-block="$logix_reg$count""#), "{svg}");
     assert!(svg.contains(r#"class="portname">count</text>"#), "{svg}");
+    // The counter's feedback is a bus: thicker, with one slash and its
+    // width (blinky's counter has more than one bit).
+    assert!(svg.contains(r#"class="wire bus""#), "{svg}");
+    // One mark per bus, never one per branch.
+    let buses: std::collections::HashSet<&str> = svg
+        .split(r#"class="wire bus" data-bits=""#)
+        .skip(1)
+        .filter_map(|r| r.split('"').next())
+        .collect();
+    assert_eq!(
+        svg.matches(r#"class="busmark""#).count(),
+        buses.len(),
+        "{svg}"
+    );
+    assert!(svg.contains(r#"class="buswidth">"#), "{svg}");
     assert!(
         svg.contains(r#"class="wire"#) && svg.contains("portbox"),
         "{svg}"
