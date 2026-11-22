@@ -35,8 +35,13 @@ use rules::{ModuleModel, Source};
 /// The folder in the build folder the diagram is written to, replaced by
 /// each call.
 pub const FOLDER: &str = "diagram";
-/// The page that shows every module.
-pub const PAGE: &str = "diagram.html";
+/// The page that shows every module, in the build folder itself (outside
+/// FOLDER, which each call replaces), named by the module the diagram
+/// starts at, so each starting module keeps its own page and window:
+/// diagram-main.html.
+pub fn page_name(top: &str) -> String {
+    format!("diagram-{top}.html")
+}
 /// The model of the design: every module's blocks, labels, pins and
 /// signals.
 pub const MODEL: &str = "diagram.json";
@@ -112,31 +117,6 @@ pub struct DiagramResult {
     pub modules: Vec<ModuleSummary>,
     /// Yosys warnings while reading the design.
     pub diagnostics: Vec<Diagnostic>,
-    /// Whether the page was opened in the system's web browser.
-    pub opened: bool,
-}
-
-/// Opens a page in the system's default web browser, detached, and says
-/// whether it started. Also the waveform viewer's.
-pub fn open_page(page: &Path) -> bool {
-    let (program, args): (&str, Vec<OsString>) = if cfg!(target_os = "macos") {
-        ("/usr/bin/open", vec![page.into()])
-    } else if cfg!(windows) {
-        (
-            "cmd",
-            vec!["/c".into(), "start".into(), "".into(), page.into()],
-        )
-    } else {
-        ("xdg-open", vec![page.into()])
-    };
-    let dir = page.parent().unwrap_or(page);
-    match crate::launch::launch_detached(Path::new(program), &args, dir) {
-        Ok(()) => true,
-        Err(e) => {
-            log::warn!("Can't open the page {}: {e}", page.display());
-            false
-        }
-    }
 }
 
 /// Quotes a path for a yosys script.
@@ -424,6 +404,14 @@ pub async fn diagram_with(
         }
         _ => {}
     }
+    // Its page too: a window showing it then shows the error's last state
+    // until it's drawn again, never an old diagram as if current.
+    match std::fs::remove_file(req.build_folder.join(page_name(&req.top_module))) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            return Err(io("delete the old diagram", e));
+        }
+        _ => {}
+    }
     std::fs::create_dir_all(&out).map_err(|e| io("create the diagram folder", e))?;
     if !elk.is_file() {
         return Err(ToolError::setup(format!(
@@ -516,12 +504,14 @@ pub async fn diagram_with(
         .unwrap()
         .replace("</", "<\\/")
         .replace("<!--", "<\\!--");
-    std::fs::write(out.join(PAGE), VIEWER.replace("/*__DATA__*/null", &data))
-        .map_err(|e| io("write the diagram's page", e))?;
-    let opened = req.open && open_page(&out.join(PAGE));
+    let page = page_name(&req.top_module);
+    crate::wave::write_atomically(
+        &req.build_folder.join(&page),
+        VIEWER.replace("/*__DATA__*/null", &data).as_bytes(),
+    )
+    .map_err(|e| io("write the diagram's page", e))?;
     Ok(DiagramResult {
-        opened,
-        page_file: format!("{FOLDER}/{PAGE}"),
+        page_file: page,
         model_file: format!("{FOLDER}/{MODEL}"),
         modules,
         diagnostics,

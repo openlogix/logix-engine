@@ -71,7 +71,6 @@ button { font: inherit; color: inherit; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
 .btn svg { width: 15px; height: 15px; }
 .icon-btn { width: 30px; padding: 0; justify-content: center; }
-.browser-toggle { display: none; }
 
 /* Browser */
 .browser { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
@@ -122,6 +121,12 @@ button { font: inherit; color: inherit; }
 .btns button svg { width: 15px; height: 15px; }
 /* Undo and redo, next to the testbench's name where they're easy to find, a size up. */
 .btns.undo button { height: 30px; min-width: 34px; }
+/* Time or Cycles: one choice of two, shown as one outlined control with the
+   chosen half filled (the user's request, 2026-11-22: two plain buttons
+   didn't read as a one-of choice). */
+.btns.tb { background: var(--panel); border: 1px solid var(--line); padding: 2px; gap: 0; }
+.btns.tb button { border-radius: 5px; color: var(--muted); }
+.btns.tb button.on, .btns.tb button.on:hover { background: var(--accent); color: #fff; box-shadow: none; }
 .btns.undo button svg { width: 19px; height: 19px; }
 .fail-chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--fail) 45%, transparent); background: color-mix(in srgb, var(--fail) 10%, transparent); color: var(--fail); font-weight: 600; cursor: pointer; }
 .fail-chip[hidden] { display: none; }
@@ -275,8 +280,6 @@ button { font: inherit; color: inherit; }
   .browser { position: fixed; z-index: 45; top: 60px; bottom: 12px; left: max(16px, env(safe-area-inset-left, 0px)); width: min(280px, calc(100% - 32px)); box-shadow: 0 16px 40px rgba(0,0,0,.25); }
   .app:not(.show-browser) .browser { display: none; }
   .app.no-browser.show-browser .browser { display: flex; }
-  .side-btn { display: none; }
-  .browser-toggle { display: inline-flex; }
   .status .help, .btn .txt, .file { display: none; }
   .nrow .sc { display: none; }
 }
@@ -311,7 +314,6 @@ button { font: inherit; color: inherit; }
     <button class="fail-chip" id="failChip" hidden title="Show the first failed check"><span class="dot"></span><span id="failText">Failed check</span></button>
     <!-- Kept together, so they wrap as one group in a narrow window. -->
     <div class="right">
-      <button class="btn browser-toggle" id="browserToggle" aria-label="Show signals">Signals</button>
       <button class="btn" id="imageBtn" title="Copy or save the waves, to share: a picture, a spreadsheet or a web page">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="15.5" cy="8.5" r="1.5"/></svg><span class="txt">Export</span>
       </button>
@@ -1346,9 +1348,8 @@ $('#tree').addEventListener('click', (e) => {
   if (s) { const p = s.dataset.scope; S.openScopes.has(p) ? S.openScopes.delete(p) : S.openScopes.add(p); renderTree(); }
 });
 $('#search').addEventListener('input', renderTree);
-$('#browserToggle').onclick = () => $('#app').classList.toggle('show-browser');
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closePop(); $('#overlay').hidden = true; $('#app').classList.remove('show-browser'); return; }
+  if (e.key === 'Escape') { closePop(); $('#overlay').hidden = true; if ($('#app').classList.contains('show-browser')) { $('#app').classList.remove('show-browser'); $('#sideBtn').classList.remove('on'); } return; }
   if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.target.closest('input, textarea')) {
     const k = e.key.toLowerCase();
     if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
@@ -1369,7 +1370,7 @@ document.addEventListener('keydown', (e) => {
   else if ((k === 'ArrowDown' || k === 'ArrowUp') && S.rows.length && e.shiftKey && S.sel >= 0) { const v = visible(), at = v.indexOf(S.sel); if (S.anchor == null) S.anchor = S.sel; S.sel = v[Math.max(0, Math.min(v.length - 1, at + (k === 'ArrowDown' ? 1 : -1)))]; renderRows(); }
   else if ((k === 'ArrowDown' || k === 'ArrowUp') && S.rows.length) { const v = visible(), at = v.indexOf(S.sel); S.anchor = null; S.sel = v[Math.max(0, Math.min(v.length - 1, at < 0 ? 0 : at + (k === 'ArrowDown' ? 1 : -1)))]; renderRows(); }
   else if (k === 'm' || k === 'M') { S.marker = S.cursor; draw(); }
-  else if (k === 's' || k === 'S') setBrowser($('#app').classList.contains('no-browser'));
+  else if (k === 's' || k === 'S') toggleBrowser();
   else if ((k === 'Delete' || k === 'Backspace') && S.sel >= 0) { const sp = selSpan(); S.rows.splice(sp.lo, sp.end - sp.lo); S.anchor = null; S.sel = -1; renderRows(); }
   else return;
   e.preventDefault();
@@ -1847,7 +1848,25 @@ function setHints(on) {
   placeHelp();
 }
 setHints(store.get('wv.hints') !== '0');
-$('#sideBtn').onclick = () => setBrowser($('#app').classList.contains('no-browser'));
+// The signal list's button: in a wide window it shows or hides the list
+// beside the waves; in a narrow one, where the list is hidden for room, it
+// opens the list over the waves (the same button in both, the user's
+// choice, 2026-11-22, over a separate Signals button).
+const narrow = window.matchMedia('(max-width: 760px)');
+function toggleBrowser() {
+  if (narrow.matches) {
+    const open = $('#app').classList.toggle('show-browser');
+    $('#sideBtn').classList.toggle('on', open);
+  } else {
+    setBrowser($('#app').classList.contains('no-browser'));
+  }
+}
+narrow.addEventListener('change', () => {
+  $('#app').classList.remove('show-browser');
+  $('#sideBtn').classList.toggle('on', !narrow.matches && !$('#app').classList.contains('no-browser'));
+});
+if (narrow.matches) $('#sideBtn').classList.remove('on');
+$('#sideBtn').onclick = toggleBrowser;
 
 function placeGrips() {
   const head = document.querySelector('.cols.head'), status = $('#status'), viewer = $('#viewer');

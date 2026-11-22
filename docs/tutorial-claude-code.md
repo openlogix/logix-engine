@@ -226,7 +226,8 @@ it could run at.
 Make a diagram of the design and open it.
 ```
 
-The engine draws the design as a schematic and opens it in your web browser:
+The engine draws the design as a schematic and opens it in a window of its own,
+Logix Diagrams:
 the counter's register, the adder that counts, and the pins.
 
 ![The diagram of the blinky design: the clock, the counter and its adder, and the RGB LED's pins](images/diagram.png)
@@ -270,7 +271,9 @@ Claude explains what went wrong.
 Simulate the testbench and show me the waveforms.
 ```
 
-The waveform viewer opens in your web browser, with the testbench's signals.
+The waveform viewer opens in a window of its own, Logix Waveforms, with the
+testbench's signals. It saves your view (the signals shown, the zoom) as you
+change it, so the next simulation opens the same way.
 
 ![The waveform viewer showing a testbench's signals over time: the clock, the LED outputs and the design's counter](images/waveforms.png)
 
@@ -286,7 +289,7 @@ Try it:
 - **Cycles** counts time in clock cycles instead of nanoseconds.
 - **Show a signal:** tick its box in the signal list on the left.
 
-Close the browser tab when you're done.
+Close the window when you're done. The windows also close when Claude Code ends.
 
 ## 9. Program the board
 

@@ -6,6 +6,7 @@ pub mod build;
 pub mod check_updates;
 pub mod clean_build;
 pub mod clean_logs;
+pub mod close_viewers;
 pub mod compare_boards;
 pub mod diagram;
 pub mod download_packages;
@@ -152,6 +153,7 @@ pub fn all_definitions() -> Vec<Tool> {
         definition::<open_waveform::OpenWaveform>(),
         definition::<format::Format>(),
         definition::<diagram::Diagram>(),
+        definition::<close_viewers::CloseViewers>(),
         definition::<build::Build>(),
         definition::<clean_build::CleanBuild>(),
         definition::<clean_logs::CleanLogs>(),
@@ -232,6 +234,7 @@ pub async fn call(
     use check_updates::CheckUpdates;
     use clean_build::CleanBuild;
     use clean_logs::CleanLogs;
+    use close_viewers::CloseViewers;
     use compare_boards::CompareBoards;
     use diagram::Diagram;
     use download_packages::DownloadPackages;
@@ -278,6 +281,7 @@ pub async fn call(
         CleanBuild::NAME,
         OpenWaveform::NAME,
         CleanLogs::NAME,
+        CloseViewers::NAME,
         OpenSerial::NAME,
         ReadSerial::NAME,
         WriteSerial::NAME,
@@ -398,6 +402,13 @@ pub async fn call(
             display,
             with_commands(
                 parse_input::<CleanLogs>(arguments).and_then(|i| clean_logs::run(state, i)),
+                call,
+            ),
+        ),
+        CloseViewers::NAME => to_call_result(
+            display,
+            with_commands(
+                parse_input::<CloseViewers>(arguments).and_then(|i| close_viewers::run(state, i)),
                 call,
             ),
         ),

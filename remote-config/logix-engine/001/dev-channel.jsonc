@@ -1,0 +1,28 @@
+// What Logix Engine on config 001 uses on the dev channel: engine releases
+// assign.jsonc doesn't list (the daily pre-releases, and local builds).
+// Deleted at the next promotion, when prod catches up. Change it only by
+// pull request, saying why in a comment.
+{
+  "$schema": "https://www.openlogix.org/schemas/logix-remote-config-v1.json",
+  // The newest engine pre-release.
+  "latest": {
+    "repo": "openlogix/logix-engine",
+    "release": "2026-11-22",
+    "file": "logix-engine-${PLATFORM}-${YYYYMMDD}.tgz"
+  },
+  "dependencies": {
+    // 2026-11-22: Logix Viewer (logix-core#2, #3), the apps the engine
+    // shows its pages in (Logix Waveforms, Logix Diagrams), for
+    // logix-engine#60.
+    "logix-core": {
+      "repo": "openlogix/logix-core",
+      "release": "2026-11-22",
+      "file": "logix-core-${PLATFORM}-${YYYYMMDD}.tgz"
+    },
+    "logix-catalog": {
+      "repo": "openlogix/logix-catalog",
+      "release": "2026-11-19",
+      "file": "logix-catalog-${YYYYMMDD}.tgz"
+    }
+  }
+}

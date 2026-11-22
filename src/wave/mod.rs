@@ -494,12 +494,22 @@ pub fn page(data: &PageData) -> String {
 
 /// Writes the page.
 pub fn write_page(path: &Path, data: &PageData) -> Result<(), ToolError> {
-    std::fs::write(path, page(data)).map_err(|e| {
+    write_atomically(path, page(data).as_bytes()).map_err(|e| {
         ToolError::engine(format!(
             "Can't write the waveform viewer {}: {e}",
             path.display()
         ))
     })
+}
+
+/// Writes a file under a temporary name next to it, then renames it into
+/// place, so a window reloading the page never reads half of it.
+pub fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".writing");
+    let tmp = PathBuf::from(tmp);
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path)
 }
 
 /// Checks the view file: a relative path ending in .view, in a folder that

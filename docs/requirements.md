@@ -50,7 +50,7 @@ An open source, low-level FPGA engine that makes it easy to build a wide range o
 The engine is not:
 
 - **An IDE or editor.** No editing, code navigation or live checking as the user types. Hosts do that, and can run packaged tools such as the Verible language server themselves.
-- **A user interface.** No windows or dialogs. The one exception is opening a page, such as the waveform viewer's or the diagram's, in the default web browser when a local host asks.
+- **A user interface.** No windows or dialogs in the engine itself. The one exception is showing a page, such as the waveform viewer's or the diagram's, in Logix Viewer (below) when a local host asks.
 - **A project manager.** No project files, settings, environments or examples. The host owns its project model.
 - **A design-format converter.** Block diagrams, Amaranth, LiteX and other formats are turned into Verilog or SystemVerilog by the host before they reach the engine.
 - **A network server.** Remote access goes only through the separate, optional network adapter.
@@ -145,7 +145,7 @@ The engine must support at least the capabilities below, which today's open sour
 | Constraint files | Each family's native format, such as `.pcf` for iCE40, `.lpf` for ECP5 and `.cst` for Gowin |
 | Build toolchains | Synthesis, place and route, and bitstream generation for each family, with open source tools such as Yosys, nextpnr, IceStorm, Project Trellis and Apicula |
 | Programmers | The programmers of the supported boards, today openFPGALoader, iceprog, dfu-util and icesprog, including board-specific programmer options. Boards whose programmers are legacy are dropped, with the reason recorded (see Milestone 2) |
-| Simulation and testing | Running testbenches and producing waveform files. When a local frontend asks, opening the waveform viewer's page in the default web browser, so it outlives the session. The request is refused for remote frontends, which view waveforms on their own |
+| Simulation and testing | Running testbenches and producing waveform files. When a local frontend asks, showing the waveform viewer's page in Logix Waveforms (Logix Viewer, below). The request is refused for remote frontends, which view waveforms on their own |
 | Lint and format | Checking and formatting HDL source, with Verilator and Verible |
 | Reports and graphs | Resource utilization and timing reports, and design graphs in SVG, PNG and PDF |
 | Catalog | Boards and FPGAs, with each board's variants. A project's custom definitions are sent by the host in requests, as described in [Custom definitions](#custom-definitions) |
@@ -399,11 +399,11 @@ The requirements keep the numbers they had in review (R1 to R40), so earlier dis
 **Opening a waveform**
 
 - **R1.** `simulate` opens the viewer in place of GTKWave whenever the client asks (`open_viewer`), the same for every client, AI agents included.
-- **R2.** A host with its own window, such as Logix IDE, shows the page itself, in a window of its own per project, as the diagram. Other clients get it in the default browser.
+- **R2.** A host with its own window, such as Logix IDE, shows the page itself, in a window of its own per project, as the diagram. Other clients get it in Logix Waveforms (Logix Viewer, below; it was the default browser until 2026-11-22).
 - **R3.** A separate engine tool opens the viewer on any waveform file a client names: another simulator's, an earlier run's, or one an agent made. The file is only read.
 - **R4.** It reads VCD files, the format every simulator writes.
 - **R5.** The viewer stays open after the request returns, and after the client or the engine exits.
-- **R6.** Simulating the same testbench again updates the open viewer in place, keeping the signals and the view, instead of opening another window (only in hosts with their own window: a page opened from a file in a browser can't learn of a new run, so there a new tab opens).
+- **R6.** Simulating the same testbench again updates the open viewer in place, keeping the signals and the view, instead of opening another window (in hosts with their own window and in Logix Viewer; a page opened from a file in a plain browser can't learn of a new run, so there a new tab opens).
 - **R7.** A typical testbench's waveform (every example's is under 1 MB) opens in under 2 seconds.
 - **R8.** A client can ask it to open at a time range and with chosen signals, so an agent can say "look here" and show it.
 
@@ -471,11 +471,26 @@ The requirements keep the numbers they had in review (R1 to R40), so earlier dis
 
 **Design** (proposed 2026-11-21, with the requirements; changed as building shows):
 
-- `simulate` writes the viewer page next to the waveform in the build folder (`viewer_file`, `<testbench>.html`) and opens it in the default browser when `open_viewer` asks; `view_file` names the saved view (`<testbench>.view`). Built 2026-11-21 (`src/wave/`). GTKWave's `viewer` option and `layout_file` went on 2026-11-22, once Logix IDE showed the page (R32). A new tool, `open_waveform`, opens any `.vcd` file, optionally at a time range and with chosen signals (R3, R8): built 2026-11-21, its page in the request's build folder or the engine's own folder (`waveforms/`, the 20 newest), and requested signals the file lacks reported back.
+- `simulate` writes the viewer page next to the waveform in the build folder (`viewer_file`, `<testbench>.html`) and opens it in Logix Waveforms when `open_viewer` asks (in the default browser until 2026-11-22); `view_file` names the saved view (`<testbench>.view`). Built 2026-11-21 (`src/wave/`). GTKWave's `viewer` option and `layout_file` went on 2026-11-22, once Logix IDE showed the page (R32). A new tool, `open_waveform`, opens any `.vcd` file, optionally at a time range and with chosen signals (R3, R8): built 2026-11-21, its page in the request's build folder or the engine's own folder (`waveforms/`, the 20 newest), and requested signals the file lacks reported back.
 - The testbench's declaration order (R9) and each signal's line (R27) come from the testbench's source, read by a small reader in the engine (`wave::declared_signals`: the module's own reg, wire, integer… declarations, outside tasks, functions and blocks), which needs no program to run.
 - Failures (R25, R26, R35) are the `$error` and assertion lines the engine already finds, with their time, file and line, put into the page as markers.
 - Save as image (R34, built 2026-11-21) records the page's own drawing as SVG (the canvas operations turned into SVG elements, so the image is the view as it shows), and PNG draws that SVG at twice the size; a host gets the file to save (`logix-wave:save-file`), a browser downloads it.
 - The page is the engine's, built into it as the diagram page is (`src/wave/viewer.html`, its data written in as JSON). The engine only reads a `.view` file and writes none: the page's default view is the testbench's own signals, so R24 holds by itself. It has no access to the host: as with the diagram, a host learns of a saved view or a source-line request through a navigation it cancels, and Logix IDE keeps the view as a project file. In a browser it isn't saved.
+
+## Logix Viewer
+
+Engine users without a window of their own, such as AI agents and later Logix CLI, see the engine's pages in Logix Viewer, an Open Logix app in logix-core (its `apps/viewer/`), instead of the web browser (decided with the user on 2026-11-22, from a requirements doc reviewed in chat and a working app the user tried; that doc is obsolete, this section is the source). Why: a browser page can't save the waveform view, each run opened another tab, and a browser's lean app window needs Chrome or Edge. It's part of Milestone 6, a cleanup of engine users' experience, not a new feature (the user's decision).
+
+- **R49.** One program, `logix-viewer`, runs as one app per kind of page, each with its own name and Dock icon (taskbar on Windows, panel on Linux): Logix Waveforms and Logix Diagrams (plural, the user's choice), and the generic Logix Viewer for kinds without their own app yet. A new kind is one entry in `apps.json` and its icon.
+- **R50.** One running copy of each app per user, however many engines run, so at most two Dock icons today; the first engine that needs it starts it, and the others reach it over a per-user local socket. Its Dock icon's menu lists its windows.
+- **R51.** One window per page file (its key is the page's path), reloaded in place with the view kept when the page is shown again (R6). A window belongs to the engine that showed it last; `close_viewers` closes an engine's windows, and an engine's exit, even when killed, closes them; another engine's windows stay.
+- **R52.** The client decides whether a page opens (`open_viewer`, `open`), and whether and where the view is saved (`view_file`, default `<testbench>.view` in the build folder; `save_view`, default true). Logix Viewer writes only the files the engine declared for a page.
+- **R53.** No fallback: when the app can't start, such as on Linux without WebKitGTK or with no screen, the tool succeeds with its results and its page, and `viewer_problem` says why and what fixes it.
+- **R54.** Pages use one contract, `window.logixHost` (version 1: `saveAs`, `writeDeclared`, `openSource`, `openUrl`), offered by Logix Viewer and, later, by Logix IDE's windows, so a page is written once. A page needing a newer contract than the running app has gets `viewer_problem` asking to close the app's windows.
+- **R55.** Windows open at half the screen's width and 60% of its height, or at the size the person last gave the app's windows (kept per app in `~/.logix/viewer/`), at most 80% of the screen; each new one one step down and to the right of the app's newest, back to the top left when it would run off the screen (the user's requests, 2026-11-22). Pages are written to a temporary name and renamed into place, so a reload never reads half a page. Diagram pages are named by their starting module (`diagram-main.html`), one window each.
+- **R56.** Icons: variants of Logix Engine's icon, its purple tile and chip enlarged, with a square wave (Logix Waveforms), one block with a wire in and out (Logix Diagrams) or three equal lines of text (Logix Viewer) inside (the user's choice, 2026-11-22). No signing of its own: logix-core is downloaded by the engine, so its programs aren't quarantined.
+
+Logix IDE keeps its own Waveforms and Diagram windows (they belong to the project: views saved as project edits, source lines opening in its editor) and calls the engine with `open_viewer` and `open` false.
 
 ## Acceptance and phasing
 

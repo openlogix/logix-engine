@@ -132,6 +132,7 @@ pub fn developer_settings() -> Vec<DeveloperSetting> {
         crate::packages::remote_config::CHANNEL_VAR,
         crate::packages::remote_config::DEV_REMOTE_CONFIG_VAR,
         crate::catalog::DEV_CATALOG_VAR,
+        crate::viewer::DEV_VIEWER_VAR,
     ]
     .iter()
     .filter_map(|name| {
