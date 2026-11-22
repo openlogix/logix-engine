@@ -73,6 +73,12 @@ pub struct GetEngineInfoOutput {
     pub boards_schema: String,
     /// The board catalog the engine reads: its Logix Catalog version.
     pub catalog: CatalogInfo,
+    /// The file extensions of the HDL files the tools take, without the
+    /// dot, so a frontend knows which files are sources: source (design
+    /// and testbench files: v, sv) and include (files they include: vh,
+    /// svh). Pin files are per FPGA family: get_catalog's families give
+    /// each its constraint_extension and constraint_comment.
+    pub hdl_extensions: HdlExtensions,
     /// The developer settings in effect: the environment variables the
     /// engine reads for development and diagnostics (LOGIX_ENGINE_CHANNEL,
     /// LOGIX_ENGINE_DEV_REMOTE_CONFIG, LOGIX_ENGINE_DEV_CATALOG_FOLDER), each
@@ -91,6 +97,26 @@ pub struct GetEngineInfoOutput {
     /// when any is set, then the version tree. Show it as is; its wording
     /// can change in any version, so programs read the fields above.
     pub report: String,
+}
+
+/// HDL file extensions, without the dot.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HdlExtensions {
+    /// Design and testbench files: v (Verilog) and sv (SystemVerilog).
+    pub source: Vec<String>,
+    /// Files they include: vh and svh.
+    pub include: Vec<String>,
+}
+
+impl HdlExtensions {
+    pub fn get() -> Self {
+        let list = |l: &[&str]| l.iter().map(|e| e.to_string()).collect();
+        HdlExtensions {
+            source: list(crate::format::SOURCE_EXTENSIONS),
+            include: list(crate::format::INCLUDE_EXTENSIONS),
+        }
+    }
 }
 
 /// The engine's remote config: which config file it reads, from where, and
@@ -223,6 +249,7 @@ pub fn run(
                 local: false,
             },
         },
+        hdl_extensions: HdlExtensions::get(),
         developer_settings: crate::versions::developer_settings(),
         versions: crate::versions::engine_entry(state),
         report: String::new(),
@@ -332,6 +359,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hdl_extensions_are_what_the_formatter_takes() {
+        let e = HdlExtensions::get();
+        assert_eq!(e.source, ["v", "sv"]);
+        assert_eq!(e.include, ["vh", "svh"]);
+        let all: Vec<String> = e
+            .source
+            .iter()
+            .chain(&e.include)
+            .map(|x| format!(".{x}"))
+            .collect();
+        assert_eq!(all, crate::format::EXTENSIONS);
+    }
+
+    #[test]
     fn the_report_lists_the_facts_then_the_versions() {
         use crate::versions::{DeveloperSetting, VersionEntry, VersionKind};
         let leaf = |name: &str, version: &str, notes: &[&str]| VersionEntry {
@@ -368,6 +409,7 @@ mod tests {
                 read_at: Some("2026-11-08T09:30:00Z".into()),
             },
             boards_schema: crate::catalog::BOARDS_SCHEMA.into(),
+            hdl_extensions: HdlExtensions::get(),
             catalog: CatalogInfo {
                 version: "2026.11.08".into(),
                 local: false,

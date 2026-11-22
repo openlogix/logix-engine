@@ -80,6 +80,10 @@
           "description": "The board catalog the engine reads: its Logix Catalog version.",
           "$ref": "#/$defs/CatalogInfo"
         },
+        "hdl_extensions": {
+          "description": "The file extensions of the HDL files the tools take, without the\ndot, so a frontend knows which files are sources: source (design\nand testbench files: v, sv) and include (files they include: vh,\nsvh). Pin files are per FPGA family: get_catalog's families give\neach its constraint_extension and constraint_comment.",
+          "$ref": "#/$defs/HdlExtensions"
+        },
         "developer_settings": {
           "description": "The developer settings in effect: the environment variables the\nengine reads for development and diagnostics (LOGIX_ENGINE_CHANNEL,\nLOGIX_ENGINE_DEV_REMOTE_CONFIG, LOGIX_ENGINE_DEV_CATALOG_FOLDER), each\nwith its value, when set. Omitted when none is, as for users.",
           "type": "array",
@@ -110,6 +114,7 @@
         "remote_config",
         "boards_schema",
         "catalog",
+        "hdl_extensions",
         "versions",
         "report"
       ],
@@ -255,6 +260,31 @@
           "additionalProperties": false,
           "required": [
             "version"
+          ]
+        },
+        "HdlExtensions": {
+          "description": "HDL file extensions, without the dot.",
+          "type": "object",
+          "properties": {
+            "source": {
+              "description": "Design and testbench files: v (Verilog) and sv (SystemVerilog).",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "include": {
+              "description": "Files they include: vh and svh.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "include"
           ]
         },
         "DeveloperSetting": {
@@ -756,7 +786,7 @@
   },
   {
     "name": "get_catalog",
-    "description": "Returns board and FPGA definitions from the engine's read-only catalog. Use it to find a board's catalog ID, such as icesugar-1-5, to pass as the board of other tools, or to see a board's FPGA and how it is programmed. Each section is returned only when asked for: {\"boards\": {\"fetch\": true}} returns all boards, and {\"boards\": {\"fetch\": true, \"ids\": [\"icesugar-1-5\"]}} only the listed ones. Boards include those of the request's custom_boards_folder, marked custom, a custom board replacing the catalog board with its ID. The families section gives each FPGA family's name for people, the extension of its pin constraint files and the toolchain that builds it. Board descriptions are the boards' names for people.",
+    "description": "Returns board and FPGA definitions from the engine's read-only catalog. Use it to find a board's catalog ID, such as icesugar-1-5, to pass as the board of other tools, or to see a board's FPGA and how it is programmed. Each section is returned only when asked for: {\"boards\": {\"fetch\": true}} returns all boards, and {\"boards\": {\"fetch\": true, \"ids\": [\"icesugar-1-5\"]}} only the listed ones. Boards include those of the request's custom_boards_folder, marked custom, a custom board replacing the catalog board with its ID. The families section gives each FPGA family's name for people, the extension of its pin constraint files, their comment marker and the toolchain that builds it. Board descriptions are the boards' names for people; resources come with words for people (type_label, pins_text, notes_text), drive requirements with a text, and FPGAs with a label.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "GetCatalogInput",
@@ -899,10 +929,10 @@
           }
         },
         "fpgas": {
-          "description": "FPGA definitions, by catalog ID.",
+          "description": "FPGA definitions, by catalog ID, each with its label for people.",
           "type": "object",
           "additionalProperties": {
-            "$ref": "#/$defs/FpgaDefinition"
+            "$ref": "#/$defs/CatalogFpga"
           }
         },
         "families": {
@@ -1154,6 +1184,13 @@
                       "type": "null"
                     }
                   ]
+                },
+                "text": {
+                  "description": "What it asks, for people, such as \"Drive wifi_gpio0 (L2) high:\nKeeps the ESP32 from resetting the board.\" Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 }
               },
               "additionalProperties": false,
@@ -1306,6 +1343,27 @@
                     "null"
                   ]
                 },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "ai_hints": {
                   "description": "Hints for AI agents, and people, writing designs that use\nthis resource: only what its other fields can't express, such\nas an LED on the FPGA's RGB LED driver pins. Advice to weigh,\nnot instructions. Short lines, always last. Omitted when none.",
                   "type": [
@@ -1387,6 +1445,27 @@
                     "null"
                   ]
                 },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "ai_hints": {
                   "description": "Hints for AI agents, and people, writing designs that use\nthis resource: only what its other fields can't express, such\nas an LED on the FPGA's RGB LED driver pins. Advice to weigh,\nnot instructions. Short lines, always last. Omitted when none.",
                   "type": [
@@ -1463,6 +1542,27 @@
                 },
                 "user_notes": {
                   "description": "Warnings and missing information for users.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
                   "type": [
                     "string",
                     "null"
@@ -1554,6 +1654,27 @@
                     "null"
                   ]
                 },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "ai_hints": {
                   "description": "Hints for AI agents, and people, writing designs that use\nthis resource: only what its other fields can't express, such\nas an LED on the FPGA's RGB LED driver pins. Advice to weigh,\nnot instructions. Short lines, always last. Omitted when none.",
                   "type": [
@@ -1635,6 +1756,27 @@
                     "null"
                   ]
                 },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "ai_hints": {
                   "description": "Hints for AI agents, and people, writing designs that use\nthis resource: only what its other fields can't express, such\nas an LED on the FPGA's RGB LED driver pins. Advice to weigh,\nnot instructions. Short lines, always last. Omitted when none.",
                   "type": [
@@ -1710,6 +1852,27 @@
                 },
                 "user_notes": {
                   "description": "Warnings and missing information for users.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
                   "type": [
                     "string",
                     "null"
@@ -1803,6 +1966,27 @@
                     "null"
                   ]
                 },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "ai_hints": {
                   "description": "Hints for AI agents, and people, writing designs that use\nthis resource: only what its other fields can't express, such\nas an LED on the FPGA's RGB LED driver pins. Advice to weigh,\nnot instructions. Short lines, always last. Omitted when none.",
                   "type": [
@@ -1867,6 +2051,27 @@
                 },
                 "user_notes": {
                   "description": "Warnings and missing information for users.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
                   "type": [
                     "string",
                     "null"
@@ -1943,6 +2148,27 @@
                     "null"
                   ]
                 },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "ai_hints": {
                   "description": "Hints for AI agents, and people, writing designs that use\nthis resource: only what its other fields can't express, such\nas an LED on the FPGA's RGB LED driver pins. Advice to weigh,\nnot instructions. Short lines, always last. Omitted when none.",
                   "type": [
@@ -2011,6 +2237,27 @@
                     "null"
                   ]
                 },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "ai_hints": {
                   "description": "Hints for AI agents, and people, writing designs that use\nthis resource: only what its other fields can't express, such\nas an LED on the FPGA's RGB LED driver pins. Advice to weigh,\nnot instructions. Short lines, always last. Omitted when none.",
                   "type": [
@@ -2051,8 +2298,8 @@
             "blue"
           ]
         },
-        "FpgaDefinition": {
-          "description": "An FPGA: its family, part and toolchain parameters.",
+        "CatalogFpga": {
+          "description": "An FPGA as get_catalog returns it: its definition, and its name for\npeople.",
           "type": "object",
           "properties": {
             "family": {
@@ -2105,14 +2352,18 @@
                 "string",
                 "null"
               ]
+            },
+            "label": {
+              "description": "The FPGA for people: its family, part number and size, such as\n\"Lattice iCE40 ICE40HX4K-TQ144 (8k)\".",
+              "type": "string"
             }
           },
-          "additionalProperties": false,
           "required": [
             "family",
             "part_number",
             "size",
-            "nextpnr_device"
+            "nextpnr_device",
+            "label"
           ]
         },
         "Family": {
@@ -2176,6 +2427,10 @@
               "description": "The extension of the family's pin constraint files, without the\ndot, such as pcf: the build takes only this format for the family's\nboards.",
               "type": "string"
             },
+            "constraint_comment": {
+              "description": "What starts a comment line in the family's pin constraint files: #\nfor .pcf, .lpf and .xdc, // for .cst. The formats have no block\ncomment every tool accepts, so editors comment out lines with it.",
+              "type": "string"
+            },
             "order": {
               "description": "The family's place in the engine's order (0 first), for listing\nfamilies in a fixed order.",
               "type": "integer",
@@ -2191,6 +2446,7 @@
             "label",
             "short_label",
             "constraint_extension",
+            "constraint_comment",
             "order",
             "toolchain"
           ]

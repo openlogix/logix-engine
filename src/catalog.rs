@@ -700,6 +700,16 @@ impl Toolchain {
         }
     }
 
+    /// What starts a comment line in the toolchain's pin files: # for PCF,
+    /// LPF and XDC (Tcl), // for CST. Only line comments: the formats have
+    /// no block comment every tool accepts.
+    pub fn constraint_comment(self) -> &'static str {
+        match self {
+            Toolchain::Gowin => "//",
+            Toolchain::Ice40 | Toolchain::Ecp5 | Toolchain::Openxc7 => "#",
+        }
+    }
+
     /// The extension of the constraint file format, without the dot. Each
     /// place-and-route tool reads only its own format, and takes the format
     /// from its command-line option, not the file name.

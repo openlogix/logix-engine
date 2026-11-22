@@ -148,6 +148,11 @@ pub struct Drive {
     /// Where the facts come from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<Source>,
+    /// What it asks, for people, such as "Drive wifi_gpio0 (L2) high:
+    /// Keeps the ESP32 from resetting the board." Only in results
+    /// (get_catalog): in a board file it's a problem.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
 }
 
 /// Something a person must do to the hardware. Generated designs leave out
@@ -227,6 +232,21 @@ macro_rules! resource_type {
             /// Warnings and missing information for users.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub user_notes: Option<String>,
+            /// The resource's type for people, such as "Clock", "LEDs" or
+            /// "RGB LED" (plural when it has several pins). Only in results
+            /// (get_catalog): in a board file it's a problem.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub type_label: Option<String>,
+            /// Its pins for people, labeled where a type has several kinds,
+            /// such as "R 39, G 40, B 41" or "TX 6, RX 7". Only in results.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub pins_text: Option<String>,
+            /// Its notes for people, as one text: the clock's frequency,
+            /// the active level, the I/O standard, what it needs ("Needs:
+            /// …") and user_notes, such as "12 MHz. Active low". Only in
+            /// results; omitted when there are none.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub notes_text: Option<String>,
             /// Hints for AI agents, and people, writing designs that use
             /// this resource: only what its other fields can't express, such
             /// as an LED on the FPGA's RGB LED driver pins. Advice to weigh,
@@ -362,7 +382,203 @@ pub enum Resource {
     Unclassified(Pins),
 }
 
+impl ActiveLevel {
+    /// "high" or "low".
+    pub fn word(self) -> &'static str {
+        match self {
+            ActiveLevel::High => "high",
+            ActiveLevel::Low => "low",
+        }
+    }
+}
+
+impl Requirement {
+    /// What it asks, for people: "Drive wifi_gpio0 (L2) high: Keeps the
+    /// ESP32 from resetting the board." for a drive, the setup's own text
+    /// for a setup.
+    pub fn text_for_people(&self) -> String {
+        match self {
+            Requirement::Drive(d) => format!(
+                "Drive {} ({}) {}{}",
+                d.name,
+                d.pins.join(", "),
+                d.level.word(),
+                d.why
+                    .as_deref()
+                    .map(|w| format!(": {w}"))
+                    .unwrap_or_default()
+            ),
+            Requirement::Setup(s) => s.text.clone(),
+        }
+    }
+
+    /// The requirement with its text for people, as get_catalog returns it
+    /// (a setup's own text is its text already).
+    pub fn with_text(&self) -> Requirement {
+        match self {
+            Requirement::Drive(d) => Requirement::Drive(Drive {
+                text: Some(self.text_for_people()),
+                ..d.clone()
+            }),
+            Requirement::Setup(_) => self.clone(),
+        }
+    }
+}
+
+/// A pin list for people: "39, 40, 41", an unwired header pin as "–".
+fn pin_list<'a>(pins: impl IntoIterator<Item = Option<&'a str>>) -> String {
+    pins.into_iter()
+        .map(|p| p.unwrap_or("–"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Pins labeled by kind, such as "R 39, G 40, B 41", leaving out the ones
+/// a resource doesn't have.
+fn labeled(pins: &[(&str, Option<&String>)]) -> String {
+    pins.iter()
+        .filter_map(|(label, pin)| pin.map(|p| format!("{label} {p}")))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 impl Resource {
+    /// The resource with its texts for people (type_label, pins_text,
+    /// notes_text, and each requirement's text), as get_catalog returns
+    /// it: the words frontends showed on their own before (Logix IDE's
+    /// Board Explorer; moved here 2026-11-22).
+    pub fn with_texts(&self) -> Resource {
+        let mut r = self.clone();
+        let (type_label, pins_text) = self.type_and_pins();
+        let notes = self.notes_text();
+        let (t, p, n, requires) = r.texts_mut();
+        *t = Some(type_label);
+        *p = Some(pins_text);
+        *n = (!notes.is_empty()).then_some(notes);
+        *requires = requires.iter().map(Requirement::with_text).collect();
+        r
+    }
+
+    /// The type and the pins for people.
+    fn type_and_pins(&self) -> (String, String) {
+        let one_or_many =
+            |pins: usize, one: &str, many: &str| if pins > 1 { many } else { one }.to_string();
+        let list = |pins: &[String]| pin_list(pins.iter().map(|p| Some(p.as_str())));
+        match self {
+            Resource::Clock(c) => ("Clock".into(), c.pin.clone()),
+            Resource::Leds(p) => (one_or_many(p.pins.len(), "LED", "LEDs"), list(&p.pins)),
+            Resource::Buttons(p) => (
+                one_or_many(p.pins.len(), "Button", "Buttons"),
+                list(&p.pins),
+            ),
+            Resource::Switches(p) => (
+                one_or_many(p.pins.len(), "Switch", "Switches"),
+                list(&p.pins),
+            ),
+            Resource::RgbLed(r) => (
+                "RGB LED".into(),
+                labeled(&[
+                    ("R", Some(&r.red)),
+                    ("G", Some(&r.green)),
+                    ("B", Some(&r.blue)),
+                ]),
+            ),
+            Resource::LedMatrix(m) => {
+                let colors = labeled(&[
+                    ("R", Some(&m.colors.red)),
+                    ("G", Some(&m.colors.green)),
+                    ("B", Some(&m.colors.blue)),
+                ]);
+                ("LED matrix".into(), format!("{}; {colors}", list(&m.leds)))
+            }
+            Resource::Uart(u) => (
+                "UART".into(),
+                labeled(&[
+                    ("TX", Some(&u.tx)),
+                    ("RX", Some(&u.rx)),
+                    ("RTS", u.rts.as_ref()),
+                    ("CTS", u.cts.as_ref()),
+                ]),
+            ),
+            Resource::Pmod(p) => ("PMOD".into(), list(&p.pins)),
+            Resource::Header(h) => (
+                "Header".into(),
+                pin_list(h.pins.iter().map(|p| p.as_deref())),
+            ),
+            Resource::Unclassified(p) => ("Other pins".into(), list(&p.pins)),
+        }
+    }
+
+    /// The notes for people: the clock's frequency, the active level, the
+    /// I/O standard, what it needs and its user notes, as one text.
+    fn notes_text(&self) -> String {
+        let (mhz, active, user_notes) = match self {
+            Resource::Clock(c) => (Some(c.mhz), None, &c.user_notes),
+            Resource::Leds(p) | Resource::Buttons(p) | Resource::Switches(p) => {
+                (None, p.active, &p.user_notes)
+            }
+            Resource::RgbLed(r) => (None, r.active, &r.user_notes),
+            Resource::LedMatrix(m) => (None, m.active, &m.user_notes),
+            Resource::Uart(u) => (None, None, &u.user_notes),
+            Resource::Pmod(p) | Resource::Unclassified(p) => (None, None, &p.user_notes),
+            Resource::Header(h) => (None, None, &h.user_notes),
+        };
+        let mut parts: Vec<String> = Vec::new();
+        parts.extend(mhz.map(|m| format!("{m} MHz")));
+        parts.extend(active.map(|a| format!("Active {}", a.word())));
+        parts.extend(self.io_standard().map(IoStandard::name));
+        parts.extend(
+            self.requires()
+                .iter()
+                .map(|q| format!("Needs: {}", q.text_for_people())),
+        );
+        parts.extend(user_notes.clone());
+        parts.join(". ")
+    }
+
+    /// The fields only the engine writes that are set, by name: a board
+    /// file can't set them.
+    fn engine_fields(&self) -> Vec<&'static str> {
+        let mut r = self.clone();
+        let (t, p, n, _) = r.texts_mut();
+        [("type_label", t), ("pins_text", p), ("notes_text", n)]
+            .into_iter()
+            .filter(|(_, v)| v.is_some())
+            .map(|(name, _)| name)
+            .collect()
+    }
+
+    /// The fields for people and the requirements, to fill them in.
+    #[allow(clippy::type_complexity)]
+    fn texts_mut(
+        &mut self,
+    ) -> (
+        &mut Option<String>,
+        &mut Option<String>,
+        &mut Option<String>,
+        &mut Requires,
+    ) {
+        macro_rules! fields {
+            ($r:expr) => {
+                (
+                    &mut $r.type_label,
+                    &mut $r.pins_text,
+                    &mut $r.notes_text,
+                    &mut $r.requires,
+                )
+            };
+        }
+        match self {
+            Resource::Clock(c) => fields!(c),
+            Resource::Leds(p) | Resource::Buttons(p) | Resource::Switches(p) => fields!(p),
+            Resource::RgbLed(r) => fields!(r),
+            Resource::LedMatrix(m) => fields!(m),
+            Resource::Uart(u) => fields!(u),
+            Resource::Pmod(p) | Resource::Unclassified(p) => fields!(p),
+            Resource::Header(h) => fields!(h),
+        }
+    }
+
     /// Its type's place in a board's resources: the order the enum declares.
     fn rank(&self) -> u8 {
         match self {
@@ -494,6 +710,10 @@ fn is_identifier(s: &str) -> bool {
 /// such as "pins/1", or "" for the name itself, message), for the catalog's
 /// checks and custom boards' diagnostics. `family` is the board's FPGA family,
 /// when known.
+/// The problem with a field only the engine writes (the words for people
+/// get_catalog adds), when a board file sets it.
+const ENGINE_FIELD: &str = "The engine writes this field in get_catalog's results: leave it out.";
+
 pub fn problems(resources: &Resources, family: Option<Family>) -> Vec<(String, String, String)> {
     let mut out = Vec::new();
     let mut names: std::collections::BTreeSet<String> = resources.keys().cloned().collect();
@@ -518,6 +738,9 @@ pub fn problems(resources: &Resources, family: Option<Family>) -> Vec<(String, S
         }
         for (field, text) in requirement_problems(r.requires(), family, &mut names) {
             add(&format!("requires/{field}"), text);
+        }
+        for field in r.engine_fields() {
+            add(field, ENGINE_FIELD.into());
         }
         match r {
             Resource::Clock(c) if !(c.mhz > 0.0 && c.mhz.is_finite()) => {
@@ -611,6 +834,9 @@ fn requirement_problems(
                 }
                 if let Some(text) = io_standard_problem(d.io_standard, family) {
                     add("io_standard", text);
+                }
+                if d.text.is_some() {
+                    add("text", ENGINE_FIELD.into());
                 }
                 if d.why.as_deref().is_some_and(|w| w.trim().is_empty()) {
                     add("why", "Say why, or leave it out.".into());
