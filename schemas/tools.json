@@ -3046,7 +3046,7 @@
   },
   {
     "name": "simulate",
-    "description": "Simulates one testbench with Icarus Verilog and opens its waveform in GTKWave: compiles the design files with the testbench, runs it to write the waveform (.vcd) into the build folder, then starts GTKWave detached and returns without waiting for it. The testbench must call $dumpvars and $finish, and must not call $dumpfile. GTKWave opens the layout file (.gtkw), which holds the signals shown; when it is missing, or is still a default one, the engine writes a default with the testbench's top-level signals, deleted again when GTKWave exits unless the user saved it; a layout the user saved is kept. Set open_viewer to false to only write the waveform, such as when no one is at the screen. It also writes Open Logix's own waveform viewer, a self-contained page with the waveform in it (viewer_file); set viewer to \"logix\" to open that page in the default web browser instead of GTKWave, where it shows the testbench's own signals, opens at the first failure, and keeps the user's view in view_file (<testbench>.view). A failing testbench runs to the end and is shown, with passed false and GTKWave's marker at the first failure in a default layout. Compile errors are a design error with diagnostics at file and line. To just check whether testbenches pass, use test.",
+    "description": "Simulates one testbench with Icarus Verilog and opens its waveform in Open Logix's waveform viewer: compiles the design files with the testbench, runs it to write the waveform (.vcd) into the build folder, writes the viewer, a self-contained page with the waveform in it (viewer_file), and opens it in the default web browser. The testbench must call $dumpvars and $finish, and must not call $dumpfile. The viewer shows the testbench's own signals, opens at the first failure, and keeps the user's view in view_file (<testbench>.view). Set open_viewer to false to only write the waveform and the page, such as when no one is at the screen or the host shows the page in a window of its own. A failing testbench runs to the end and is shown, with passed false. Compile errors are a design error with diagnostics at file and line. To just check whether testbenches pass, use test.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "SimulateInput",
@@ -3109,22 +3109,10 @@
           "description": "Where the compiled testbench and its waveform go, as an absolute path.\nOne of its last two folder names must contain \"build\", such as\n/home/user/proj/_build. It is created if needed.",
           "type": "string"
         },
-        "layout_file": {
-          "description": "The GTKWave layout file (.gtkw), relative to the source folder, such\nas main_tb.gtkw. GTKWave opens it and saves the user's changes to it.\nWhen it is missing or is still a default one, the engine writes a\ndefault there; a layout the user saved is never changed. Its folder\nmust exist. When omitted, the layout goes into the build folder, as\n<testbench>.gtkw.",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        },
         "open_viewer": {
-          "description": "Open the waveform in a viewer for the person at the screen. Defaults\nto true. False only writes the waveform, the layout and the viewer's\npage.",
+          "description": "Open the waveform viewer's page (viewer_file) in the default web\nbrowser, for the person at the screen. Defaults to true. False only\nwrites the waveform and the page, such as for a host that shows the\npage in a window of its own.",
           "type": "boolean",
           "default": true
-        },
-        "viewer": {
-          "description": "Which viewer open_viewer opens: \"gtkwave\" (the default for now), or\n\"logix\", Open Logix's own waveform viewer (viewer_file), in the\ndefault web browser. A host with a window of its own can show\nviewer_file itself, with open_viewer false.",
-          "$ref": "#/$defs/Viewer"
         },
         "view_file": {
           "description": "The view the waveform viewer opens and saves (the signals shown,\ntheir formats and colors, the zoom), relative to the source folder,\nsuch as main_tb.view. The engine only reads it: the viewer's page\nsaves it, through its host, or as a download in a browser. Its folder\nmust exist. When omitted or missing, the viewer opens its default\nview, the testbench's own signals.",
@@ -3237,21 +3225,6 @@
             "path",
             "as"
           ]
-        },
-        "Viewer": {
-          "description": "The waveform viewer simulate opens.",
-          "oneOf": [
-            {
-              "description": "GTKWave, from the core package.",
-              "type": "string",
-              "const": "gtkwave"
-            },
-            {
-              "description": "Open Logix's own waveform viewer, a page, in the default web browser.",
-              "type": "string",
-              "const": "logix"
-            }
-          ]
         }
       }
     },
@@ -3289,16 +3262,8 @@
           "description": "The waveform (.vcd), relative to the build folder.",
           "type": "string"
         },
-        "layout_file": {
-          "description": "The layout file GTKWave opens, as an absolute path.",
-          "type": "string"
-        },
-        "layout_created": {
-          "description": "True if the engine wrote a default layout, false if it kept one the\nuser saved.",
-          "type": "boolean"
-        },
         "viewer_opened": {
-          "description": "True if the viewer was started: GTKWave, or the waveform viewer's\npage in the web browser.",
+          "description": "True if the waveform viewer's page was opened in the web browser.",
           "type": "boolean"
         },
         "viewer_file": {
@@ -3321,8 +3286,6 @@
         "failure_count",
         "ending",
         "waveform_file",
-        "layout_file",
-        "layout_created",
         "viewer_opened",
         "viewer_file",
         "commands"

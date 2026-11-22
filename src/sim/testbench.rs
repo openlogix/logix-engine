@@ -70,9 +70,6 @@ pub struct TestbenchRun {
     /// The waveform, relative to the build folder, when the testbench wrote
     /// one.
     pub waveform_file: Option<String>,
-    /// When the first failure happened, in the waveform's time units, when
-    /// known.
-    pub first_failure_ticks: Option<u64>,
     /// How many failures the testbench reported. Diagnostics list the first
     /// MAX_FAILURES_LISTED.
     pub failure_count: u64,
@@ -387,10 +384,6 @@ pub async fn compile_and_run(
             .ok()
             .and_then(|f| parse::vvp_precision_ns(std::io::BufReader::new(f)))
     });
-    let first_failure_ticks = messages
-        .iter()
-        .find(|m| m.diagnostic.severity == Severity::Error)
-        .and_then(|m| m.ticks);
     let failure_count = messages
         .iter()
         .filter(|m| m.diagnostic.severity == Severity::Error)
@@ -426,7 +419,6 @@ pub async fn compile_and_run(
         diagnostics,
         output: to_multiline_text(&output),
         waveform_file: waveform.then(|| format!("{stem}.vcd")),
-        first_failure_ticks,
         failure_count: failure_count as u64,
     })
 }

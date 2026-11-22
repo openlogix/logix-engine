@@ -130,17 +130,10 @@ pub fn open_page(page: &Path) -> bool {
         ("xdg-open", vec![page.into()])
     };
     let dir = page.parent().unwrap_or(page);
-    match crate::sim::gtkwave::launch_detached(
-        Path::new(program),
-        &args,
-        dir,
-        Path::new("/usr/bin"),
-        None,
-        || {},
-    ) {
+    match crate::launch::launch_detached(Path::new(program), &args, dir) {
         Ok(()) => true,
         Err(e) => {
-            log::warn!("Can't open the diagram's page: {}", e.message);
+            log::warn!("Can't open the page {}: {e}", page.display());
             false
         }
     }

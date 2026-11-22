@@ -111,12 +111,6 @@ impl LogPlace {
     pub fn file(&self) -> PathBuf {
         self.folder.join(format!("{}.log", self.name))
     }
-
-    /// The log file of a program this one starts, such as `gtkwave`:
-    /// `<name>.<child>.log` in the same session folder.
-    pub fn child_file(&self, child: &str) -> PathBuf {
-        self.folder.join(format!("{}.{child}.log", self.name))
-    }
 }
 
 static PLACE: OnceLock<LogPlace> = OnceLock::new();
@@ -386,8 +380,8 @@ mod tests {
             assert!(!is_session_name(bad), "{bad}");
         }
         assert_eq!(
-            separator(t, "GTKWave started for hardware.vcd"),
-            "=== 2026-10-28 03:02:03 +02:00  GTKWave started for hardware.vcd ===\n"
+            separator(t, "Logix Engine started"),
+            "=== 2026-10-28 03:02:03 +02:00  Logix Engine started ===\n"
         );
     }
 
@@ -404,10 +398,6 @@ mod tests {
             name: "ide.engine".into(),
         };
         assert_eq!(place.file(), Path::new("/s/ide.engine.log"));
-        assert_eq!(
-            place.child_file("gtkwave"),
-            Path::new("/s/ide.engine.gtkwave.log")
-        );
     }
 
     #[test]

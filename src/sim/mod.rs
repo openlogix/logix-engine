@@ -8,7 +8,6 @@
 //! and included file. Includes are then found in the source folder, then in
 //! those folders.
 
-pub mod gtkwave;
 pub mod lint;
 pub mod parse;
 pub mod testbench;

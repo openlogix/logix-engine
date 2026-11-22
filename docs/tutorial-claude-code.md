@@ -267,24 +267,26 @@ Claude explains what went wrong.
 **AI prompt:**
 
 ```text
-Simulate the testbench and open the waveforms in GTKWave.
+Simulate the testbench and show me the waveforms.
 ```
 
-GTKWave, a waveform viewer, opens with the clock, the counter and the LED.
+The waveform viewer opens in your web browser, with the testbench's signals.
 
-![GTKWave showing a testbench's signals over time: the clock, the counter and the LEDs](images/gtkwave.png)
+![The waveform viewer showing a testbench's signals over time: the clock, the LED outputs and the design's counter](images/waveforms.png)
 
 Try it:
 
 - **Read the waves:** each row on the right is one signal over time, from
   left to right: the clock ticking, the counter counting up, and the LED
-  turning on and off as the counter's top bit changes.
-- **Zoom** with the zoom buttons in GTKWave's toolbar, to see single clock
-  cycles or the whole simulation.
-- **Add a signal:** select the testbench in the tree at the top left, select a
-  signal in the list below it, and click **Append**.
+  changing as the counter's top bits change.
+- **Click** in the waves to put the cursor there: the **Value** column shows
+  each signal's value at that time.
+- **Zoom** with the **−** and **+** buttons, or with the mouse wheel or a
+  pinch, to see single clock cycles; **Fit** shows the whole simulation.
+- **Cycles** counts time in clock cycles instead of nanoseconds.
+- **Show a signal:** tick its box in the signal list on the left.
 
-Close GTKWave when you're done.
+Close the browser tab when you're done.
 
 ## 9. Program the board
 

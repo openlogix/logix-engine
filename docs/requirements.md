@@ -50,7 +50,7 @@ An open source, low-level FPGA engine that makes it easy to build a wide range o
 The engine is not:
 
 - **An IDE or editor.** No editing, code navigation or live checking as the user types. Hosts do that, and can run packaged tools such as the Verible language server themselves.
-- **A user interface.** No windows or dialogs. The one exception is launching a packaged viewer, such as GTKWave, locally when a host asks.
+- **A user interface.** No windows or dialogs. The one exception is opening a page, such as the waveform viewer's or the diagram's, in the default web browser when a local host asks.
 - **A project manager.** No project files, settings, environments or examples. The host owns its project model.
 - **A design-format converter.** Block diagrams, Amaranth, LiteX and other formats are turned into Verilog or SystemVerilog by the host before they reach the engine.
 - **A network server.** Remote access goes only through the separate, optional network adapter.
@@ -145,7 +145,7 @@ The engine must support at least the capabilities below, which today's open sour
 | Constraint files | Each family's native format, such as `.pcf` for iCE40, `.lpf` for ECP5 and `.cst` for Gowin |
 | Build toolchains | Synthesis, place and route, and bitstream generation for each family, with open source tools such as Yosys, nextpnr, IceStorm, Project Trellis and Apicula |
 | Programmers | The programmers of the supported boards, today openFPGALoader, iceprog, dfu-util and icesprog, including board-specific programmer options. Boards whose programmers are legacy are dropped, with the reason recorded (see Milestone 2) |
-| Simulation and testing | Running testbenches and producing waveform files. When a local frontend asks, launching a packaged waveform viewer, such as GTKWave, fully detached so it outlives the session. The request is refused for remote frontends, which view waveforms on their own |
+| Simulation and testing | Running testbenches and producing waveform files. When a local frontend asks, opening the waveform viewer's page in the default web browser, so it outlives the session. The request is refused for remote frontends, which view waveforms on their own |
 | Lint and format | Checking and formatting HDL source, with Verilator and Verible |
 | Reports and graphs | Resource utilization and timing reports, and design graphs in SVG, PNG and PDF |
 | Catalog | Boards and FPGAs, with each board's variants. A project's custom definitions are sent by the host in requests, as described in [Custom definitions](#custom-definitions) |
@@ -178,7 +178,7 @@ The engine applies these testbench rules, so a testbench works unchanged with an
 - **No `$dumpfile`.** A testbench that calls `$dumpfile(...)` is a design error. The engine sets the waveform file's location itself, always inside the build folder. Testbenches still call `$dumpvars` to choose what to record.
 - **Interactive define.** The engine defines a macro that is 1 when the simulation is interactive, with a waveform viewer, and 0 for automated test runs. It is `LOGIX_SIM`.
 - **User defines.** Defines given in the request apply to simulation as well as to build.
-- **Waveform viewer setup.** A viewer save file, such as a GTKWave `.gtkw` file, that the user saved next to the testbench is only read, never changed. When there is none, the engine generates one in the build folder, so the source folder isn't modified.
+- **Waveform viewer setup.** A view file (`<testbench>.view`) next to the testbench is only read by the engine, never changed: the viewer's page saves it, through its host. When there is none, the viewer opens its default view, so the source folder isn't modified.
 
 ## Project model
 
@@ -207,7 +207,7 @@ The engine works with three shared folders. The engine has no hard-wired disk lo
 - It holds only files the engine generates from the sources and the request. The engine never keeps the only copy of anything in it.
 - Every operation that writes to a build folder creates it again, such as `build`, `test`, `simulate` and `diagram`. The next build may be slower, but its result is the same.
 - An operation that only reads a build's outputs, such as `program_board`, can't work until the next build. It returns a request error that says to build first.
-- Exceptions are files that a host or a person puts into a build folder, and a GTKWave layout saved from a `simulate` request without `layout_file`, which goes into the build folder. A host that keeps layouts names a `layout_file` in the source folder.
+- Exceptions are files that a host or a person puts into a build folder.
 
 **Table 10.** Shared folders
 
@@ -227,7 +227,7 @@ The engine guards every change it makes on disk, including creating, writing, re
 
 - **Path keywords.** The engine checks for keywords in folder paths before changing anything. The last folder name of an engine folder path must contain "engine", such as `~/.logix/ide/engine-data`. One of the last two folder names of a build folder path must contain "build", such as `_build` or `_build/icesugar-1-5`. Checking only the last names keeps a parent folder, such as `/home/builder`, from satisfying the rule by accident. A wrong path from a host, such as the home folder, fails the check, so nothing is changed.
 - **Host naming.** Hosts must name their engine folders and build folders to satisfy the keyword rules, such as `~/.logix/ide/engine-data` and `_build`.
-- **Engine-owned folders only.** The engine changes files only inside the engine folder and build folders. The exception is the source folder, where it may rewrite in place the source files named in a request when an operation calls for it, such as formatting. It may also create a generated project file the request names, such as a default GTKWave layout for `simulate`, and replace or delete it later only while it still carries the engine's or another tool's generated-file marker, so files the user saved are never changed. It never renames or deletes any other file in the source folder. It also writes its log in the host's log session folder when the host names one (`--log-folder`), and `clean_logs` deletes old log session folders in a host's logs folder (last folder name `logs`), only folders named as sessions that hold nothing but `.log` files.
+- **Engine-owned folders only.** The engine changes files only inside the engine folder and build folders. The exception is the source folder, where it may rewrite in place the source files named in a request when an operation calls for it, such as formatting. It never creates, renames or deletes any other file in the source folder. It also writes its log in the host's log session folder when the host names one (`--log-folder`), and `clean_logs` deletes old log session folders in a host's logs folder (last folder name `logs`), only folders named as sessions that hold nothing but `.log` files.
 - **Paths stay inside.** Every path is resolved to its real location, following symbolic links, before a change. A path that resolves outside its folder is refused, so a symbolic link cannot lead the engine into the user's other files.
 - **Forbidden locations.** The engine refuses to use the file system root, the user's home folder or the source folder itself as an engine folder or build folder. A build folder inside the source folder stays allowed, such as a `_build` folder.
 - **Refusal, not a guess.** If any check fails, the engine changes nothing and returns a request error that says which check failed.
@@ -463,7 +463,7 @@ The requirements keep the numbers they had in review (R1 to R40), so earlier dis
 **Replacing GTKWave**
 
 - **R31.** Logix IDE, the docs, the tutorials, the web pages and the screenshots use the new viewer; GTKWave isn't mentioned to users any more, in any Open Logix repo.
-- **R32.** The engine stops starting GTKWave once the requirements here are met. GTKWave stays in logix-core, which ships the OSS CAD Suite unchanged (the website repo's `CLAUDE.md`, logix-core: each pinned upstream release unchanged; the user's decision, 2026-11-21): it just isn't used.
+- **R32.** The engine stops starting GTKWave once the requirements here are met (done 2026-11-22: `simulate` has no `viewer` or `layout_file` any more, and `open_viewer` opens the viewer's page). GTKWave stays in logix-core, which ships the OSS CAD Suite unchanged (the website repo's `CLAUDE.md`, logix-core: each pinned upstream release unchanged; the user's decision, 2026-11-21): it just isn't used.
 
 **Not in the first version:** analog waveforms (signals drawn as curves) and state machine names for state values; expressions and derived signals, such as `a & b` computed in the viewer; formats other than VCD (FST, GHW and others wait until a simulator Open Logix uses writes them); AI agents reading waveforms as text (a separate goal: Letting AI clients examine build and simulation artifacts, under Open questions; the viewer is for people); editing waveforms or making test stimulus by drawing.
 
@@ -471,7 +471,7 @@ The requirements keep the numbers they had in review (R1 to R40), so earlier dis
 
 **Design** (proposed 2026-11-21, with the requirements; changed as building shows):
 
-- `simulate` writes the viewer page next to the waveform in the build folder (`viewer_file`, `<testbench>.html`) and, with `viewer` `logix`, opens it in the default browser when `open_viewer` asks; `view_file` names the saved view (`<testbench>.view`). Built 2026-11-21 (`src/wave/`). `viewer` defaults to `gtkwave` until Logix IDE uses the page, then to `logix`, and GTKWave's option and `layout_file` go (R32). A new tool, `open_waveform`, opens any `.vcd` file, optionally at a time range and with chosen signals (R3, R8): built 2026-11-21, its page in the request's build folder or the engine's own folder (`waveforms/`, the 20 newest), and requested signals the file lacks reported back. The tools only add, as the tool API requires; GTKWave's fields go when it's no longer started.
+- `simulate` writes the viewer page next to the waveform in the build folder (`viewer_file`, `<testbench>.html`) and opens it in the default browser when `open_viewer` asks; `view_file` names the saved view (`<testbench>.view`). Built 2026-11-21 (`src/wave/`). GTKWave's `viewer` option and `layout_file` went on 2026-11-22, once Logix IDE showed the page (R32). A new tool, `open_waveform`, opens any `.vcd` file, optionally at a time range and with chosen signals (R3, R8): built 2026-11-21, its page in the request's build folder or the engine's own folder (`waveforms/`, the 20 newest), and requested signals the file lacks reported back.
 - The testbench's declaration order (R9) and each signal's line (R27) come from the testbench's source, read by a small reader in the engine (`wave::declared_signals`: the module's own reg, wire, integer… declarations, outside tasks, functions and blocks), which needs no program to run.
 - Failures (R25, R26, R35) are the `$error` and assertion lines the engine already finds, with their time, file and line, put into the page as markers.
 - Save as image (R34, built 2026-11-21) records the page's own drawing as SVG (the canvas operations turned into SVG elements, so the image is the view as it shows), and PNG draws that SVG at twice the size; a host gets the file to save (`logix-wave:save-file`), a browser downloads it.
