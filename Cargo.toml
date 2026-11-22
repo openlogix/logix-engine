@@ -55,3 +55,14 @@ strip = true
 # still show its lines.
 [profile.dev.package."*"]
 debug = false
+
+# QuickJS, which runs ELK's layout for the diagram tool, compiled
+# optimized even in debug builds: unoptimized, the serial example's diagram
+# took 59 s to lay out instead of 15 s (the user's report, 2026-11-22; dev
+# builds, such as scripts/run.sh --engine-repo-dir in Logix IDE, are what
+# developers try diagrams with).
+[profile.dev.package.rquickjs-sys]
+opt-level = 3
+
+[profile.dev.package.rquickjs-core]
+opt-level = 3
