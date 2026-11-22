@@ -1175,3 +1175,107 @@ async fn xilinx_lint_test_and_simulate_use_the_xilinx_models() {
         "{args:?}"
     );
 }
+
+// ----- Pages for the browser tests (tests/pages/, the user's request,
+// 2026-11-22): waveform viewer pages of tests/designs/pages, the Morse
+// beacon, plain and with saved views that no longer match the run (a
+// testbench changed since). The browser tests open them from
+// target/tmp/pages.
+
+/// Where the browser tests find the pages.
+fn pages_folder() -> PathBuf {
+    Path::new(env!("CARGO_TARGET_TMPDIR")).join("pages")
+}
+
+#[tokio::test]
+async fn writes_the_waveform_pages_the_browser_tests_use() {
+    let state = engine().await;
+    let out_dir = pages_folder();
+    std::fs::create_dir_all(&out_dir).unwrap();
+    // Each case: its page's name, and the saved view (None: no view).
+    let cases: Vec<(&str, Option<Value>)> = vec![
+        ("plain", None),
+        // Signals renamed or deleted since, between ones still there.
+        (
+            "stale-gone",
+            Some(json!({"version": 1, "rows": [
+                {"signal": "morse_tb.clk", "show_as": "bin", "color": 1},
+                {"signal": "morse_tb.renamed_signal", "show_as": "hex", "color": 2},
+                {"group": "Design"},
+                {"signal": "morse_tb.dut.gone", "show_as": "dec", "color": 3},
+                {"signal": "morse_tb.led_on", "show_as": "bin", "color": 4}
+            ]})),
+        ),
+        // A bus that was wider: bits past its width, and a 1-bit signal
+        // saved as expanded and analog.
+        (
+            "stale-width",
+            Some(json!({"version": 1, "rows": [
+                {"signal": "morse_tb.dut.pattern", "show_as": "bin", "color": 2, "expanded": true},
+                {"signal": "morse_tb.dut.pattern[9]", "show_as": "bin", "color": 2},
+                {"signal": "morse_tb.dut.pattern[5]", "show_as": "bin", "color": 2},
+                {"signal": "morse_tb.led_on", "show_as": "bin", "color": 4, "expanded": true, "analog": true}
+            ]})),
+        ),
+        // The clock it counted cycles of is gone.
+        (
+            "stale-clock",
+            Some(json!({"version": 1, "rows": [
+                {"signal": "morse_tb.clk", "show_as": "bin", "color": 1}
+            ], "clock": "morse_tb.old_clock", "time_base": "cycles"})),
+        ),
+        // A shorter run: zoom, cursor and marker past its end.
+        (
+            "stale-range",
+            Some(json!({"version": 1, "rows": [
+                {"signal": "morse_tb.led_on", "show_as": "bin", "color": 4}
+            ], "view": {"from": 900000000, "to": 990000000},
+               "cursor": 950000000, "marker": 960000000})),
+        ),
+        // Nothing left of the saved rows.
+        (
+            "stale-empty",
+            Some(json!({"version": 1, "rows": [
+                {"signal": "morse_tb.old_a", "show_as": "bin", "color": 1},
+                {"signal": "morse_tb.old_b", "show_as": "hex", "color": 2}
+            ]})),
+        ),
+        // Rows the viewer never wrote.
+        (
+            "stale-garbage",
+            Some(json!({"version": 1, "rows": [
+                {"signal": 5}, {}, null, "text", {"group": 7},
+                {"signal": "morse_tb.led_on", "show_as": "nonsense", "color": 99}
+            ]})),
+        ),
+    ];
+    for (name, view) in cases {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = dunce::canonicalize(tmp.path()).unwrap();
+        let design = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/designs/pages");
+        for f in ["morse.v", "morse_tb.v"] {
+            std::fs::copy(design.join(f), src.join(f)).unwrap();
+        }
+        let mut input = json!({
+            "board": "icesugar-1-5",
+            "source_folder": src,
+            "source_files": ["morse.v"],
+            "testbench_file": "morse_tb.v",
+            "build_folder": src.join("_build"),
+            "open_viewer": false,
+        });
+        if let Some(v) = view {
+            std::fs::write(src.join("morse_tb.view"), v.to_string()).unwrap();
+            input["view_file"] = json!("morse_tb.view");
+        }
+        let out = simulate::run(&state, serde_json::from_value(input).unwrap(), &call())
+            .await
+            .unwrap();
+        assert!(out.passed, "{name}: {out:#?}");
+        std::fs::copy(
+            src.join("_build").join(&out.viewer_file),
+            out_dir.join(format!("{name}.html")),
+        )
+        .unwrap();
+    }
+}
