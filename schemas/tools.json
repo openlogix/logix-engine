@@ -5029,6 +5029,13 @@
                 "null"
               ]
             },
+            "release": {
+              "description": "The device's release number (USB bcdDevice), four lowercase hex\ndigits, such as 0700; FTDI chips tell their type by it, and board\nfilters may require it. Reported so a pasted device listing says\neverything a board request needs.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "bus": {
               "description": "USB bus number.",
               "type": "integer",
@@ -5711,6 +5718,13 @@
             },
             "serial_number": {
               "description": "The serial number the device reports, when available.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "release": {
+              "description": "The device's release number (USB bcdDevice), four lowercase hex\ndigits, such as 0700; FTDI chips tell their type by it, and board\nfilters may require it. Reported so a pasted device listing says\neverything a board request needs.",
               "type": [
                 "string",
                 "null"

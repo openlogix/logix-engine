@@ -912,6 +912,7 @@ Hosts show the level, in their own words, and compare levels (weak < possible < 
 | `vid`, `pid` | USB ID | USB vendor and product IDs |
 | `manufacturer`, `product` | text | Names reported by the device, when available |
 | `serial_number` | text | Serial number, when available |
+| `release` | text | The USB release number (bcdDevice), four lowercase hex digits, such as `0700`, when available. FTDI chips tell their type by it, and board filters may require it |
 | `bus`, `device` | integer | USB bus and device number, for USB devices. The device number changes when the device is plugged in again |
 | `build_match` | enum | Only with `build_folder`. How well the device matches the build's board in the build's board variant: `strong`, `possible` or `weak`, as for `boards` (`weak` for an unreachable device) |
 | `boards` | list of objects | Optional, omitted when empty. The boards the device may be, best first, each with `board` (its ID), `custom` (true for a board from the custom boards folder, omitted otherwise) and `variants` (the board's variants this device fits, in the board's order, each with its `selector` and its own `match` level) |

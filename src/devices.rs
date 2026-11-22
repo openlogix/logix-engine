@@ -49,9 +49,10 @@ pub struct Device {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub serial_number: Option<String>,
     /// The device's release number (USB bcdDevice), four lowercase hex
-    /// digits, for matching only: not reported to hosts.
-    #[serde(skip)]
-    #[schemars(skip)]
+    /// digits, such as 0700; FTDI chips tell their type by it, and board
+    /// filters may require it. Reported so a pasted device listing says
+    /// everything a board request needs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub release: Option<String>,
     /// USB bus number.
     pub bus: u8,
