@@ -49,9 +49,10 @@ pub struct Device {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub serial_number: Option<String>,
     /// The device's release number (USB bcdDevice), four lowercase hex
-    /// digits, for matching only: not reported to hosts.
-    #[serde(skip)]
-    #[schemars(skip)]
+    /// digits, such as 0700; FTDI chips tell their type by it, and board
+    /// filters may require it. Reported so a pasted device listing says
+    /// everything a board request needs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub release: Option<String>,
     /// USB bus number.
     pub bus: u8,
@@ -735,8 +736,11 @@ pub mod tests {
         assert!(same_ids(&with_release(Some("0500"), false), &bl702));
         assert!(!same_ids(&with_release(Some("0700"), false), &bl702));
         assert!(matches(&with_release(Some("0700"), true), &filter(None)));
-        // Matching data only: hosts don't see it.
+        // Reported to hosts too, so a device listing says what a board
+        // request needs; left out when the device doesn't report it.
         let json = serde_json::to_value(with_release(Some("0500"), true)).unwrap();
+        assert_eq!(json["release"], "0500", "{json}");
+        let json = serde_json::to_value(with_release(None, true)).unwrap();
         assert!(json.get("release").is_none(), "{json}");
 
         // iCESugar boards share IDs and product name; the serial tells them apart.
