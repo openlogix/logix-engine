@@ -4865,7 +4865,7 @@
   },
   {
     "name": "list_devices",
-    "description": "Lists the USB devices connected to this computer, with their USB IDs, names and serial numbers, and for each the boards it may be: catalog boards and the request's custom_boards_folder, best first, each with the variants it fits and how well it matches: strong (very likely this board), possible (a few other boards look the same) or weak (many boards fit). Show the level as it is: how the engine decides it is internal and changes without notice. program_board needs the id of one of these devices. Given a build_folder, it lists only the devices that fit that build's board and variant, best first, each with its build_match: program the only one, or ask the user when there are several. Devices that need a driver or permissions first are listed apart, under unreachable, with the fix. On Windows, a device whose board's programmer needs a driver has driver: the one it needs (WinUSB), on which USB interface, the one it has and whether it's ready; on Linux, every device that fits a board has driver: its udev rule's state. Each device has who, its name for people, and driver has texts for people: its state, and the question to ask before install_driver (add) or uninstall_driver (remove). Give board, the user's chosen board, to name devices by it and list its devices first.",
+    "description": "Lists the USB devices connected to this computer, with their USB IDs, names and serial numbers, and for each the boards it may be: catalog boards and the request's custom_boards_folder, best first, each with the variants it fits and how well it matches: strong (very likely this board), possible (a few other boards look the same) or weak (many boards fit). Show the level as it is: how the engine decides it is internal and changes without notice. program_board needs the id of one of these devices. Given a build_folder, it lists only the devices that fit that build's board and variant, best first, each with its build_match: program the only one, or ask the user when there are several. Devices that need a driver or permissions first are listed apart, under unreachable, with the fix. On Windows, a device whose board's programmer needs a driver has driver: the one it needs (WinUSB), on which USB interface, the one it has and whether it's ready; on Linux, every device that fits a board has driver: its udev rule's state. Each device has who, its name for people, and driver has texts for people: its state, and the question to ask before install_driver (add) or uninstall_driver (remove). Give board, the user's chosen board, to name devices by it, list its devices first and get status: whether it's connected, in words for people (with build_folder, the build's board). When custom_boards_folder has a problem, the devices are still listed, against the catalog's boards only, and custom_boards_problem has the error.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "ListDevicesInput",
@@ -4873,7 +4873,7 @@
       "type": "object",
       "properties": {
         "custom_boards_folder": {
-          "description": "The host's own boards: the absolute path of a folder of board files,\none board each in the catalog's format, named by board ID, such as\nboards/my-board.json (a project's boards folder). board can name one\nof them; one with a catalog board's ID replaces that board in this\nrequest. Problems in any file come back as a request error with a\ndiagnostic for each, at file, line and column. Send the same folder to\nevery tool. Omitted means none.",
+          "description": "The host's own boards: the absolute path of a folder of board files,\none board each in the catalog's format, named by board ID, such as\nboards/my-board.json (a project's boards folder). board can name one\nof them; one with a catalog board's ID replaces that board in this\nrequest. Problems in any file don't stop list_devices: the devices\nare matched against the catalog's boards only, and\ncustom_boards_problem has the error every other tool returns (with\nbuild_folder, they're a request error). Send the same folder to\nevery tool. Omitted means none.",
           "type": [
             "string",
             "null"
@@ -4973,6 +4973,28 @@
           "items": {
             "$ref": "#/$defs/UnreachableDevice"
           }
+        },
+        "status": {
+          "description": "Only with board or build_folder: whether that board is connected, for\npeople and hosts, so every frontend says it the same way. code is\nconnected (one device may be it), several (more than one: ask the\nuser which), unreachable (none can be opened, but one that can't has\nits USB IDs: action and the message say what makes it usable) or\nnot_connected (none); message says it in a sentence naming the\nboard, such as \"The Alhambra II isn't connected. Connect it by USB,\nthen try again.\"; hints are more lines to show under it, a line\neach (for not_connected: what is connected, and tips about the\ncable and power); action is the suggested action, as in errors,\nwhen there's something to do.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BoardStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "custom_boards_problem": {
+          "description": "When custom_boards_folder has a problem: the error every other board\ntool returns for it (a request error with a diagnostic for each\nproblem, at file, line and column). list_devices still lists the\ndevices then, matched against the catalog's boards only, so device\nscans keep working while the user fixes the folder. With\nbuild_folder, a problem is a request error, as in program_board.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolError"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false,
@@ -5061,6 +5083,19 @@
               "items": {
                 "type": "string"
               }
+            },
+            "other_boards": {
+              "description": "The other boards worth naming, after likely_boards, best first: the\nrest of boards, except that when the device has a strong match, only\nthe request's board (board, else the build's) when the device may be\nit, since dozens of boards that share a USB chip would only be\nnoise. Empty when there are none.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rank": {
+              "description": "The device's place in one list of devices and unreachable together,\n0 first: those that may be the request's board (board, else the\nbuild's), then those that may be other boards, then the rest; within\neach, devices before unreachable ones, each in its list's order. For\na host that shows both lists as one.",
+              "type": "integer",
+              "default": 0,
+              "minimum": 0
             },
             "build_match": {
               "description": "How well the device matches the given build's board in the build's\nvariant: strong, possible or weak, as in boards. Present only when\nlist_devices was given a build_folder.",
@@ -5449,6 +5484,16 @@
               "description": "What to do, for people, such as \"Add a udev rule for it, so it can\nbe programmed and its name read.\" (action says it for AI agents).",
               "type": "string"
             },
+            "note": {
+              "description": "What the device may be and what to do, for people, in a sentence or\ntwo: \"This may be your Alhambra II: it has the same USB IDs. Add a\nudev rule for it, so it can be programmed and its name read.\" when\nit may be the request's board (board, else the build's), else that\nit may be an FPGA board, naming the board when only one has its USB\nIDs, or counting them. Ends with fix.",
+              "type": "string"
+            },
+            "rank": {
+              "description": "Its place in one list of devices and unreachable together, as for\ndevices.",
+              "type": "integer",
+              "default": 0,
+              "minimum": 0
+            },
             "driver": {
               "description": "On Windows and Linux: what it needs for its board's programmer and\nwhat it has, as for devices.",
               "anyOf": [
@@ -5535,6 +5580,216 @@
               "type": "string",
               "const": "confirm_same_ids"
             }
+          ]
+        },
+        "BoardStatus": {
+          "description": "Whether the request's board is connected (ListDevicesOutput.status).",
+          "type": "object",
+          "properties": {
+            "code": {
+              "description": "connected, several, unreachable or not_connected.",
+              "$ref": "#/$defs/StatusCode"
+            },
+            "message": {
+              "description": "The status in a sentence for people, naming the board.",
+              "type": "string"
+            },
+            "hints": {
+              "description": "More lines for people, shown under message a line each. Often\nempty.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "action": {
+              "description": "The suggested action, as in errors: connect_board when it isn't\nconnected, or the unreachable device's own action.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Action"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message"
+          ]
+        },
+        "StatusCode": {
+          "description": "BoardStatus.code.",
+          "oneOf": [
+            {
+              "description": "One connected device may be the board.",
+              "type": "string",
+              "const": "connected"
+            },
+            {
+              "description": "Several connected devices may be the board: ask the user which.",
+              "type": "string",
+              "const": "several"
+            },
+            {
+              "description": "None can be opened, but a device that can't be opened has the\nboard's USB IDs: it needs a driver or permissions first.",
+              "type": "string",
+              "const": "unreachable"
+            },
+            {
+              "description": "No connected device may be the board.",
+              "type": "string",
+              "const": "not_connected"
+            }
+          ]
+        },
+        "ToolError": {
+          "description": "Why a tool could not do its job.",
+          "type": "object",
+          "properties": {
+            "category": {
+              "$ref": "#/$defs/Category"
+            },
+            "message": {
+              "description": "Short message for end users.",
+              "type": "string"
+            },
+            "details": {
+              "description": "Troubleshooting details, such as tool output. May span several lines.",
+              "type": "string",
+              "default": ""
+            },
+            "diagnostics": {
+              "description": "Problems with file and line, mainly for design errors.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Diagnostic"
+              },
+              "default": []
+            },
+            "action": {
+              "description": "A suggested action, when there is one.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Action"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "data": {
+              "description": "Extra data, such as candidate devices.",
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "category",
+            "message"
+          ]
+        },
+        "Category": {
+          "description": "Whose problem the error is.",
+          "oneOf": [
+            {
+              "description": "A problem in the user's design files, such as a syntax error.",
+              "type": "string",
+              "const": "design"
+            },
+            {
+              "description": "Something missing or wrong on the computer, such as a package that\nisn't downloaded or a board that isn't connected.",
+              "type": "string",
+              "const": "setup"
+            },
+            {
+              "description": "The host sent an invalid request, such as an unknown board or a\nmissing field. Fix the request and retry.",
+              "type": "string",
+              "const": "request"
+            },
+            {
+              "description": "A packaged tool crashed or misbehaved.",
+              "type": "string",
+              "const": "tool"
+            },
+            {
+              "description": "A bug in the engine itself.",
+              "type": "string",
+              "const": "engine"
+            },
+            {
+              "description": "The host cancelled the operation.",
+              "type": "string",
+              "const": "cancelled"
+            }
+          ]
+        },
+        "Diagnostic": {
+          "description": "A problem reported by a tool, at a file and line when known.",
+          "type": "object",
+          "properties": {
+            "file": {
+              "description": "File, relative to the source folder, when known.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "line": {
+              "description": "Line number, starting at 1, when known.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "column": {
+              "description": "Column number, starting at 1, when known.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "severity": {
+              "$ref": "#/$defs/Severity"
+            },
+            "text": {
+              "description": "The problem, in words.",
+              "type": "string"
+            },
+            "tool": {
+              "description": "Name of the tool that reported it, when known.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "time_ns": {
+              "description": "For a testbench failure, the simulation time it happened at, in\nnanoseconds, when known.",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "severity",
+            "text"
+          ]
+        },
+        "Severity": {
+          "description": "How serious a diagnostic is.",
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "info"
           ]
         }
       }
@@ -5755,6 +6010,19 @@
               "items": {
                 "type": "string"
               }
+            },
+            "other_boards": {
+              "description": "The other boards worth naming, after likely_boards, best first: the\nrest of boards, except that when the device has a strong match, only\nthe request's board (board, else the build's) when the device may be\nit, since dozens of boards that share a USB chip would only be\nnoise. Empty when there are none.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rank": {
+              "description": "The device's place in one list of devices and unreachable together,\n0 first: those that may be the request's board (board, else the\nbuild's), then those that may be other boards, then the rest; within\neach, devices before unreachable ones, each in its list's order. For\na host that shows both lists as one.",
+              "type": "integer",
+              "default": 0,
+              "minimum": 0
             },
             "build_match": {
               "description": "How well the device matches the given build's board in the build's\nvariant: strong, possible or weak, as in boards. Present only when\nlist_devices was given a build_folder.",

@@ -893,6 +893,8 @@ fn program_input(build_folder: &Path, extra: Value) -> program_board::ProgramBoa
 
 #[test]
 fn list_devices_names_the_boards_each_device_may_be() {
+    // The catalog, even when this test runs alone.
+    logix_engine::catalog::use_test_copy();
     let devices = vec![
         usb("Alhambra II", Some("A1"), 3),
         usb("Dual RS232-HS", None, 4),
@@ -944,6 +946,29 @@ async fn list_devices_for_a_build_lists_only_the_devices_that_fit() {
     assert!(!out.devices[0].boards.is_empty(), "still all its boards");
     assert_eq!(out.unreachable.len(), 1);
     assert_eq!(out.unreachable[0].build_match, Some(MatchLevel::Weak));
+    // The build's board, connected: named in the status, and the device
+    // that can't be opened has a note that it may be it.
+    let status = out.status.as_ref().unwrap();
+    assert_eq!(status.code, list_devices::StatusCode::Connected);
+    assert_eq!(status.message, "The Alhambra II is connected.");
+    assert!(
+        out.unreachable[0]
+            .note
+            .starts_with("This may be your Alhambra II"),
+        "{}",
+        out.unreachable[0].note
+    );
+    // None fits: not connected, with what is connected.
+    let out =
+        list_devices::run_with(input(&folder), || Ok(vec![usb("Dual RS232-HS", None, 4)])).unwrap();
+    let status = out.status.unwrap();
+    assert_eq!(status.code, list_devices::StatusCode::NotConnected);
+    assert_eq!(
+        status.message,
+        "The Alhambra II isn't connected. Connect it by USB, then try again."
+    );
+    assert_eq!(status.hints[1], "  • Dual RS232-HS (0403:6010)");
+    assert_eq!(status.action.unwrap().code, ActionCode::ConnectBoard);
 }
 
 #[tokio::test]

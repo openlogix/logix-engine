@@ -29,7 +29,10 @@ impl EngineTool for ListDevices {
         on Linux, every device that fits a board has driver: its udev rule's state. Each device has \
         who, its name for people, and driver has texts for people: its state, and the question to \
         ask before install_driver (add) or uninstall_driver (remove). Give board, the user's \
-        chosen board, to name devices by it and list its devices first.";
+        chosen board, to name devices by it, list its devices first and get status: whether \
+        it's connected, in words for people (with build_folder, the build's board). When \
+        custom_boards_folder has a problem, the devices are still listed, against the \
+        catalog's boards only, and custom_boards_problem has the error.";
     const READ_ONLY: bool = true;
     type Input = ListDevicesInput;
     type Output = ListDevicesOutput;
@@ -44,8 +47,10 @@ pub struct ListDevicesInput {
     /// one board each in the catalog's format, named by board ID, such as
     /// boards/my-board.json (a project's boards folder). board can name one
     /// of them; one with a catalog board's ID replaces that board in this
-    /// request. Problems in any file come back as a request error with a
-    /// diagnostic for each, at file, line and column. Send the same folder to
+    /// request. Problems in any file don't stop list_devices: the devices
+    /// are matched against the catalog's boards only, and
+    /// custom_boards_problem has the error every other tool returns (with
+    /// build_folder, they're a request error). Send the same folder to
     /// every tool. Omitted means none.
     #[serde(default)]
     pub custom_boards_folder: Option<String>,
@@ -90,6 +95,60 @@ pub struct ListDevicesOutput {
     /// out.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unreachable: Vec<UnreachableDevice>,
+    /// Only with board or build_folder: whether that board is connected, for
+    /// people and hosts, so every frontend says it the same way. code is
+    /// connected (one device may be it), several (more than one: ask the
+    /// user which), unreachable (none can be opened, but one that can't has
+    /// its USB IDs: action and the message say what makes it usable) or
+    /// not_connected (none); message says it in a sentence naming the
+    /// board, such as "The Alhambra II isn't connected. Connect it by USB,
+    /// then try again."; hints are more lines to show under it, a line
+    /// each (for not_connected: what is connected, and tips about the
+    /// cable and power); action is the suggested action, as in errors,
+    /// when there's something to do.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<BoardStatus>,
+    /// When custom_boards_folder has a problem: the error every other board
+    /// tool returns for it (a request error with a diagnostic for each
+    /// problem, at file, line and column). list_devices still lists the
+    /// devices then, matched against the catalog's boards only, so device
+    /// scans keep working while the user fixes the folder. With
+    /// build_folder, a problem is a request error, as in program_board.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_boards_problem: Option<ToolError>,
+}
+
+/// Whether the request's board is connected (ListDevicesOutput.status).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BoardStatus {
+    /// connected, several, unreachable or not_connected.
+    pub code: StatusCode,
+    /// The status in a sentence for people, naming the board.
+    pub message: String,
+    /// More lines for people, shown under message a line each. Often
+    /// empty.
+    #[serde(default)]
+    pub hints: Vec<String>,
+    /// The suggested action, as in errors: connect_board when it isn't
+    /// connected, or the unreachable device's own action.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<crate::errors::Action>,
+}
+
+/// BoardStatus.code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StatusCode {
+    /// One connected device may be the board.
+    Connected,
+    /// Several connected devices may be the board: ask the user which.
+    Several,
+    /// None can be opened, but a device that can't be opened has the
+    /// board's USB IDs: it needs a driver or permissions first.
+    Unreachable,
+    /// No connected device may be the board.
+    NotConnected,
 }
 
 /// The drivers Windows has on the present devices with some USB IDs, on an
@@ -101,7 +160,13 @@ pub fn run_with(
     scan: impl FnOnce() -> Result<Vec<Device>, ToolError>,
 ) -> Result<ListDevicesOutput, ToolError> {
     let lookup = |v: &str, p: &str, i: u8, c: bool| drivers::current_drivers(v, p, i, c);
-    let custom_folder = input.custom_boards_folder.clone();
+    // A folder with a problem counts as none (custom_boards_problem says
+    // so), so the serial ports are found as the devices were matched.
+    let custom_folder = load_custom(&input)?
+        .1
+        .is_none()
+        .then(|| input.custom_boards_folder.clone())
+        .flatten();
     let build_folder = input.build_folder.clone();
     let board = input.board.clone();
     let mut out = run_with_drivers(
@@ -120,6 +185,30 @@ pub fn run_with(
         board.as_deref(),
     )?;
     Ok(out)
+}
+
+/// The request's custom boards, and the folder's problem when it has one:
+/// list_devices then matches against the catalog's boards only, instead of
+/// failing as every other board tool does (docs/requirements.md, Custom
+/// definitions: device scans keep working while the user fixes the
+/// folder). With a build folder, a problem stays a request error: the
+/// build's board may be one of them, as for program_board.
+fn load_custom(
+    input: &ListDevicesInput,
+) -> Result<(crate::board::CustomBoards, Option<ToolError>), ToolError> {
+    match crate::custom_boards::load(input.custom_boards_folder.as_deref()) {
+        Ok(custom) => Ok((custom, None)),
+        Err(e)
+            if input.build_folder.is_none() && e.category == crate::errors::Category::Request =>
+        {
+            log::info!(
+                "list_devices: the custom boards folder has a problem: {}",
+                e.message
+            );
+            Ok((Default::default(), Some(e)))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// Gives each device its serial ports, from the system's USB serial ports
@@ -223,7 +312,7 @@ pub fn run_with_drivers(
     scan: impl FnOnce() -> Result<Vec<Device>, ToolError>,
     drivers: Option<DriverLookup>,
 ) -> Result<ListDevicesOutput, ToolError> {
-    let custom = crate::custom_boards::load(input.custom_boards_folder.as_deref())?;
+    let (custom, custom_boards_problem) = load_custom(&input)?;
     let known = crate::board::known_boards(&custom);
     let boards: Vec<Candidate> = known
         .values()
@@ -235,19 +324,32 @@ pub fn run_with_drivers(
         .collect();
 
     // The build's board as program_board will program it.
-    let build_variant: Option<Variant> = match &input.build_folder {
+    let (build_board, build_variant): (Option<String>, Option<Variant>) = match &input.build_folder
+    {
         Some(folder) => {
             let built = super::program_board::read_build(folder)?.1.board;
-            Some(super::program_board::upload_board(&built, &custom, folder)?.variant)
+            let upload = super::program_board::upload_board(&built, &custom, folder)?;
+            (built.board_id.clone(), Some(upload.variant))
         }
-        None => None,
+        None => (None, None),
     };
     let build_usb = build_variant.as_ref().map(|v| v.usb.clone());
     let mut out = ListDevicesOutput {
         devices: Vec::new(),
         unreachable: Vec::new(),
+        status: None,
+        custom_boards_problem,
     };
+    // Every connected device, for the status's hints: the ones that can be
+    // opened, and those that can't whose USB IDs fit a board.
+    let mut seen = Seen::default();
     for mut d in scan()? {
+        let (matches, promoted) = devices::board_matches_and_promotion(&d, &boards);
+        if d.reachable {
+            seen.reachable.push(d.label.clone());
+        } else if !matches.is_empty() {
+            seen.locked.push(devices::label(None, None, &d.vid, &d.pid));
+        }
         let build_level = match &build_usb {
             None => None,
             Some(usb) => {
@@ -262,7 +364,6 @@ pub fn run_with_drivers(
                 Some(devices::match_level(&d, usb))
             }
         };
-        let (matches, promoted) = devices::board_matches_and_promotion(&d, &boards);
         let driver = drivers.and_then(|lookup| {
             driver_status(&d, &matches, &boards, build_variant.as_ref(), lookup)
         });
@@ -293,6 +394,8 @@ pub fn run_with_drivers(
                 boards: matches,
                 action: devices::unreachable_action(),
                 fix: crate::driver_texts::fix(),
+                note: String::new(),
+                rank: 0,
                 driver,
                 build_match,
             });
@@ -305,17 +408,9 @@ pub fn run_with_drivers(
     } else if let Some(board) = input.board.as_deref() {
         // The chosen board's devices first, then other boards', then the
         // rest (stable: USB order within each).
-        let rank = |boards: &[BoardMatch]| {
-            if boards.iter().any(|b| b.board == board) {
-                0
-            } else if !boards.is_empty() {
-                1
-            } else {
-                2
-            }
-        };
-        out.devices.sort_by_key(|d| rank(&d.boards));
-        out.unreachable.sort_by_key(|d| rank(&d.boards));
+        out.devices.sort_by_key(|d| group(&d.boards, Some(board)));
+        out.unreachable
+            .sort_by_key(|d| group(&d.boards, Some(board)));
     }
     // Names and texts for people.
     let name = |id: &str| {
@@ -325,19 +420,205 @@ pub fn run_with_drivers(
             .unwrap_or_else(|| id.to_string())
     };
     let chosen = input.board.as_deref();
+    // The board the user means: the chosen one, else the build's.
+    let meant = chosen.or(build_board.as_deref());
     for d in &mut out.devices {
         d.who = who(&d.boards, chosen, &d.label, &name);
+        d.other_boards = other_boards(&d.boards, &d.likely_boards, meant);
         if let Some(driver) = &mut d.driver {
             crate::driver_texts::fill(driver, &d.who);
         }
     }
     for d in &mut out.unreachable {
         d.who = who(&d.boards, chosen, &d.label, &name);
+        d.note = unreachable_note(&d.boards, meant, &d.fix, &name);
         if let Some(driver) = &mut d.driver {
             crate::driver_texts::fill(driver, &d.who);
         }
     }
+    rank(&mut out, meant);
+    out.status = match (&build_usb, meant) {
+        (Some(_), _) => Some(board_status(&out, None, meant, &seen, &name)),
+        (None, Some(board)) => Some(board_status(&out, Some(board), meant, &seen, &name)),
+        (None, None) => None,
+    };
     Ok(out)
+}
+
+/// The connected devices seen by a scan, for people: the labels of those
+/// the engine can open, and of those it can't whose USB IDs fit a board.
+#[derive(Default)]
+struct Seen {
+    reachable: Vec<String>,
+    locked: Vec<String>,
+}
+
+/// A device's group in the one-list order: 0 when it may be `board`, 1
+/// when it may be other boards, 2 otherwise.
+fn group(boards: &[BoardMatch], board: Option<&str>) -> u8 {
+    if board.is_some_and(|b| boards.iter().any(|m| m.board == b)) {
+        0
+    } else if !boards.is_empty() {
+        1
+    } else {
+        2
+    }
+}
+
+/// Gives every device and unreachable device its place in one list of
+/// both: by group (the board meant first), then devices before unreachable
+/// ones, each in its list's order.
+fn rank(out: &mut ListDevicesOutput, meant: Option<&str>) {
+    let mut keys: Vec<(u8, usize, usize)> = out
+        .devices
+        .iter()
+        .enumerate()
+        .map(|(i, d)| (group(&d.boards, meant), 0, i))
+        .chain(
+            out.unreachable
+                .iter()
+                .enumerate()
+                .map(|(i, d)| (group(&d.boards, meant), 1, i)),
+        )
+        .collect();
+    keys.sort();
+    for (place, (_, list, i)) in keys.into_iter().enumerate() {
+        if list == 0 {
+            out.devices[i].rank = place;
+        } else {
+            out.unreachable[i].rank = place;
+        }
+    }
+}
+
+/// The boards worth naming after a device's likely boards: the rest, or
+/// with a strong match only the meant board, when the device may be it
+/// (the boards dozens of devices share would only be noise).
+pub fn other_boards(boards: &[BoardMatch], likely: &[String], meant: Option<&str>) -> Vec<String> {
+    let strong = boards.iter().any(|b| b.best_level() == MatchLevel::Strong);
+    boards
+        .iter()
+        .map(|b| b.board.clone())
+        .filter(|b| !likely.contains(b))
+        .filter(|b| !strong || meant == Some(b.as_str()))
+        .collect()
+}
+
+/// What a device that can't be opened may be, and what to do, for people.
+pub fn unreachable_note(
+    boards: &[BoardMatch],
+    meant: Option<&str>,
+    fix: &str,
+    name: &dyn Fn(&str) -> String,
+) -> String {
+    let first = if let Some(b) = meant.filter(|m| boards.iter().any(|x| x.board == *m)) {
+        format!("This may be your {}: it has the same USB IDs.", name(b))
+    } else {
+        match boards {
+            [only] => format!(
+                "This may be an FPGA board, the {}: it has its USB IDs.",
+                name(&only.board)
+            ),
+            _ => format!(
+                "This may be an FPGA board: {} boards have its USB IDs.",
+                boards.len()
+            ),
+        }
+    };
+    if fix.is_empty() {
+        first
+    } else {
+        format!("{first} {fix}")
+    }
+}
+
+/// Whether the board is connected: with `board`, among every device; else
+/// (a build folder) among the devices listed, which fit the build already.
+fn board_status(
+    out: &ListDevicesOutput,
+    board: Option<&str>,
+    meant: Option<&str>,
+    seen: &Seen,
+    name: &dyn Fn(&str) -> String,
+) -> BoardStatus {
+    let fits = |boards: &[BoardMatch]| board.is_none_or(|b| boards.iter().any(|m| m.board == b));
+    let devices = out.devices.iter().filter(|d| fits(&d.boards)).count();
+    let locked = out.unreachable.iter().find(|d| fits(&d.boards));
+    let board_name = meant.map(name).unwrap_or_else(|| "board".into());
+    status_for(devices, locked, &board_name, seen)
+}
+
+/// The status for `devices` connected devices that may be the board (named
+/// `board_name`, such as "Alhambra II"), and the first device that can't be
+/// opened but may be it.
+fn status_for(
+    devices: usize,
+    locked: Option<&UnreachableDevice>,
+    board_name: &str,
+    seen: &Seen,
+) -> BoardStatus {
+    let status = |code, message: String, hints, action| BoardStatus {
+        code,
+        message,
+        hints,
+        action,
+    };
+    match (devices, locked) {
+        (1, _) => status(
+            StatusCode::Connected,
+            format!("The {board_name} is connected."),
+            Vec::new(),
+            None,
+        ),
+        (0, Some(u)) => status(
+            StatusCode::Unreachable,
+            format!("The {board_name} was found but can't be opened. {}", u.fix)
+                .trim_end()
+                .to_string(),
+            Vec::new(),
+            Some(u.action.clone()),
+        ),
+        (0, None) => status(
+            StatusCode::NotConnected,
+            format!("The {board_name} isn't connected. Connect it by USB, then try again."),
+            connection_hints(seen),
+            Some(crate::errors::Action {
+                code: crate::errors::ActionCode::ConnectBoard,
+                description: format!("Connect the {board_name} by USB, then retry."),
+            }),
+        ),
+        (n, _) => status(
+            StatusCode::Several,
+            format!("{n} connected devices could be the {board_name}. Choose the one to program."),
+            Vec::new(),
+            None,
+        ),
+    }
+}
+
+/// What's connected, with tips about the cable and power, a line each,
+/// for when the board isn't found.
+fn connection_hints(seen: &Seen) -> Vec<String> {
+    let locked = seen
+        .locked
+        .iter()
+        .map(|l| format!("  • {l} can't be opened. {}", crate::driver_texts::fix()));
+    if seen.reachable.is_empty() {
+        return std::iter::once("No USB devices are connected.".to_string())
+            .chain(locked)
+            .chain([
+                "Check that the board is plugged in and powered, and try another cable (some USB cables only charge and don't carry data).".to_string(),
+            ])
+            .collect();
+    }
+    std::iter::once("Connected USB devices:".to_string())
+        .chain(seen.reachable.iter().map(|l| format!("  • {l}")))
+        .chain(locked)
+        .chain([
+            "If your board isn't listed, check the cable and power.".to_string(),
+            "If it's listed, check that the selected board matches it.".to_string(),
+        ])
+        .collect()
 }
 
 /// A device for people in a sentence: "the <board>" when it may be the
@@ -511,6 +792,8 @@ mod tests {
         let mut out = ListDevicesOutput {
             devices: vec![d],
             unreachable: Vec::new(),
+            status: None,
+            custom_boards_problem: None,
         };
         let key = crate::serial::DeviceKey {
             vid: 0x0403,
@@ -811,12 +1094,227 @@ mod tests {
             .map(|m| m.custom)
             .collect();
         assert_eq!(named, [true]);
-        // A bad list is a request error.
+        // A folder with a problem: the devices are still listed, against
+        // the catalog only, with the problem every other tool returns.
         let (_t3, bad) = crate::custom_boards::test_folder(
             &json!({"Bad ID": {"name": "x", "fpga_id": "x", "variants": []}}),
         );
-        let e = list(json!({"custom_boards_folder": bad}), vec![]).unwrap_err();
-        assert_eq!(e.category, crate::errors::Category::Request);
+        let out = list(json!({"custom_boards_folder": bad}), alhambra()).unwrap();
+        let problem = out.custom_boards_problem.as_ref().unwrap();
+        assert_eq!(problem.category, crate::errors::Category::Request);
+        assert!(!problem.diagnostics.is_empty());
+        assert_eq!(out.devices[0].likely_boards, ["alhambra-ii"]);
+        assert!(out.devices[0].boards.iter().all(|m| !m.custom));
+        let v = serde_json::to_value(&out).unwrap();
+        assert_eq!(v["custom_boards_problem"]["category"], "request");
+        // Without a problem, the field isn't there.
+        let (_t4, file) = crate::custom_boards::test_folder(&mine("mine"));
+        let v =
+            serde_json::to_value(list(json!({"custom_boards_folder": file}), alhambra()).unwrap())
+                .unwrap();
+        assert!(v.get("custom_boards_problem").is_none(), "{v}");
+        // The folder must still be an absolute path: that's the request's
+        // own mistake, not the folder's.
+        let e = list(json!({"custom_boards_folder": "boards"}), alhambra());
+        assert!(e.unwrap().custom_boards_problem.is_some());
+    }
+
+    #[test]
+    fn the_status_says_whether_the_board_is_connected() {
+        let alhambra = || device("0403", "6010", Some("Alhambra II v1.0A"), Some("A1"), 2);
+        let keyboard = || device("05ac", "8262", Some("Keyboard"), None, 1);
+        let status = |board: &str, devices: Vec<Device>| {
+            list(json!({"board": board}), devices)
+                .unwrap()
+                .status
+                .unwrap()
+        };
+        // Without a board or a build: none.
+        assert!(list(json!({}), vec![alhambra()]).unwrap().status.is_none());
+
+        let s = status("alhambra-ii", vec![keyboard(), alhambra()]);
+        assert_eq!(s.code, StatusCode::Connected);
+        assert_eq!(s.message, "The Alhambra II is connected.");
+        assert!(s.hints.is_empty() && s.action.is_none());
+
+        let mut second = alhambra();
+        second.id = "usb:1-3:0403:6010:A2".into();
+        let s = status("alhambra-ii", vec![alhambra(), second]);
+        assert_eq!(s.code, StatusCode::Several);
+        assert_eq!(
+            s.message,
+            "2 connected devices could be the Alhambra II. Choose the one to program."
+        );
+
+        let s = status("alhambra-ii", vec![keyboard()]);
+        assert_eq!(s.code, StatusCode::NotConnected);
+        assert_eq!(
+            s.message,
+            "The Alhambra II isn't connected. Connect it by USB, then try again."
+        );
+        assert_eq!(
+            s.action.as_ref().map(|a| a.code),
+            Some(crate::errors::ActionCode::ConnectBoard)
+        );
+        assert_eq!(
+            s.hints,
+            [
+                "Connected USB devices:",
+                "  • Keyboard (05ac:8262)",
+                "If your board isn't listed, check the cable and power.",
+                "If it's listed, check that the selected board matches it.",
+            ]
+        );
+        let s = status("alhambra-ii", vec![]);
+        assert_eq!(
+            s.hints,
+            [
+                "No USB devices are connected.",
+                "Check that the board is plugged in and powered, and try another cable (some USB cables only charge and don't carry data).",
+            ]
+        );
+
+        // Found but can't be opened: its fix, and its action.
+        let mut locked = alhambra();
+        locked.reachable = false;
+        let s = status("alhambra-ii", vec![keyboard(), locked.clone()]);
+        assert_eq!(s.code, StatusCode::Unreachable);
+        assert_eq!(
+            s.message,
+            format!(
+                "The Alhambra II was found but can't be opened. {}",
+                crate::driver_texts::fix()
+            )
+        );
+        assert_eq!(s.action, Some(devices::unreachable_action()));
+        // Another board's devices don't count, but the hints list the
+        // device that can't be opened.
+        let s = status("icesugar-1-5", vec![keyboard(), locked]);
+        assert_eq!(s.code, StatusCode::NotConnected);
+        assert_eq!(
+            s.hints[2],
+            format!(
+                "  • USB device (0403:6010) can't be opened. {}",
+                crate::driver_texts::fix()
+            )
+        );
+    }
+
+    #[test]
+    fn devices_that_cant_be_opened_get_a_note() {
+        let name = |id: &str| match id {
+            "alhambra-ii" => "Alhambra II".to_string(),
+            other => other.to_string(),
+        };
+        let m = |b: &str| BoardMatch {
+            board: b.into(),
+            custom: false,
+            variants: Vec::new(),
+        };
+        let fix = "Add a udev rule for it, so it can be programmed and its name read.";
+        assert_eq!(
+            unreachable_note(
+                &[m("alchitry-au"), m("alhambra-ii")],
+                Some("alhambra-ii"),
+                fix,
+                &name
+            ),
+            format!("This may be your Alhambra II: it has the same USB IDs. {fix}")
+        );
+        assert_eq!(
+            unreachable_note(&[m("alhambra-ii")], None, fix, &name),
+            format!("This may be an FPGA board, the Alhambra II: it has its USB IDs. {fix}")
+        );
+        assert_eq!(
+            unreachable_note(
+                &[m("alchitry-au"), m("alhambra-ii")],
+                Some("icestick"),
+                fix,
+                &name
+            ),
+            format!("This may be an FPGA board: 2 boards have its USB IDs. {fix}")
+        );
+        // In the result, by the request's board.
+        let mut d = device("0403", "6010", None, None, 3);
+        d.reachable = false;
+        let out = list(json!({"board": "alhambra-ii"}), vec![d]).unwrap();
+        assert!(
+            out.unreachable[0]
+                .note
+                .starts_with("This may be your Alhambra II: it has the same USB IDs."),
+            "{}",
+            out.unreachable[0].note
+        );
+    }
+
+    #[test]
+    fn other_boards_leave_out_the_noise_of_a_strong_match() {
+        let alhambra = || device("0403", "6010", Some("Alhambra II v1.0A"), None, 2);
+        let out = list(json!({}), vec![alhambra()]).unwrap();
+        let d = &out.devices[0];
+        assert_eq!(d.likely_boards, ["alhambra-ii"]);
+        // A strong match: only the meant board would be named, and none is.
+        assert!(d.other_boards.is_empty(), "{:?}", d.other_boards);
+        // A weaker board it may be, when it's the one meant.
+        let weaker = d
+            .boards
+            .iter()
+            .map(|b| b.board.clone())
+            .find(|b| !d.likely_boards.contains(b))
+            .expect("a weaker board");
+        let out = list(json!({"board": weaker}), vec![alhambra()]).unwrap();
+        assert_eq!(out.devices[0].other_boards, [weaker]);
+        // No strong match: every board that isn't likely.
+        let generic = device("0403", "6010", Some("Dual RS232-HS"), None, 2);
+        let out = list(json!({}), vec![generic]).unwrap();
+        let d = &out.devices[0];
+        assert!(
+            !d.boards
+                .iter()
+                .any(|b| b.best_level() == MatchLevel::Strong)
+        );
+        let rest: Vec<&String> = d
+            .boards
+            .iter()
+            .map(|b| &b.board)
+            .filter(|b| !d.likely_boards.contains(b))
+            .collect();
+        assert_eq!(d.other_boards.iter().collect::<Vec<_>>(), rest);
+        assert!(!d.other_boards.is_empty());
+    }
+
+    #[test]
+    fn rank_orders_devices_and_unreachable_ones_as_one_list() {
+        let mut locked = device("0403", "6010", None, None, 4);
+        locked.reachable = false;
+        let devices = vec![
+            device("05ac", "8262", Some("Keyboard"), None, 1),
+            device("1d50", "602b", Some("CMSIS-DAP"), Some("0700ab"), 2),
+            locked,
+        ];
+        let ranks = |board: serde_json::Value| {
+            let out = list(board, devices.clone()).unwrap();
+            let mut all: Vec<(usize, String)> = out
+                .devices
+                .iter()
+                .map(|d| (d.rank, d.vid.clone()))
+                .chain(
+                    out.unreachable
+                        .iter()
+                        .map(|d| (d.rank, format!("locked {}", d.vid))),
+                )
+                .collect();
+            all.sort();
+            all.into_iter().map(|(_, v)| v).collect::<Vec<_>>()
+        };
+        // The board's devices first (the one that can't be opened too),
+        // then other boards', then the rest.
+        assert_eq!(
+            ranks(json!({"board": "alhambra-ii"})),
+            ["locked 0403", "1d50", "05ac"]
+        );
+        // Without a board: boards first, devices before unreachable ones.
+        assert_eq!(ranks(json!({})), ["1d50", "locked 0403", "05ac"]);
     }
 
     #[test]
