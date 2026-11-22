@@ -586,6 +586,28 @@ function risingEdges(v) {
   return out;
 }
 const isClockable = (v) => v && v.width === 1;
+// Whether a 1-bit signal looks like a clock, so the menus offer to count its
+// cycles (the user's rule, 2026-11-22: offering it on any 1-bit signal, such
+// as a serial line, left unclear what it did and whether it made sense):
+// named like clk with two rising edges, or toggling steadily: at least four
+// rising edges, four in five periods within 10% of the usual one. Any other
+// 1-bit signal can still be picked from the clock picker's Other signals.
+const CLOCK_NAME = /(^|_)(clk|clock)(_|$|\d)/i;
+const clockLike = new Map();
+function looksLikeClock(v) {
+  if (!isClockable(v)) return false;
+  if (clockLike.has(v.id)) return clockLike.get(v.id);
+  const e = risingEdges(v);
+  let ok = false;
+  if (CLOCK_NAME.test(v.name)) ok = e.length >= 2;
+  else if (e.length >= 4) {
+    const periods = []; for (let k = 1; k < e.length; k++) periods.push(e[k] - e[k - 1]);
+    const usual = [...periods].sort((a, b) => a - b)[periods.length >> 1];
+    ok = periods.filter((d) => Math.abs(d - usual) <= usual * 0.1).length >= periods.length * 0.8;
+  }
+  clockLike.set(v.id, ok);
+  return ok;
+}
 function setClock(path) {
   const v = path && varByPath().get(path);
   S.clock = isClockable(v) ? path : null;
@@ -619,15 +641,15 @@ function fmtAt(t) {
 function suggestClock() {
   let best = null;
   for (const v of S.wave.vars) {
-    if (!isClockable(v)) continue;
+    if (!looksLikeClock(v)) continue;
     const n = risingEdges(v).length; if (n < 4) continue;
-    const score = (/(^|_)(clk|clock)(_|$|\d)/i.test(v.name) ? 1e9 : 0) + n - v.path.split('.').length;
+    const score = (CLOCK_NAME.test(v.name) ? 1e9 : 0) + n - v.path.split('.').length;
     if (!best || score > best.score) best = { path: v.path, score };
   }
   return best && best.path;
 }
 const canCount = () => !!S.clock && S.edges.length > 1;
-// Chooses the clock and counts its cycles (the picker, Use as clock).
+// Chooses the clock and counts its cycles (the picker, Count cycles of).
 function pickClock(path) {
   const was = [S.clock, S.edges, S.cycles];
   setClock(path);
@@ -636,7 +658,7 @@ function pickClock(path) {
 }
 // The switch: Time or Cycles of the clock.
 function setCycles(on) {
-  if (on && !canCount()) { toast('This run has no clock to count: right-click a 1-bit signal, Use as clock.'); return; }
+  if (on && !canCount()) { toast('This run has no clock to count: choose a signal in the clock picker, Other signals.'); return; }
   S.cycles = on; renderRows();
 }
 // The picker's list: the likely clocks, 1-bit signals that toggle, a name
@@ -644,9 +666,9 @@ function setCycles(on) {
 function clockCandidates() {
   const out = [];
   for (const v of S.wave.vars) {
-    if (!isClockable(v)) continue;
-    const n = risingEdges(v).length; if (n < 2 && v.path !== S.clock) continue;
-    out.push({ path: v.path, score: (/(^|_)(clk|clock)(_|$|\d)/i.test(v.name) ? 1e9 : 0) + n - v.path.split('.').length });
+    if (!isClockable(v) || (!looksLikeClock(v) && v.path !== S.clock)) continue;
+    const n = risingEdges(v).length;
+    out.push({ path: v.path, score: (CLOCK_NAME.test(v.name) ? 1e9 : 0) + n - v.path.split('.').length });
   }
   out.sort((x, y) => y.score - x.score);
   const top = out.slice(0, 8).map((c) => c.path);
@@ -654,11 +676,22 @@ function clockCandidates() {
   return top;
 }
 function clockMenu(x, y) {
+  const likely = clockCandidates();
   openMenu(x, y, [
-    ...clockCandidates().map((p) => ({ label: (p === S.clock ? '✓ ' : '\u2003') + shortName(p), act: () => pickClock(p) })),
+    ...likely.map((p) => ({ label: (p === S.clock ? '✓ ' : '\u2003') + shortName(p), act: () => pickClock(p) })),
     '-',
-    { label: 'Any 1-bit signal: right-click it, Use as clock', disabled: true, act: () => {} },
+    { label: 'Other signals…', act: () => otherClockMenu(x, y, likely) },
   ], 'Clock');
+}
+// Any other 1-bit signal with two rising edges, the most edges first: for
+// counting the cycles of a signal that doesn't look like a clock, such as a
+// strobe.
+function otherClockMenu(x, y, likely) {
+  const others = S.wave.vars.filter((v) => isClockable(v) && !likely.includes(v.path))
+    .map((v) => ({ v, n: risingEdges(v).length })).filter((o) => o.n >= 2)
+    .sort((a, b) => b.n - a.n).slice(0, 40);
+  if (!others.length) { toast('No other 1-bit signal rises twice: there is nothing else to count.'); return; }
+  openMenu(x, y, others.map((o) => ({ label: shortName(o.v.path), key: `${o.n} edges`, act: () => pickClock(o.v.path) })), 'Count the cycles of');
 }
 // The toolbar's switch and picker, as the state is.
 function renderTimeBase() {
@@ -668,7 +701,7 @@ function renderTimeBase() {
   const pick = $('#clockPick');
   $('#clockName').textContent = S.clock ? shortName(S.clock) : 'No clock';
   pick.classList.toggle('idle', !counting());
-  pick.title = S.clock ? `Clock: ${S.clock}. Choose another clock.` : 'No clock found. Right-click a 1-bit signal: Use as clock.';
+  pick.title = S.clock ? `Clock: ${S.clock}. Choose another clock.` : 'No clock found. Choose a signal: Other signals.';
 }
 $('#tbTime').addEventListener('click', () => setCycles(false));
 $('#tbCycles').addEventListener('click', () => setCycles(true));
@@ -1180,7 +1213,7 @@ function scaleTip(t) {
   if (counting()) return `<b>Clock cycles</b> of <code>${esc(clockName())}</code><div>Counted on its rising edges; cycle 0 is the first.</div><div>At the pointer: ${esc(at)}</div><div class="how">Time, in the toolbar: back to time. The clock picker: another clock.</div>`;
   return `<b>Time</b>, in ${esc(unitFor()[0])}<div>At the pointer: ${esc(at)}</div><div class="how">${S.clock
     ? `Cycles, in the toolbar: count the cycles of <code>${esc(clockName())}</code> instead.`
-    : 'This run has no clock to count. Right-click a 1-bit signal: Use as clock.'}</div>`;
+    : 'This run has no clock to count. Choose a signal in the clock picker: Other signals.'}</div>`;
 }
 ruler.addEventListener('pointermove', (e) => {
   const r = ruler.getBoundingClientRect(), x = e.clientX - r.left, W = r.width;
@@ -1529,7 +1562,7 @@ document.addEventListener('keydown', (e) => {
   else if ((k === 'ArrowDown' || k === 'ArrowUp') && S.rows.length) { const v = visible(), at = v.indexOf(S.sel); S.anchor = null; S.sel = v[Math.max(0, Math.min(v.length - 1, at < 0 ? 0 : at + (k === 'ArrowDown' ? 1 : -1)))]; renderRows(); }
   else if (k === 'm' || k === 'M') { S.marker = S.cursor; draw(); }
   else if (k === 's' || k === 'S') toggleBrowser();
-  else if ((k === 'Delete' || k === 'Backspace') && S.sel >= 0) { const sp = editSpan(); if (!sp) return; S.rows.splice(sp.lo, sp.end - sp.lo); S.anchor = null; S.sel = -1; renderRows(); }
+  else if ((k === 'Delete' || k === 'Backspace') && S.sel >= 0) { if (!editSpan()) return; removeSelection(); }
   else return;
   e.preventDefault();
 });
@@ -1849,6 +1882,12 @@ function moveRow(i, d) {
   if (d < 0) { const k = v.indexOf(sp.lo); if (k > 0) moveSpan(sp.lo, sp.end - sp.lo, busOf(v[k - 1])); return; }
   const n = v.find((x) => x >= sp.end); if (n != null) moveSpan(sp.lo, sp.end - sp.lo, n + blockLen(n));
 }
+// Removes the selected rows, a bus with its bits (Delete, and the menu of
+// several rows).
+function removeSelection() {
+  const sp = editSpan(); if (!sp) return;
+  S.rows.splice(sp.lo, sp.end - sp.lo); S.anchor = null; S.sel = -1; renderRows();
+}
 function removeRow(i) { S.rows.splice(i, S.rows[i] && S.rows[i].v ? blockLen(i) : 1); S.anchor = null; S.sel = -1; renderRows(); }
 function timeItems(t) {
   return [
@@ -1859,6 +1898,11 @@ function timeItems(t) {
 function rowMenu(i, t, x, y) {
   const r = S.rows[i]; if (!r) return;
   if (!isSel(i)) { S.anchor = null; S.sel = i; } renderRows();
+  // A right-click in a selection of several rows acts on all of them (the
+  // user's rule, 2026-11-22): its menu has only what applies to them all.
+  const sp = editSpan();
+  const chosen = sp ? S.rows.slice(sp.lo, sp.end).filter((x) => !(x.v && x.v.bitOf)) : [];
+  if (chosen.length > 1) { selectionMenu(chosen, t, x, y); return; }
   // Below a collapsed group means after the rows it hides, so the new row shows.
   const v = visible(), below = v[v.indexOf(i) + 1] ?? S.rows.length, after = Math.max(below, i + blockLen(i));
   const common = [
@@ -1889,7 +1933,7 @@ function rowMenu(i, t, x, y) {
     const bus = busOf(i);
     openMenu(x, y, [
       ...(t != null ? [...timeItems(t), '-'] : []),
-      ...(isClockable(r.v) ? [clockItem(r.v.path), '-'] : []),
+      ...(looksLikeClock(r.v) ? [clockItem(r.v.path), '-'] : []),
       ...copyItems, '-',
       { label: `Show each bit (${S.rows[bus].v.width})`, checked: true, act: () => toggleBits(bus) },
     ], r.v.path);
@@ -1905,11 +1949,29 @@ function rowMenu(i, t, x, y) {
     { html: `<div class="lbl">Color</div><div class="swatches">${[1, 2, 3, 4, 5, 6].map((c) => `<button data-color="${c}" style="--c:var(--s${c})" class="${r.color === c ? 'on' : ''}" aria-label="Color ${c}"></button>`).join('')}</div>`,
       click: (e) => { const b = e.target.closest('[data-color]'); if (!b) return false; r.color = +b.dataset.color; renderRows(); } },
     '-', ...common, '-',
-    ...(isClockable(r.v) ? [clockItem(r.v.path), '-'] : []),
+    ...(looksLikeClock(r.v) ? [clockItem(r.v.path), '-'] : []),
     ...copyItems,
     '-',
     { label: 'Hide this signal', key: 'Delete', danger: true, act: () => removeRow(i) },
   ], r.v.path + (r.v.range ? ' ' + r.v.range : ''));
+}
+// The menu of several selected rows: formats and colors for all their
+// signals, and removing them all; what reads or changes one signal (its
+// cycles, its name and value, its bits, analog) is on a single row's menu.
+function selectionMenu(chosen, t, x, y) {
+  const sigs = chosen.filter((r) => r.v), buses = sigs.filter((r) => r.v.width > 1);
+  const radix = buses.length && buses.every((r) => r.radix === buses[0].radix) ? buses[0].radix : null;
+  const color = sigs.length && sigs.every((r) => r.color === sigs[0].color) ? sigs[0].color : null;
+  const all = sigs.length === chosen.length;
+  openMenu(x, y, [
+    ...(t != null ? [...timeItems(t), '-'] : []),
+    buses.length ? { html: `<div class="lbl">Show values as</div><div class="seg">${RADIX.map(([k, n]) => `<button data-radix="${k}" class="${radix === k ? 'on' : ''}">${n}</button>`).join('')}</div>`,
+      click: (e) => { const b = e.target.closest('[data-radix]'); if (!b) return false; for (const r of buses) r.radix = b.dataset.radix; renderRows(); } } : null,
+    sigs.length ? { html: `<div class="lbl">Color</div><div class="swatches">${[1, 2, 3, 4, 5, 6].map((c) => `<button data-color="${c}" style="--c:var(--s${c})" class="${color === c ? 'on' : ''}" aria-label="Color ${c}"></button>`).join('')}</div>`,
+      click: (e) => { const b = e.target.closest('[data-color]'); if (!b) return false; for (const r of sigs) r.color = +b.dataset.color; renderRows(); } } : null,
+    '-',
+    { label: all ? 'Hide these signals' : 'Remove these rows', key: 'Delete', danger: true, act: removeSelection },
+  ], all ? `${sigs.length} signals` : `${chosen.length} rows`);
 }
 function timeMenu(t, x, y) {
   openMenu(x, y, [
@@ -1929,8 +1991,8 @@ function timeMenu(t, x, y) {
 // Use a 1-bit signal as the clock (and count its cycles): in a row's menu and the signal list's.
 function clockItem(path) {
   return counting() && S.clock === path
-    ? { label: 'Used as clock', disabled: true, act: () => {} }
-    : { label: 'Use as clock', act: () => pickClock(path) };
+    ? { label: `Counting cycles of ${shortName(path)}`, disabled: true, act: () => {} }
+    : { label: `Count cycles of ${shortName(path)}`, act: () => pickClock(path) };
 }
 function treeMenu(e) {
   const v = e.target.closest('.var'), sc = e.target.closest('.scope-h');
@@ -1940,7 +2002,7 @@ function treeMenu(e) {
     // The clock can be chosen here too, even while its row is hidden.
     openMenu(e.clientX, e.clientY, [
       { label: shown ? 'Hide this signal' : 'Show this signal', act: () => toggleVar(v.dataset.path) },
-      ...(isClockable(x) ? ['-', clockItem(x.path)] : []),
+      ...(looksLikeClock(x) ? ['-', clockItem(x.path)] : []),
     ], v.dataset.path);
   } else if (sc) {
     const p = sc.dataset.scope, vars = S.wave.vars.filter((x) => x.path.split('.').slice(0, -1).join('.') === p && x.type !== 'parameter');
