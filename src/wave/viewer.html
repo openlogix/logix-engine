@@ -714,8 +714,9 @@ function bitByPath(map, p) {
 const MAX_BITS = 64;
 function toggleBits(i) {
   const r = S.rows[i]; if (!r || !r.v || r.v.width < 2 || r.v.bitOf) return;
-  // An analog row is a line, not bits (the user's rule, 2026-11-22).
-  if (!r.expanded && r.analog) return;
+  // A row shows its bits or an analog line, not both (the user's rules,
+  // 2026-11-22): showing the bits turns analog off.
+  if (!r.expanded && r.analog) r.analog = false;
   if (r.expanded) {
     let n = 0; while (S.rows[i + 1 + n] && S.rows[i + 1 + n].v && S.rows[i + 1 + n].v.bitOf === r.v.path) n++;
     S.rows.splice(i + 1, n); r.expanded = false;
@@ -831,7 +832,7 @@ function busOf(i) { while (i > 0 && isBit(i)) i--; return i; }
 function renderRows() {
   bitsInPlace();
   document.documentElement.style.setProperty('--row-h', S.rowH + 'px');
-  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${isSel(i) ? 'sel' : ''} ${r.v.bitOf ? 'bit' : ''}" draggable="${!r.v.bitOf}" data-i="${i}" style="--c:var(--s${r.color});${r.analog ? `height:${rowHeight(r)}px` : ''}" title="${esc(r.v.path)}">${r.v.width > 1 && !r.v.bitOf && !r.analog ? `<button class="fold bits" data-bits="${i}" aria-expanded="${!!r.expanded}" title="${r.expanded ? 'Hide' : 'Show'} each bit (${r.v.width})"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.expanded ? 'M3.5 6 8 10.5 12.5 6' : 'M6 3.5 10.5 8 6 12.5'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="dot"></span><span class="nm">${rowLabel(r.v)}${clockBadge(r.v.path)}</span></div>`; }).join('');
+  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${isSel(i) ? 'sel' : ''} ${r.v.bitOf ? 'bit' : ''}" draggable="${!r.v.bitOf}" data-i="${i}" style="--c:var(--s${r.color});${r.analog ? `height:${rowHeight(r)}px` : ''}" title="${esc(r.v.path)}">${r.v.width > 1 && !r.v.bitOf ? `<button class="fold bits" data-bits="${i}" aria-expanded="${!!r.expanded}" title="${r.expanded ? 'Hide' : 'Show'} each bit (${r.v.width})"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.expanded ? 'M3.5 6 8 10.5 12.5 6' : 'M6 3.5 10.5 8 6 12.5'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="dot"></span><span class="nm">${rowLabel(r.v)}${clockBadge(r.v.path)}</span></div>`; }).join('');
   $('#empty').hidden = S.rows.length > 0;
   renderValues(); renderTree(); renderTimeBase(); draw();
 }
@@ -1798,7 +1799,7 @@ function editSpan() {
   if (lo === last && isBit(sp.lo)) return null;
   return { lo, end: last + blockLen(last) };
 }
-function isSel(i) { const sp = selSpan(); return !!sp && i >= sp.lo && i < sp.end; }
+function isSel(i) { const sp = editSpan() || selSpan(); return !!sp && i >= sp.lo && i < sp.end; }
 // A row and what moves with it: a collapsed group takes its hidden rows
 // along, and stays collapsed (the user's request, 2026-11-21).
 function blockLen(i) {
@@ -1898,8 +1899,8 @@ function rowMenu(i, t, x, y) {
     ...(t != null ? [...timeItems(t), '-'] : []),
     r.v.width > 1 ? { html: `<div class="lbl">Show values as</div><div class="seg">${RADIX.map(([k, n]) => `<button data-radix="${k}" class="${r.radix === k ? 'on' : ''}">${n}</button>`).join('')}</div>`,
       click: (e) => { const b = e.target.closest('[data-radix]'); if (!b) return false; r.radix = b.dataset.radix; renderRows(); } } : null,
-    // Checkboxes; an analog row is a line, not bits, so Show each bit is off then.
-    r.v.width > 1 ? { label: `Show each bit (${r.v.width})`, checked: !!r.expanded, disabled: !!r.analog, act: () => toggleBits(i) } : null,
+    // Checkboxes, each turning the other off: a row shows its bits or a line.
+    r.v.width > 1 ? { label: `Show each bit (${r.v.width})`, checked: !!r.expanded, act: () => toggleBits(i) } : null,
     r.v.width > 1 || r.v.type === 'real' ? { label: 'Show as analog (a line)', checked: !!r.analog, act: () => { r.analog = !r.analog; renderRows(); commit(); } } : null,
     { html: `<div class="lbl">Color</div><div class="swatches">${[1, 2, 3, 4, 5, 6].map((c) => `<button data-color="${c}" style="--c:var(--s${c})" class="${r.color === c ? 'on' : ''}" aria-label="Color ${c}"></button>`).join('')}</div>`,
       click: (e) => { const b = e.target.closest('[data-color]'); if (!b) return false; r.color = +b.dataset.color; renderRows(); } },
