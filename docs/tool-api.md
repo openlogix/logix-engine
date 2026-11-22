@@ -753,6 +753,7 @@ Xilinx builds use two of the core's tools, `oss-cad-suite` and `openxc7`. Two Xi
 | `source_folder`, `source_files`, `constraint_file`, `build_folder` | See folder fields in Table 2 | Yes | The constraint file is required |
 | `defines` | map of text | No | Verilog and SystemVerilog macro definitions, from name to value, such as `{ "USE_PLL": "", "WIDTH": "8" }`. Names follow Verilog identifier rules, and a bad name is a request error. An empty value defines the macro with no text, for use with `` `ifdef ``. The engine always passes each value explicitly, so every tool sees the same text, and passes them in name order, so the same request always gives the same tool commands. `SYNTHESIZE` is always defined |
 | `verbose` | boolean | No | Let yosys and nextpnr print more detail, shown in the live output and the logs. Defaults to false. See Verbose under Live tool output |
+| `lint` | boolean | No | Check the design with `lint` (Verilator) first, as an editor's Verify does, with the same board, files, top module and defines: it finds likely mistakes synthesis accepts and gives clearer errors. Its problems never stop the build, which alone decides success; they join the build's in `diagnostics` (see Lint first). Defaults to false |
 
 **Table 7.** build tool outputs
 
@@ -766,8 +767,11 @@ Xilinx builds use two of the core's tools, `oss-cad-suite` and `openxc7`. Two Xi
 | `clocks_summary` | list of objects | The design's clocks, by clock net: each with `name` (for showing to people: usually the design's clock signal, such as `CLK` for `CLK$SB_IO_IN_$glb_clk`), `net` (the clock net nextpnr reports) and `max_mhz` (the maximum frequency, rounded to 0.01 MHz). A clock that misses its target isn't an error: compare these with the design's needs |
 | `report` | multiline text | The build's report for people, the preferred way to show its resource use to people, a line each: the main resource always, the others in `resources_summary` when used, then each clock, such as "The design uses 27 of 7680 logic cells (1%)." and "Maximum clock speed: 194.4 MHz (sys_clk).", with each `display_percent`. A share that isn't valid is left out. Show it as is (a console, a CLI's output); its wording can change in any version, so programs read the fields above |
 | `report_summary` | text | The report in one line, for a status bar: the main resource's share and the slowest clock, such as "Uses 1% of logic cells, max clock 194.4 MHz." Empty when there's nothing to report |
-| `warnings` | list of diagnostics | Warnings from the tools. See diagnostic fields in Table 4 |
+| `warnings` | list of diagnostics | Warnings from the build's tools. See diagnostic fields in Table 4 |
+| `diagnostics` | list of diagnostics | Every problem the call found, each with its `tool`: with `lint`, lint's first, then the build's warnings without the ones lint already reported (see Lint first); without it, the same as `warnings` |
 | `commands` | list of commands | The programs this call ran, in order, so they can be run again without the Logix Engine. See Commands |
+
+**Lint first.** With `lint` true, `build` runs `lint` first, then builds, as one call: one list of `commands` (Verilator first), the live output of both, and progress on one increasing scale ("Linting", then the build's phases). Lint fails for warnings too, so its result never stops the build. When both tools flag the same mistake, the build's problem is left out: one with the same severity at the same file and line as one of lint's (or, without a file, the same text). Each tool's own problems are all kept. A lint run that fails, such as a tool failure, adds one warning, "Lint couldn't check the design: …", and the build goes on. A failed build's design error has the same merged list in its `diagnostics`.
 
 **Errors:** design errors, such as syntax errors or unknown pin names. Setup errors with `download_packages`. Request errors, such as an unknown board, a constraint file whose extension isn't the board's FPGA family's format, or a build folder that breaks the keyword rules. Tool failures, engine errors and cancellation. A clock that misses its intended frequency is not an error: the host compares the frequencies in `clocks_summary` with its own targets.
 
@@ -823,6 +827,9 @@ Output (`resources` shortened to the used ones):
   "report": "The design uses 50 of 5280 logic cells (1%).\nThe design uses 3 of 39 I/O pins (8%).\nMaximum clock speed: 89.8 MHz (sys_clk).",
   "report_summary": "Uses 1% of logic cells, max clock 89.8 MHz.",
   "warnings": [
+    { "file": "uart.v", "line": 13, "severity": "warning", "text": "Identifier `\\rx_done' is implicitly declared.", "tool": "yosys" }
+  ],
+  "diagnostics": [
     { "file": "uart.v", "line": 13, "severity": "warning", "text": "Identifier `\\rx_done' is implicitly declared.", "tool": "yosys" }
   ]
 }
@@ -1649,7 +1656,7 @@ On Windows, a device whose `driver` isn't `ready` (in `devices` or `unreachable`
 ### Show problems in the editor
 
 - Every tool reports problems as diagnostics with `file` relative to the source folder, `line`, `column` and `severity`, so one routine can underline them for lint, test, build and format alike.
-- `lint` is fast and writes nothing, so it suits running on save. Build warnings come in `warnings`.
+- `lint` is fast and writes nothing, so it suits running on save. For a Verify button that checks and builds, call `build` with `lint` true and show its `diagnostics` (or, when it fails, the error's): lint's and the build's problems in one list, without repeats.
 - Show a build's result with the engine's text: `report_summary` in a status bar ("Uses 1% of logic cells, max clock 194.4 MHz.") and `report` in a console, so every frontend words it the same way. For a full report, show `resources` as a table: the toolchain's name, its description, used, available and `display_percent` ("n/a" when it's `null`), the used ones by default, with a way to show the rest (on Xilinx FPGAs most are unused), and `clocks_summary` with each clock's name, maximum speed and net. Logix IDE's Board Utilization window does this (`ui/src/lib/BuildReport.svelte`).
 - Turn an error's `action` code into a button: `download_packages` calls the download_packages tool, and `connect_board`, `fix_device_permissions`, `install_drivers` and `disconnect_devices` show short instructions.
 

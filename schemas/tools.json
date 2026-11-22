@@ -4290,7 +4290,7 @@
   },
   {
     "name": "build",
-    "description": "Builds an FPGA design into a bitstream: synthesizes the Verilog or SystemVerilog sources, places and routes them on the board's FPGA using the constraint file, which maps top-level ports to pins (.pcf for iCE40, .lpf for ECP5, .cst for Gowin, .xdc for Xilinx), and packs the bitstream into the build folder. Give the source files explicitly; the engine doesn't search for them, though `include files are found next to the including file or in the source folder. A build with no changes since the last one returns at once with up_to_date set. The first build may download the toolchain package first, which takes a few minutes. Design problems come back as a design error with diagnostics at file and line. After a successful build, program_board programs the bitstream into the board.",
+    "description": "Builds an FPGA design into a bitstream: synthesizes the Verilog or SystemVerilog sources, places and routes them on the board's FPGA using the constraint file, which maps top-level ports to pins (.pcf for iCE40, .lpf for ECP5, .cst for Gowin, .xdc for Xilinx), and packs the bitstream into the build folder. Give the source files explicitly; the engine doesn't search for them, though `include files are found next to the including file or in the source folder. A build with no changes since the last one returns at once with up_to_date set. The first build may download the toolchain package first, which takes a few minutes. Design problems come back as a design error with diagnostics at file and line. Set lint to true to check the design with lint first, as an editor's Verify does: its problems join the build's in diagnostics, without repeats, and never stop the build. After a successful build, program_board programs the bitstream into the board.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "BuildInput",
@@ -4367,6 +4367,11 @@
         },
         "verbose": {
           "description": "Let the tools print more detail, shown in the live output and the\nlogs. It doesn't change the result. Defaults to false.",
+          "type": "boolean",
+          "default": false
+        },
+        "lint": {
+          "description": "Check the design with lint (Verilator) first, as an editor's Verify\ndoes: lint finds likely mistakes synthesis accepts and gives clearer\nerrors. Its problems never stop the build, which alone decides\nsuccess; they come first in diagnostics (and in a design error's\ndiagnostics), each with its tool, and a build problem on a line\nlint already flagged with the same severity is left out. Defaults\nto false.",
           "type": "boolean",
           "default": false
         }
@@ -4494,7 +4499,14 @@
           "type": "string"
         },
         "warnings": {
-          "description": "Warnings from the tools.",
+          "description": "Warnings from the build's tools.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Diagnostic"
+          }
+        },
+        "diagnostics": {
+          "description": "Every problem this call found, each with its tool: with lint, lint's\nfirst, then the build's warnings, a build problem left out when lint\nflagged the same line with the same severity; without lint, the\nwarnings.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/Diagnostic"
@@ -4519,6 +4531,7 @@
         "report",
         "report_summary",
         "warnings",
+        "diagnostics",
         "commands"
       ],
       "$defs": {

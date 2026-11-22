@@ -52,6 +52,18 @@ pub struct Call {
 }
 
 impl Call {
+    /// The same call with another progress sink, for a step of it with
+    /// phases of its own.
+    pub fn with_progress(&self, progress: Arc<dyn ProgressSink>) -> Call {
+        Call {
+            progress,
+            output: self.output.clone(),
+            cancel: self.cancel.clone(),
+            commands: self.commands.clone(),
+            display: self.display.clone(),
+        }
+    }
+
     /// A call with the given progress sink and no live output.
     pub fn new(progress: Arc<dyn ProgressSink>, cancel: CancellationToken) -> Self {
         Call {
