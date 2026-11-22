@@ -828,6 +828,26 @@ async fn reads_the_remote_config_then_downloads_what_it_names() {
 }
 
 #[tokio::test]
+async fn a_package_may_follow_the_newest_release() {
+    // The catalog names newest: GitHub's release list (newest first, with a
+    // draft that doesn't count) says which release that is.
+    let r = remote_setup();
+    r.server
+        .put(&config_path(), config_text("newest").as_bytes());
+    r.server.put(
+        "/api/repos/test/catalog/releases?per_page=30",
+        br#"[{"tag_name": "2026-01-04", "draft": true},
+             {"tag_name": "2026-01-03", "draft": false, "prerelease": true},
+             {"tag_name": "2026-01-02", "draft": false}]"#,
+    );
+    let pm = r.pm(true, false);
+    assert_eq!(
+        download_all(&pm).await,
+        ["logix-catalog 2026-01-03", "logix-core 2026-01-02"]
+    );
+}
+
+#[tokio::test]
 async fn without_its_own_file_dev_reads_the_prod_config() {
     if test_channel() == "prod" {
         return; // Only another channel falls back to prod-channel.jsonc.

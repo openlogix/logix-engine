@@ -362,7 +362,8 @@ fn entry(name: &str, dep: &serde_json::Value, needs_file: bool) -> Result<Entry,
             .filter(|(o, r)| safe(o) && safe(r))
             .ok_or_else(|| format!("{name}: repo must be owner/name, not {repo:?}"))?;
         let release = field("release")?;
-        if !manifest::is_date_tag(&release) {
+        // A dependency may follow the newest release; latest names a tag.
+        if !manifest::is_date_tag(&release) && !(needs_file && release == NEWEST) {
             return Err(format!(
                 "{name}: release must be yyyy-mm-dd, not {release:?}"
             ));
@@ -597,9 +598,38 @@ pub async fn newer_release(
     Ok(None)
 }
 
+/// A dependency's `release` that stands for its repo's newest release when
+/// the config is read (the website repo's `CLAUDE.md`, Remote updates; only
+/// outside prod, which the shared check enforces).
+pub const NEWEST: &str = "newest";
+
+/// The tag `newest` stands for, from GitHub's release list (JSON): the
+/// newest date-tagged release, stable or pre-release, not drafts.
+pub fn newest_tag(list: &str) -> Option<String> {
+    let releases: Vec<serde_json::Value> = serde_json::from_str(list).ok()?;
+    releases
+        .iter()
+        .filter(|r| r["draft"] != serde_json::Value::Bool(true))
+        .filter_map(|r| r["tag_name"].as_str())
+        .filter(|t| manifest::is_date_tag(t))
+        .max()
+        .map(str::to_string)
+}
+
+/// Where the release list is read, for `release_base`: GitHub's API, or
+/// `<base>/api` on a test server.
+fn api_base(release_base: &str) -> String {
+    if release_base.trim_end_matches('/') == manifest::GITHUB {
+        "https://api.github.com".to_string()
+    } else {
+        format!("{}/api", release_base.trim_end_matches('/'))
+    }
+}
+
 /// Resolves a config for a platform: each package's file, with its SHA-256
 /// from its release's `SHA256SUMS`, under `release_base` (manifest::GITHUB,
-/// or a test server).
+/// or a test server). A package naming `newest` gets its repo's newest
+/// release first.
 pub async fn resolve(
     entries: &BTreeMap<String, Entry>,
     platform: &str,
@@ -610,7 +640,18 @@ pub async fn resolve(
     // The catalog first: it's small, so boards can be listed while the
     // tools download.
     for name in PACKAGES {
-        let e = &entries[name];
+        let mut e = entries[name].clone();
+        if e.release == NEWEST {
+            let url = format!(
+                "{}/repos/{}/{}/releases?per_page=30",
+                api_base(release_base),
+                e.owner,
+                e.repo
+            );
+            e.release = newest_tag(&get_text(client, &url).await?)
+                .ok_or_else(|| format!("{name}: {}/{} has no releases", e.owner, e.repo))?;
+        }
+        let e = &e;
         let per_platform = e.file.contains("${PLATFORM}");
         let file = e
             .file
@@ -818,6 +859,27 @@ mod tests {
     }
 
     #[test]
+    fn a_dependency_may_follow_the_newest_release() {
+        let e = parse(&CONFIG.replacen("2026-11-11", "newest", 1)).unwrap();
+        assert_eq!(e["logix-core"].release, "newest");
+    }
+
+    #[test]
+    fn newest_is_the_newest_dated_release_not_a_draft() {
+        let list = r#"[
+            {"tag_name": "2026-11-21", "draft": false, "prerelease": false},
+            {"tag_name": "2026-11-23", "draft": true, "prerelease": true},
+            {"tag_name": "2026-11-22", "draft": false, "prerelease": true},
+            {"tag_name": "v1.0", "draft": false, "prerelease": false}
+        ]"#;
+        assert_eq!(newest_tag(list).as_deref(), Some("2026-11-22"));
+        assert_eq!(newest_tag("[]"), None);
+        assert_eq!(newest_tag("not json"), None);
+        assert_eq!(api_base(manifest::GITHUB), "https://api.github.com");
+        assert_eq!(api_base("http://127.0.0.1:9/"), "http://127.0.0.1:9/api");
+    }
+
+    #[test]
     fn bad_configs_are_refused() {
         for (from, to, why) in [
             (
@@ -842,6 +904,12 @@ mod tests {
             (
                 "\"release\": \"2026-11-17\"",
                 "\"release\": \"soon\"",
+                "latest: release",
+            ),
+            // latest names a tag, never newest.
+            (
+                "\"release\": \"2026-11-17\"",
+                "\"release\": \"newest\"",
                 "latest: release",
             ),
             ("\"dependencies\": {", "\"deps\": {", "unknown key deps"),
