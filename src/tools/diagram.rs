@@ -17,12 +17,13 @@ pub struct Diagram;
 
 impl EngineTool for Diagram {
     const NAME: &'static str = "diagram";
-    const DESCRIPTION: &'static str = "Draws the design as schematic diagrams, one per module: \
-        registers, adders, comparators, multiplexers, memories, the FPGA's own blocks and \
-        other modules as symbols, with the wires between them. Yosys reads the design as \
-        written, without synthesizing it, and the engine lays out and draws every module \
-        itself. Writes, in the build folder, diagram-<top_module>.html, one self-contained \
-        page with every module (click a module to open it, drag to pan, scroll to zoom, hover \
+    const DESCRIPTION: &'static str = "Draws the design as schematic diagrams, one per module, \
+        as written: its other modules, the FPGA's own blocks and memories, and one block per \
+        signal the module's code drives (a register, or a block of logic), named after it, \
+        its inputs labeled with the signals it reads, with the wires between them; not the \
+        multiplexers and gates synthesis would make. The engine lays out and draws every \
+        module itself. Writes, in the build folder, diagram-<top_module>.html, one \
+        self-contained page with every module (double-click a module to open it, drag to pan, scroll to zoom, hover \
         anything for its details; it needs no network or other software, so any web browser \
         shows it), and in its diagram/ folder (replaced by each call) each module's SVG and \
         diagram.json, a model of every module's blocks, ports, signals and source lines. To \
