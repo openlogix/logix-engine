@@ -19,9 +19,11 @@
       "release": "2026-11-22",
       "file": "logix-core-${PLATFORM}-${YYYYMMDD}.tgz"
     },
+    // 2026-11-22: the Soan-Papdi's status LEDs, slide switches, PROG
+    // button and IO headers (logix-catalog#4).
     "logix-catalog": {
       "repo": "openlogix/logix-catalog",
-      "release": "2026-11-19",
+      "release": "2026-11-22",
       "file": "logix-catalog-${YYYYMMDD}.tgz"
     }
   }
