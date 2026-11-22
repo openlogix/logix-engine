@@ -236,8 +236,9 @@ A host that wants to show the tools' output as it happens, such as in a console,
 | `text` | text | The line as the tool printed it, without terminal codes and without any noise the engine removed (see Presentation), with paths named as `display_paths` says. A progress bar redrawn with carriage returns gives one line per redraw |
 | `original_text` | text | In `output` lines whose noise the engine removed: the line as the tool printed it. Omitted when `text` is the line as printed |
 | `redraw` | boolean | In `output` lines: true when the tool prints over this line (a carriage return ended it, as progress bars do), so a console may replace it with the tool's next line, as a terminal does. False otherwise |
+| `location` | object | Optional, in `output` lines: the place in one of the request's files that the line names, such as `main.v:12: ERROR: …` or `%Warning-WIDTH: rtl/uart.v:6:9: …`, so a console can make the line a link to it: `file` (named as diagnostics name files, `display_paths` applied, so a path with folders, such as `rtl/uart.v`, works), `line` (from 1) and `column` (from 1, when the line gives one). Only a file that is there, in the source folder or the custom boards folder, counts: a line about a toolchain file, such as an FPGA model, has none. The first place a line names |
 
-Lines that the engine reads into diagnostics still come in the tool result too. The live lines are for showing, not for parsing.
+Lines that the engine reads into diagnostics still come in the tool result too. The live lines are for showing, not for parsing: `location` says where a line points, so a host never reads paths out of the text.
 
 **Verbose.** Tools that run other tools take an optional boolean `verbose`. It asks those tools to print more detail, which shows in the live output and the logs, and never changes the result. Each tool maps it to what its tools offer: `build` runs yosys and nextpnr without `-q`, `lint` runs Verilator without `--quiet`, `test` and `simulate` run iverilog with `-v`, `format` adds Verible's `--verbose`, `diagram` runs yosys without `-q`, and `program_board` adds openFPGALoader's `--verbose`, or iceprog's or dfu-util's `-v` (icesprog has no such option). A build that is up to date runs nothing, so it prints nothing extra.
 
@@ -1641,7 +1642,7 @@ On Windows, a device whose `driver` isn't `ready` (in `devices` or `unreachable`
 ### Show progress and a console
 
 - Add a progress token to every long call. Show an overall bar from `progress / total`, the phase message as its label, and the phase's own percentage as `progress mod 100`. A phase without percentages shows a spinner.
-- For a console, add `"logix/output": true` to the call's `_meta` and append each `logix/output` line, styled by `kind` and `level`. Hold a line with `redraw` true and drop it when the same tool's next line arrives, so a progress bar stays on one line; show it if anything else comes first or the call ends. Don't parse these lines; the result has the diagnostics.
+- For a console, add `"logix/output": true` to the call's `_meta` and append each `logix/output` line, styled by `kind` and `level`. A line with a `location` can be a link that opens its file at that line. Hold a line with `redraw` true and drop it when the same tool's next line arrives, so a progress bar stays on one line; show it if anything else comes first or the call ends. Don't parse these lines; the result has the diagnostics.
 - A "copy command" action can use each `commands` entry's `shell` line, so users can rerun a step or report a tool bug without the engine.
 - Cancel with an MCP cancel notification for the call's request ID.
 

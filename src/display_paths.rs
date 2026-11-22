@@ -148,6 +148,9 @@ pub struct Display {
     /// The request's source folder: relative paths in diagnostics are
     /// relative to it.
     source_folder: Option<PathBuf>,
+    /// The real paths of the folders whose files a live output line's
+    /// location may name: the source folder and the custom boards folder.
+    location_roots: Vec<PathBuf>,
 }
 
 impl Display {
@@ -182,10 +185,17 @@ impl Display {
         );
         let mut folders: Vec<Entry> = given.folders.iter().map(Entry::new).collect();
         folders.extend(source_folder.filter(absolute).map(|s| as_given(s, "")));
+        let location_roots = [source_folder, custom_boards_folder]
+            .into_iter()
+            .flatten()
+            .filter(absolute)
+            .filter_map(|f| dunce::canonicalize(f).ok())
+            .collect();
         Ok(Display {
             files,
             folders,
             source_folder: source_folder.map(|s| normal(Path::new(s))),
+            location_roots,
         })
     }
 
@@ -234,6 +244,59 @@ impl Display {
             }
         }
         file.to_string()
+    }
+
+    /// The first place in a file of the request that a tool's line names,
+    /// such as `main.v:12: ERROR: …`, `%Warning-WIDTH: rtl/uart.v:6:9: …`
+    /// or `ERROR: main_tb.v:10: …`: a file path, a colon, a line number and
+    /// optionally a column (after a colon or, as yosys writes it, a dot).
+    /// Only a file that is there, inside the source folder or the custom
+    /// boards folder, counts, so a toolchain file never does. The file is
+    /// named as diagnostics name it.
+    pub fn location(&self, text: &str) -> Option<crate::progress::Location> {
+        if self.location_roots.is_empty() {
+            return None;
+        }
+        static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let re = RE.get_or_init(|| {
+            regex::Regex::new(
+                r#"(?:^|[\s'"`(\[{<,;=])((?:[A-Za-z]:[\\/])?[^\s:'"`()\[\]{}<>,;=]+\.[A-Za-z0-9]+):([0-9]+)(?:[:.]([0-9]+))?"#,
+            )
+            .unwrap()
+        });
+        for c in re.captures_iter(text) {
+            let given = &c[1];
+            let path = Path::new(given);
+            let full = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                match &self.source_folder {
+                    Some(src) => src.join(path),
+                    None => continue,
+                }
+            };
+            let Ok(real) = dunce::canonicalize(&full) else {
+                continue;
+            };
+            if !real.is_file() || !self.location_roots.iter().any(|r| real.starts_with(r)) {
+                continue;
+            }
+            let Ok(line) = c[2].parse::<u32>() else {
+                continue;
+            };
+            if line == 0 {
+                continue;
+            }
+            return Some(crate::progress::Location {
+                file: self.file(given),
+                line,
+                column: c
+                    .get(3)
+                    .and_then(|m| m.as_str().parse().ok())
+                    .filter(|&c| c > 0),
+            });
+        }
+        None
     }
 
     /// Text with the paths it knows named as people read them. A path is
@@ -388,14 +451,22 @@ pub struct DisplayOutput {
 
 impl crate::progress::OutputSink for DisplayOutput {
     fn line(&self, line: &crate::progress::ToolLine) {
+        let location = match line.location {
+            Some(_) => None,
+            None => self.display.location(line.original.unwrap_or(line.text)),
+        };
+        let location = location.as_ref().or(line.location);
         if self.display.is_empty() {
-            return self.inner.line(line);
+            return self
+                .inner
+                .line(&crate::progress::ToolLine { location, ..*line });
         }
         let text = self.display.text(line.text);
         let original = line.original.map(|o| self.display.text(o));
         self.inner.line(&crate::progress::ToolLine {
             text: &text,
             original: original.as_deref(),
+            location,
             ..*line
         });
     }
@@ -633,6 +704,7 @@ mod tests {
             text: "/s/7/main.v:5: ERROR: x",
             redraw: false,
             original: Some("Info: /s/7/main.v:5: ERROR: x"),
+            location: None,
         });
         out.message("Programming /s/7/b.bin");
         assert_eq!(
@@ -643,6 +715,63 @@ mod tests {
                 "msg Programming b.bin",
             ]
         );
+    }
+
+    #[test]
+    fn live_output_lines_get_the_place_they_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = dunce::canonicalize(tmp.path()).unwrap();
+        std::fs::create_dir(src.join("rtl")).unwrap();
+        for f in ["main.v", "main_tb.v", "rtl/uart.v", "pinout.pcf"] {
+            std::fs::write(src.join(f), "").unwrap();
+        }
+        let src_text = src.to_string_lossy().into_owned();
+        let at = |d: &Display, text: &str| {
+            d.location(text)
+                .map(|l| format!("{}:{}:{}", l.file, l.line, l.column.unwrap_or(0)))
+        };
+        let d = display(json!({}), Some(&src_text));
+        assert_eq!(
+            at(&d, "main.v:3: ERROR: syntax error"),
+            Some("main.v:3:0".into())
+        );
+        assert_eq!(
+            at(
+                &d,
+                "%Warning-WIDTHTRUNC: rtl/uart.v:6:9: Operator ASSIGNDLY"
+            ),
+            Some("rtl/uart.v:6:9".into())
+        );
+        assert_eq!(
+            at(&d, "ERROR: main_tb.v:10: q is 3"),
+            Some("main_tb.v:10:0".into())
+        );
+        // Yosys's line.column ranges, and absolute paths, named as the
+        // request names files.
+        assert_eq!(
+            at(&d, &format!("{src_text}/main.v:5.3-5.20: Warning: x")),
+            Some("main.v:5:3".into())
+        );
+        // Not files of the request: a toolchain model, a missing file, no
+        // line number.
+        assert_eq!(at(&d, "/opt/share/ice40/cells_sim.v:12: Warning: x"), None);
+        assert_eq!(at(&d, "other.v:3: ERROR: x"), None);
+        assert_eq!(
+            at(&d, "Info: Max frequency for clock 'clk': 12.00 MHz"),
+            None
+        );
+        assert_eq!(at(&d, "Reading main.v"), None);
+        // Display paths name the file.
+        let d = display(
+            json!({"folders": [{"path": src_text, "as": "/home/you/blinky"}]}),
+            Some(&src_text),
+        );
+        assert_eq!(
+            at(&d, "rtl/uart.v:6:9: syntax error"),
+            Some("/home/you/blinky/rtl/uart.v:6:9".into())
+        );
+        // A request without a source folder: none.
+        assert_eq!(at(&display(json!({}), None), "main.v:3: ERROR: x"), None);
     }
 
     #[test]
