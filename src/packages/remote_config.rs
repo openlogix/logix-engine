@@ -604,10 +604,10 @@ pub async fn newer_release(
 pub const NEWEST: &str = "newest";
 
 /// The tag `newest` stands for: the newest date-tagged release in the
-/// repo's release feed (`releases.atom`: published releases only, stable or
-/// pre-release, never drafts). The feed is an ordinary page, not GitHub's
-/// API, whose 60 requests an hour per address without a token ran out on CI
-/// (HTTP 403, 2026-11-22) and could on a shared network.
+/// repo's release feed (`releases.atom`, newest first, published releases
+/// only, stable or pre-release, never drafts). The feed is an ordinary page,
+/// not GitHub's API, whose 60 requests an hour per address without a token
+/// ran out on CI (HTTP 403, 2026-11-22) and could on a shared network.
 pub fn newest_tag(feed: &str) -> Option<String> {
     feed.split("/releases/tag/")
         .skip(1)
@@ -859,9 +859,9 @@ mod tests {
     fn newest_is_the_newest_dated_release_in_the_feed() {
         let feed = r#"<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
-  <entry><link rel="alternate" type="text/html" href="https://github.com/openlogix/logix-core/releases/tag/2026-11-21"/></entry>
-  <entry><link rel="alternate" type="text/html" href="https://github.com/openlogix/logix-core/releases/tag/2026-11-22"/></entry>
-  <entry><link rel="alternate" type="text/html" href="https://github.com/openlogix/logix-core/releases/tag/v1.0"/></entry>
+  <entry><link rel="alternate" type="text/html" href="https://github.com/openlogix/logix-catalog/releases/tag/2026-11-21"/></entry>
+  <entry><link rel="alternate" type="text/html" href="https://github.com/openlogix/logix-catalog/releases/tag/2026-11-22"/></entry>
+  <entry><link rel="alternate" type="text/html" href="https://github.com/openlogix/logix-catalog/releases/tag/v1.0"/></entry>
 </feed>"#;
         assert_eq!(newest_tag(feed).as_deref(), Some("2026-11-22"));
         assert_eq!(newest_tag("<feed></feed>"), None);

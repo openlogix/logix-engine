@@ -829,15 +829,15 @@ async fn reads_the_remote_config_then_downloads_what_it_names() {
 
 #[tokio::test]
 async fn a_package_may_follow_the_newest_release() {
-    // The catalog names newest: the repo's release feed (published releases
-    // only, so never a draft) says which release that is.
+    // The catalog names newest: the repo's release feed says which release
+    // that is.
     let r = remote_setup();
     r.server
         .put(&config_path(), config_text("newest").as_bytes());
     r.server.put(
         "/test/catalog/releases.atom",
         br#"<feed><entry><link href="https://github.com/test/catalog/releases/tag/2026-01-03"/></entry>
-             <entry><link href="https://github.com/test/catalog/releases/tag/2026-01-02"/></entry></feed>"#,
+<entry><link href="https://github.com/test/catalog/releases/tag/2026-01-02"/></entry></feed>"#,
     );
     let pm = r.pm(true, false);
     assert_eq!(
