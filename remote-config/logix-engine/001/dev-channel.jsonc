@@ -11,19 +11,22 @@
     "file": "logix-engine-${PLATFORM}-${YYYYMMDD}.tgz"
   },
   "dependencies": {
+    // Since 2026-11-22, both packages are newest: dev follows each day's
+    // pre-release without repinning (the user's decision; read by the engine
+    // since logix-engine#70). latest still names a tag.
     // 2026-11-22: Logix Viewer (logix-core#2, #3), the apps the engine
     // shows its pages in (Logix Waveforms, Logix Diagrams), for
     // logix-engine#60.
     "logix-core": {
       "repo": "openlogix/logix-core",
-      "release": "2026-11-22",
+      "release": "newest",
       "file": "logix-core-${PLATFORM}-${YYYYMMDD}.tgz"
     },
     // 2026-11-22: the Soan-Papdi's status LEDs, slide switches, PROG
     // button and IO headers (logix-catalog#4).
     "logix-catalog": {
       "repo": "openlogix/logix-catalog",
-      "release": "2026-11-22",
+      "release": "newest",
       "file": "logix-catalog-${YYYYMMDD}.tgz"
     }
   }
