@@ -513,12 +513,6 @@ pub struct LayoutGraph {
     pub meets: Vec<Option<(usize, bool)>>,
 }
 
-impl LayoutGraph {
-    pub fn node_count(&self) -> usize {
-        self.graph["children"].as_array().map_or(0, Vec::len)
-    }
-}
-
 fn edge_index(e: &Value) -> Option<usize> {
     e["id"].as_str()?.strip_prefix('e')?.parse().ok()
 }

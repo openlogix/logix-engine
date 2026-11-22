@@ -89,24 +89,6 @@ pub fn repo_file_source() -> ConfigSource {
     }
 }
 
-/// The release the repo's config file names for a package (for tests): the
-/// file the tests' channel reads.
-#[doc(hidden)]
-pub fn repo_release(name: &str) -> String {
-    let folder = PathBuf::from(repo_file_source().location);
-    let channels =
-        parse_channels(&std::fs::read_to_string(folder.join(ASSIGN_FILE)).unwrap()).unwrap();
-    let channel = choose_channel(&channels, channel_variable().unwrap().as_deref()).unwrap();
-    let file = [channel.name.clone(), "prod".into()]
-        .iter()
-        .map(|c| folder.join(channel_file(c)))
-        .find(|f| f.is_file())
-        .expect("the channel's config file, or prod-channel.jsonc");
-    parse(&std::fs::read_to_string(file).unwrap()).expect("a valid config")[name]
-        .release
-        .clone()
-}
-
 /// Where the engine reads its remote config.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConfigSource {
@@ -738,11 +720,6 @@ impl Cached {
             && self.config_version == CONFIG_VERSION
             && self.reader == reader()
             && variable == cached_variable
-    }
-
-    /// Whether it's older than MAX_AGE.
-    pub fn is_due(&self) -> bool {
-        now().saturating_sub(self.fetched) >= MAX_AGE.as_secs()
     }
 }
 

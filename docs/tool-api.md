@@ -294,10 +294,11 @@ Download progress is one phase per package, such as "Downloading logix-core 2026
 | Path in the engine folder | Contents |
 | --- | --- |
 | `remote-config/config.json` | The remote config in use: where it was read, when, and the release and SHA-256 of each package |
-| `packages/<name>/<release tag>/` | A downloaded package, by its release tag (`yyyy-mm-dd`), such as `packages/logix-core/2026-11-10/`, with one folder per tool in the core (`oss-cad-suite/`, `openxc7/`, `verible/`, `elkjs/`, and `wdi-simple/` on Windows). Its receipt, `logix-download.json`, is written last; once a newer release is in place, the old one is deleted |
+| `packages/<name>/<release tag>/` | A downloaded package, by its release tag (`yyyy-mm-dd`), such as `packages/logix-core/2026-11-10/`, with one folder per tool in the core (`oss-cad-suite/`, `openxc7/`, `verible/`, `elkjs/`, `logix-viewer/`, and `wdi-simple/` on Windows). Its receipt, `logix-download.json`, is written last; once a newer release is in place, the old one is deleted |
 | `downloads/` | Partial downloads, deleted when a download ends |
 | `locks/` | One lock file per package, held while downloading it |
 | `logs/` | The engine's log session folders when it's at the top (see Logs in [Command line](command-line.md)). Under a host that gives `--log-folder`, the logs are in the host's folder instead |
+| `waveforms/` | The pages `open_waveform` writes when the request has no build folder, the 20 newest kept |
 | `tmp/` | Small files the engine generates for the tools, such as the Verilator config that turns off warnings in the FPGA models. Safe to delete |
 
 An interrupted download never leaves a package that looks downloaded, so the next call downloads it again.
@@ -1595,7 +1596,7 @@ The Logix Engine was designed together with the Logix IDE, and its tools map to 
 | Recipe | In the Logix IDE |
 | --- | --- |
 | Start up, calls, progress and live output | [engine/client.rs](https://github.com/openlogix/logix-ide/blob/main/src-tauri/src/engine/client.rs) (the MCP session), [setup.rs](https://github.com/openlogix/logix-ide/blob/main/src-tauri/src/engine/setup.rs) (download, start, version check) |
-| Show whether the board is connected | [engine/devices.rs](https://github.com/openlogix/logix-ide/blob/main/src-tauri/src/engine/devices.rs), [ui/src/lib/boards.ts](https://github.com/openlogix/logix-ide/blob/main/ui/src/lib/boards.ts) (device groups), [ui/src/lib/devices.ts](https://github.com/openlogix/logix-ide/blob/main/ui/src/lib/devices.ts) (match levels in words) |
+| Show whether the board is connected | [engine/devices.rs](https://github.com/openlogix/logix-ide/blob/main/src-tauri/src/engine/devices.rs), [ui/src/lib/devices.ts](https://github.com/openlogix/logix-ide/blob/main/ui/src/lib/devices.ts) (device groups, match levels in words) |
 | Upload: build, pick a device, program | [engine/task.rs](https://github.com/openlogix/logix-ide/blob/main/src-tauri/src/engine/task.rs) (`pick_device`), [ui/src/lib/DevicePicker.svelte](https://github.com/openlogix/logix-ide/blob/main/ui/src/lib/DevicePicker.svelte) |
 | Show problems, build results and testbench results | [engine/task.rs](https://github.com/openlogix/logix-ide/blob/main/src-tauri/src/engine/task.rs), [ui/src/lib/buildReport.ts](https://github.com/openlogix/logix-ide/blob/main/ui/src/lib/buildReport.ts), [ui/src/lib/tasks.ts](https://github.com/openlogix/logix-ide/blob/main/ui/src/lib/tasks.ts) |
 | Pick a board and its board variant | [engine/catalog.rs](https://github.com/openlogix/logix-ide/blob/main/src-tauri/src/engine/catalog.rs), [ui/src/lib/BoardPicker.svelte](https://github.com/openlogix/logix-ide/blob/main/ui/src/lib/BoardPicker.svelte), [ui/src/lib/variants.ts](https://github.com/openlogix/logix-ide/blob/main/ui/src/lib/variants.ts) |
@@ -1607,7 +1608,7 @@ Logic that every frontend would need and that doesn't depend on a frontend's own
 
 ### Start up
 
-1. Launch the Logix Engine with `--engine-folder`, and, to keep its logs with yours (the Open Logix log layout, Logs in [Command line](command-line.md)), with `--log-folder` (your session folder) and `--log-name` (your name, a dot, then `logix-engine`). Do the MCP handshake, then call `get_engine_info`. If you follow the layout, call `clean_logs` with your logs folder, keeping your session folder.
+1. Launch the Logix Engine with `--engine-folder`, and, to keep its logs with yours (the Open Logix log layout, Logs in [Command line](command-line.md)), with `--log-folder` (your session folder) and `--log-name` (your program's short name, a dot, then `engine`, such as `my-ide.engine`). Do the MCP handshake, then call `get_engine_info`. If you follow the layout, call `clean_logs` with your logs folder, keeping your session folder.
 2. Check that `engine_version` is one your frontend supports, by its own rule, such as a version range or a list of tested releases. If it isn't, call no other tools: tell the user which Logix Engine versions the frontend needs, then stop or fall back as the frontend decides.
 3. Call `download_packages` and show its progress. It reads the engine's remote config when that's due and downloads only what's missing, so it returns at once when everything is ready, and it's how a first start downloads the packages with the host's own progress screen. (Tools would download what they need on first use anyway.) Then show package status from its `packages`. To check for newer packages now, call `check_updates`.
 
@@ -1615,7 +1616,7 @@ Logic that every frontend would need and that doesn't depend on a frontend's own
 
 1. Call `list_devices` every few seconds while the status is on screen, and pause while a task uses the board. The Logix Engine has no device-change notification, so the frontend polls.
 2. Look for the selected board and board variant in each device's `boards`. Show "connected" when a device fits, and "not connected" when none does; Upload then checks. A frontend can use the `match` levels to order the boards a device may be, naming the strongest and counting the weak ones, but no USB match proves which board is plugged in.
-3. When no device fits but `unreachable` has one, show its `action` instead, such as fixing device permissions. A device seen but not usable is a common reason a board "isn't found".
+3. When no device fits but `unreachable` has one, show its `fix` instead, such as adding a udev rule, and offer `install_driver` when its `driver` isn't `ready` (below). A device seen but not usable is a common reason a board "isn't found".
 4. Device IDs stay the same while a device stays on its USB port, so a selection survives polling and replugging into the same port.
 
 ### Upload: build, pick a device, program
@@ -1626,12 +1627,12 @@ Logic that every frontend would need and that doesn't depend on a frontend's own
 4. Call `program_board` with the build folder and the chosen device `id`.
 5. On `connect_board` or `disconnect_devices`, list the devices again and let the user retry. Never build or guess a device ID.
 
-On Windows, a device whose `driver` isn't `ready` (in `devices` or `unreachable`) needs WinUSB first: before step 4, explain it to the user (which board, that Windows will ask for permission, and that other devices with the same USB IDs get it too) and, if they agree, call `install_driver` with the device and the build folder, then list the devices again. Offer `uninstall_driver` somewhere the user can find it later, such as next to the device, for when vendor tools need the board back.
+On Windows and Linux, a device whose `driver` isn't `ready` (in `devices` or `unreachable`) needs WinUSB (Windows) or a udev rule (Linux) first: before step 4, explain it to the user, with the `add` question its `driver` gives (which board, that the system will ask for permission or a password, and on Windows that other devices with the same USB IDs get it too) and, if they agree, call `install_driver` with the device and the build folder, then list the devices again. Offer `uninstall_driver` somewhere the user can find it later, such as next to the device, for when vendor tools need the board back.
 
 ### Show progress and a console
 
 - Add a progress token to every long call. Show an overall bar from `progress / total`, the phase message as its label, and the phase's own percentage as `progress mod 100`. A phase without percentages shows a spinner.
-- For a console, add `"logix/output": true` to the call's `_meta` and append each `logix/output` line, styled by `kind` and `level`. Hold a line with `redraw` true and drop it when the same tool's next line arrives, so a progress bar stays on one line; show it if anything else comes first or the call ends. Don't parse these lines; the result has the diagnostics.
+- For a console, add `"logix/output": true` to the call's `_meta` and append each `logix/output` line, styled by `kind` and `level`. Show a line with `redraw` true at once, and replace it in place with the same tool's next line, so a progress bar stays on one line and updates as in a terminal; any other line in between keeps it. Don't parse these lines; the result has the diagnostics.
 - A "copy command" action can use each `commands` entry's `shell` line, so users can rerun a step or report a tool bug without the engine.
 - Cancel with an MCP cancel notification for the call's request ID.
 

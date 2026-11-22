@@ -84,7 +84,7 @@ pub struct DiagramRequest {
     pub defines: BTreeMap<String, String>,
     pub board: ResolvedBoard,
     pub verbose: bool,
-    /// Open the page in the system's web browser when it's written.
+    /// Open the page in Logix Diagrams (Logix Viewer) when it's written.
     pub open: bool,
     /// How many levels of modules below the top module are drawn.
     pub levels: usize,
