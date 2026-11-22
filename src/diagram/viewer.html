@@ -14,16 +14,18 @@
      directly can define window.logixDiagramOpenSource(file, line). -->
 <style>
 :root {
-  --bg: #f4f6f8; --surface: #ffffff; --ink: #16202b; --muted: #5a6875; --line: #d6dde4;
-  --accent: #0f8a8f; --hover: #e0115f;
+  /* The page's own colors are the waveform page's, so the engine's pages
+     look alike (the user's request, 2026-11-22). */
+  --bg: #f4f6f5; --surface: #ffffff; --ink: #15201e; --muted: #5c6b68; --line: #dde4e2;
+  --soft: #edf2f0; --accent: #00838a; --accent-soft: #d8efee; --hover: #e0115f;
   --logix-diagram-sheet: #ffffff; --logix-diagram-wire: #23303c;
   --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: light;
 }
 :root[data-theme="dark"], :root:not([data-theme="light"]).system-dark {
-  --bg: #0f1419; --surface: #172029; --ink: #e6edf3; --muted: #93a1ae; --line: #2a3642;
-  --accent: #3fc1c4; --hover: #ff5c93;
+  --bg: #0c1110; --surface: #121918; --ink: #e2ebe9; --muted: #8b9d99; --line: #22302d;
+  --soft: #19221f; --accent: #3cc8c0; --accent-soft: #143331; --hover: #ff5c93;
   --logix-diagram-sheet: #121a21; --logix-diagram-wire: #c9d6e2;
   --logix-diagram-register: #7fb0f5; --logix-diagram-register-fill: #172a45;
   --logix-diagram-arithmetic: #e8b04f; --logix-diagram-arithmetic-fill: #3a2a10;
@@ -40,17 +42,36 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--ink); font: 14px var(--font-ui); display: flex; flex-direction: column; }
-.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--line); }
+/* One toolbar, as the waveform page's: the module's path, Go to source, the
+   zoom group, then Export and help at the right. */
+.bar { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; padding: 10px max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px)); background: var(--bg); }
+.bar .right { display: flex; align-items: center; gap: 8px 10px; margin-left: auto; }
+.btns { display: flex; gap: 2px; background: var(--soft); border-radius: 8px; padding: 2px; }
+.btns button { border: 0; background: none; height: 26px; min-width: 28px; padding: 0 8px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.btns button:hover { background: var(--surface); }
+.btns button svg { width: 15px; height: 15px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); white-space: nowrap; }
+.btn svg { width: 15px; height: 15px; }
+.icon-btn { width: 30px; padding: 0; justify-content: center; }
+.ctx { position: fixed; z-index: 70; min-width: 230px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.2); padding: 5px; display: flex; flex-direction: column; font-size: 13px; }
+.ctx .it { display: flex; width: 100%; border: 0; background: none; text-align: left; padding: 6px 10px; border-radius: 6px; color: var(--ink); }
+.ctx .it:hover, .ctx .it:focus { background: var(--accent-soft); outline: none; border: 0; }
+.ctx .it:disabled { opacity: .4; cursor: default; background: none; }
+.ctx .sep { height: 1px; background: var(--line); margin: 4px 6px; }
+.help { position: fixed; z-index: 60; width: 300px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.18); padding: 12px; }
+.help h3 { margin: 0 0 10px; font-size: 12px; font-weight: 600; }
+.keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 12px; align-items: start; }
+.keys kbd { font-family: var(--font-mono); font-size: 11px; background: var(--soft); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; white-space: nowrap; justify-self: start; }
+.toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 80; background: var(--ink); color: var(--bg); border-radius: 8px; padding: 8px 14px; font-size: 13px; }
 .crumbs { font: 500 13px var(--font-mono); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-width: 0; }
 .crumbs a { color: var(--accent); text-decoration: none; cursor: pointer; }
 .crumbs a:hover { text-decoration: underline; }
 .crumbs .sep { color: var(--muted); }
-.tools { display: flex; gap: 6px; align-items: center; }
-button { font: 500 13px var(--font-ui); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
-button:hover { border-color: var(--accent); }
+button { font: 13px var(--font-ui); color: var(--ink); cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 button[hidden] { display: none; }
-.canvas { flex: 1; min-height: 0; background: var(--logix-diagram-sheet); position: relative; touch-action: none; overflow: hidden; }
+.canvas { flex: 1; min-height: 0; margin: 0 max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px)); border: 1px solid var(--line); border-radius: 10px; background: var(--logix-diagram-sheet); position: relative; touch-action: none; overflow: hidden; }
 .canvas.dragging { cursor: grabbing; }
 .canvas > svg { width: 100%; height: 100%; display: block; }
 .canvas svg [data-block] { cursor: default; }
@@ -77,15 +98,21 @@ button[hidden] { display: none; }
 </style>
 </head>
 <body>
-<div class="bar">
+<header class="bar">
   <nav class="crumbs" id="crumbs" aria-label="Module"></nav>
-  <div class="tools">
-    <button id="source" hidden>Go to source</button>
-    <button id="zoomOut" aria-label="Zoom out">−</button>
-    <button id="zoomIn" aria-label="Zoom in">+</button>
-    <button id="fit">Fit</button>
+  <button class="btn" id="source" hidden>Go to source</button>
+  <div class="btns" role="group" aria-label="Zoom">
+    <button id="zoomOut" title="Zoom out (−)" aria-label="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+    <button id="zoomIn" title="Zoom in (+)" aria-label="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
+    <button id="fit" title="Show the whole module (F)">Fit</button>
   </div>
-</div>
+  <div class="right">
+    <button class="btn" id="exportBtn" title="Copy or save the diagram, to share">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="15.5" cy="8.5" r="1.5"/></svg><span>Export</span>
+    </button>
+    <button class="btn icon-btn" id="helpBtn" aria-label="Keyboard and mouse" title="Keyboard and mouse">?</button>
+  </div>
+</header>
 <main class="canvas" id="canvas" aria-label="Diagram"></main>
 <div class="pop" id="pop" hidden></div>
 <script>
@@ -200,12 +227,20 @@ button[hidden] { display: none; }
     zoomAt(Math.exp(e.deltaY * 0.0015), e.clientX, e.clientY);
   }, { passive: false });
   let drag = null;
+  // Only the primary button pans, and a pan always ends: a right-click's
+  // menu takes the button's release, so without this the page kept panning
+  // after the menu closed (the user's report, 2026-11-21).
+  const endDrag = () => { drag = null; canvas.classList.remove("dragging"); };
   canvas.addEventListener("pointerdown", (e) => {
-    if (!vb) return;
+    if (!vb || e.button !== 0) return;
     drag = { x: e.clientX, y: e.clientY, vb: { ...vb }, moved: false };
     canvas.setPointerCapture(e.pointerId);
   });
+  canvas.addEventListener("pointercancel", endDrag);
+  canvas.addEventListener("lostpointercapture", endDrag);
+  canvas.addEventListener("contextmenu", endDrag);
   canvas.addEventListener("pointermove", (e) => {
+    if (drag && e.buttons === 0) endDrag();
     if (drag) {
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       if (Math.abs(dx) + Math.abs(dy) > 3) { drag.moved = true; canvas.classList.add("dragging"); hide(); }
@@ -220,14 +255,134 @@ button[hidden] { display: none; }
   });
   canvas.addEventListener("pointerleave", hide);
   canvas.addEventListener("pointerup", (e) => {
+    if (e.button !== 0) return;
     const wasDrag = drag && drag.moved;
-    drag = null; canvas.classList.remove("dragging");
+    endDrag();
     if (!wasDrag) click(e.clientX, e.clientY);
   });
   const center = () => { const r = canvas.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
   $("zoomIn").onclick = () => zoomAt(0.7, ...center());
   $("zoomOut").onclick = () => zoomAt(1 / 0.7, ...center());
-  $("fit").onclick = () => { if (home) { vb = { ...home }; apply(); } };
+  const fit = () => { if (home) { vb = { ...home }; apply(); } };
+  $("fit").onclick = fit;
+
+  // Keys, as on the waveform page.
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest && e.target.closest("input, textarea")) return;
+    if (e.key === "Escape") { closeMenus(); return; }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "+" || e.key === "=") zoomAt(0.7, ...center());
+    else if (e.key === "-" || e.key === "_") zoomAt(1 / 0.7, ...center());
+    else if (e.key === "f" || e.key === "F") fit();
+    else return;
+    e.preventDefault();
+  });
+
+  // Export: the shown part of the module as a picture, to share, as the
+  // waveform page's Export (the user's request, 2026-11-22). Saving goes
+  // through the host (window.logixHost, Logix Viewer); in a plain browser
+  // it downloads; a host with neither can only copy.
+  const canSave = () => !!(window.logixHost && window.logixHost.saveAs) || !hosted;
+  function toast(text) {
+    const t = document.createElement("div"); t.className = "toast"; t.textContent = text;
+    document.body.appendChild(t); setTimeout(() => t.remove(), 3000);
+  }
+  function shownSvg() {
+    const svg = canvas.querySelector("svg");
+    if (!svg || !vb) return null;
+    const copy = svg.cloneNode(true);
+    copy.querySelectorAll(".hit").forEach((h) => h.remove());
+    copy.querySelectorAll(".hl, .netHl").forEach((h) => h.classList.remove("hl", "netHl"));
+    const w = Math.round(vb.w), h = Math.round(vb.h);
+    copy.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    copy.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+    copy.setAttribute("width", w); copy.setAttribute("height", h);
+    const sheet = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    sheet.setAttribute("x", vb.x); sheet.setAttribute("y", vb.y); sheet.setAttribute("width", vb.w); sheet.setAttribute("height", vb.h);
+    sheet.setAttribute("fill", getComputedStyle(canvas).backgroundColor);
+    copy.insertBefore(sheet, copy.firstChild);
+    return { text: new XMLSerializer().serializeToString(copy), w, h };
+  }
+  function pngCanvas(done) {
+    const s = shownSvg(); if (!s) return;
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement("canvas"); c.width = s.w * 2; c.height = s.h * 2;
+      const g = c.getContext("2d"); g.scale(2, 2); g.drawImage(img, 0, 0); done(c);
+    };
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(s.text);
+  }
+  const baseName = () => "diagram-" + [DATA.top, ...path].map((k) => (DATA.modules[k] || {}).name || k).join("-");
+  function save(name, mime, data) {
+    if (window.logixHost && window.logixHost.saveAs) { window.logixHost.saveAs(name, mime, data); return; }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type: mime }));
+    a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    toast(`Downloaded ${name}.`);
+  }
+  function copyImage() {
+    const failed = () => toast("Couldn't copy the image here.");
+    try {
+      const png = new Promise((resolve) => pngCanvas((c) => c.toBlob(resolve, "image/png")));
+      navigator.clipboard.write([new ClipboardItem({ "image/png": png })])
+        .then(() => toast("Copied a picture of the diagram: paste it into a message or a document."), failed);
+    } catch (e) { failed(); }
+  }
+  function saveImage(kind) {
+    const name = baseName() + "." + kind;
+    if (kind === "svg") { const s = shownSvg(); if (s) save(name, "image/svg+xml", s.text); return; }
+    pngCanvas((c) => {
+      if (window.logixHost && window.logixHost.saveAs) save(name, "image/png", c.toDataURL("image/png").split(",")[1]);
+      else c.toBlob((b) => save(name, "image/png", b), "image/png");
+    });
+  }
+  let menu = null, help = null;
+  function closeMenus() {
+    if (menu) { menu.remove(); menu = null; }
+    if (help) { help.remove(); help = null; }
+  }
+  function placeAt(el, anchor) {
+    document.body.appendChild(el);
+    const r = anchor.getBoundingClientRect();
+    el.style.left = Math.max(8, Math.min(r.right - el.offsetWidth, window.innerWidth - el.offsetWidth - 8)) + "px";
+    el.style.top = (r.bottom + 4) + "px";
+  }
+  $("exportBtn").addEventListener("click", (e) => {
+    if (menu) { closeMenus(); return; }
+    closeMenus();
+    const items = [
+      { label: "Copy shown image", act: copyImage },
+      "-",
+      { label: "Save shown image (PNG)…", act: () => saveImage("png"), disabled: !canSave() },
+      { label: "Save shown image (SVG)…", act: () => saveImage("svg"), disabled: !canSave() },
+    ];
+    menu = document.createElement("div"); menu.className = "ctx"; menu.setAttribute("role", "menu");
+    for (const it of items) {
+      if (it === "-") { menu.insertAdjacentHTML("beforeend", '<div class="sep"></div>'); continue; }
+      const b = document.createElement("button"); b.className = "it"; b.setAttribute("role", "menuitem");
+      b.textContent = it.label; b.disabled = !!it.disabled;
+      b.onclick = () => { closeMenus(); it.act(); };
+      menu.appendChild(b);
+    }
+    placeAt(menu, e.currentTarget);
+  });
+  $("helpBtn").addEventListener("click", (e) => {
+    if (help) { closeMenus(); return; }
+    closeMenus();
+    help = document.createElement("div"); help.className = "help"; help.setAttribute("role", "dialog"); help.setAttribute("aria-label", "Keyboard and mouse");
+    const rows = [
+      ["Hover", "A block, port, wire, pin or label's details"], ["Double-click a module", "Open its diagram"],
+      ["The path at the top left", "Back to a module above"], ["Drag", "Move around"], ["Wheel or pinch", "Zoom around the pointer"],
+      ["+  −", "Zoom in, out"], ["F", "Show the whole module"],
+    ].concat(hosted ? [["Double-click a block", "Go to its source line"]] : []);
+    help.innerHTML = `<h3>Keyboard and mouse</h3><div class="keys">${rows.map(([k, t]) => `<kbd>${esc(k)}</kbd><span>${esc(t)}</span>`).join("")}</div>`;
+    placeAt(help, e.currentTarget);
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if ((menu && !menu.contains(e.target) && !e.target.closest("#exportBtn")) || (help && !help.contains(e.target) && !e.target.closest("#helpBtn"))) closeMenus();
+  }, true);
+  window.addEventListener("blur", closeMenus);
 
   let lit = [];
   function light(el, cls) { el.classList.add(cls); lit.push([el, cls]); }

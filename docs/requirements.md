@@ -490,6 +490,8 @@ Engine users without a window of their own, such as AI agents and later Logix CL
 - **R55.** Windows open at half the screen's width and 60% of its height, or at the size the person last gave the app's windows (kept per app in `~/.logix/viewer/`), at most 80% of the screen; each new one one step down and to the right of the app's newest, back to the top left when it would run off the screen (the user's requests, 2026-11-22). Pages are written to a temporary name and renamed into place, so a reload never reads half a page. Diagram pages are named by their starting module (`diagram-main.html`), one window each.
 - **R56.** Icons: variants of Logix Engine's icon, its purple tile and chip enlarged, with a square wave (Logix Waveforms), one block with a wire in and out (Logix Diagrams) or three equal lines of text (Logix Viewer) inside (the user's choice, 2026-11-22). No signing of its own: logix-core is downloaded by the engine, so its programs aren't quarantined.
 
+- **R57.** One look for the engine's pages (the user's request, 2026-11-22, Milestone 6): the diagram page follows the waveform page, the colors in both themes, one toolbar (the zoom group, Export with copying and saving the shown image, the help panel at the right), the same keys (+, −, F); later pages follow them too. A pan only starts with the primary button and always ends, even when a menu took the button's release (the diagram kept panning after a right-click's menu, the user's report, 2026-11-21).
+
 Logix IDE keeps its own Waveforms and Diagram windows (they belong to the project: views saved as project edits, source lines opening in its editor) and calls the engine with `open_viewer` and `open` false.
 
 ## Acceptance and phasing
