@@ -107,7 +107,6 @@ const THIRD_PARTY: &[(&str, &str, &[&str])] = &[
             "iverilog",
             "vvp",
             "verilator",
-            "gtkwave",
             "openFPGALoader",
             "dfu-util",
         ],

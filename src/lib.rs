@@ -19,6 +19,7 @@ pub mod elevated;
 pub mod errors;
 pub mod format;
 pub mod json_pos;
+pub mod launch;
 pub mod logging;
 pub mod mcp_progress;
 pub mod output_rules;

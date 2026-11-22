@@ -454,14 +454,13 @@ fn simulate_input(src: &Path, extra: Value) -> simulate::SimulateInput {
         "source_files": ["main.v", "rtl/counter.v"],
         "testbench_file": "main_tb.v",
         "build_folder": src.join("_build"),
-        "layout_file": "main_tb.gtkw",
         "open_viewer": false,
     });
     serde_json::from_value(with(v, extra)).expect("a valid simulate input")
 }
 
 #[tokio::test]
-async fn simulate_writes_the_waveform_and_a_default_layout_then_keeps_the_users() {
+async fn simulate_writes_the_waveform_and_the_viewer_page_and_no_gtkwave_layout() {
     let state = engine().await;
     let (_tmp, src) = project();
     // LOGIX_SIM is 1 when simulating for a viewer.
@@ -479,41 +478,31 @@ async fn simulate_writes_the_waveform_and_a_default_layout_then_keeps_the_users(
     assert!(out.passed, "{out:#?}");
     assert_eq!(out.waveform_file, "main_tb.vcd");
     assert!(src.join("_build/main_tb.vcd").is_file());
-    assert_eq!(out.layout_file, src.join("main_tb.gtkw").to_string_lossy());
-    assert!(out.layout_created);
+    assert_eq!(out.viewer_file, "main_tb.html");
+    assert!(src.join("_build/main_tb.html").is_file());
     assert!(!out.viewer_opened);
-    let layout = std::fs::read_to_string(src.join("main_tb.gtkw")).unwrap();
-    assert!(layout.contains("GENERATED AUTOMATICALLY BY LOGIX ENGINE"));
-    let signals: Vec<_> = layout
-        .lines()
-        .filter(|l| !l.starts_with('*') && !l.starts_with('['))
-        .collect();
-    assert_eq!(signals, ["main_tb.clk", "main_tb.q[3:0]"]);
-    // A passing run: a zoom that fits it, and no marker.
-    assert!(
-        layout
-            .lines()
-            .any(|l| l.starts_with("*-") && l.ends_with(" -1")),
-        "{layout}"
-    );
-
-    // A layout the user saved from GTKWave is kept.
-    std::fs::write(src.join("main_tb.gtkw"), "[*] mine\nmain_tb.q[3:0]\n").unwrap();
-    let out = simulate::run(&state, simulate_input(&src, json!({})), &call())
-        .await
-        .unwrap();
-    assert!(!out.layout_created);
-    assert_eq!(
-        std::fs::read_to_string(src.join("main_tb.gtkw")).unwrap(),
-        "[*] mine\nmain_tb.q[3:0]\n"
-    );
-
-    // Without a layout file, the default goes into the build folder.
-    let input = simulate_input(&src, json!({"layout_file": null}));
-    let out = simulate::run(&state, input, &call()).await.unwrap();
-    let in_build = src.join("_build").join("main_tb.gtkw");
-    assert_eq!(out.layout_file, in_build.to_string_lossy());
-    assert!(in_build.is_file());
+    // GTKWave is gone (R32): no layout anywhere, and its options are refused.
+    assert!(!src.join("main_tb.gtkw").exists());
+    assert!(!src.join("_build/main_tb.gtkw").exists());
+    for gone in [
+        json!({"layout_file": "main_tb.gtkw"}),
+        json!({"viewer": "gtkwave"}),
+    ] {
+        let v = with(
+            json!({
+                "board": "alhambra-ii",
+                "source_folder": src,
+                "source_files": ["main.v", "rtl/counter.v"],
+                "testbench_file": "main_tb.v",
+                "build_folder": src.join("_build"),
+            }),
+            gone.clone(),
+        );
+        assert!(
+            serde_json::from_value::<simulate::SimulateInput>(v).is_err(),
+            "{gone}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -549,11 +538,6 @@ async fn simulate_request_errors() {
     for (extra, needle) in [
         (json!({"testbench_file": "nope_tb.v"}), "testbench_file"),
         (json!({"testbench_file": "main.v"}), "listed more than once"),
-        (json!({"layout_file": "main_tb.txt"}), "must end with .gtkw"),
-        (
-            json!({"layout_file": "missing/main_tb.gtkw"}),
-            "layout_file",
-        ),
     ] {
         let err = simulate::run(&state, simulate_input(&src, extra.clone()), &call())
             .await
@@ -702,17 +686,6 @@ async fn simulate_runs_to_the_end_and_marks_the_first_failure() {
     );
     assert_eq!(out.diagnostics[0].text, "q is 9, expected 3");
     assert_eq!(out.diagnostics[0].time_ns, Some(95.0));
-    let layout = std::fs::read_to_string(src.join("main_tb.gtkw")).unwrap();
-    // A zoom that fits the run, and the marker at the failure (95 ns in ps).
-    let star = layout
-        .lines()
-        .find(|l| l.starts_with('*') && !l.starts_with("[*]"))
-        .unwrap();
-    assert!(
-        star.starts_with("*-") && star.ends_with(" 95000"),
-        "{layout}"
-    );
-    assert!(layout.contains("[timestart] "), "{layout}");
 }
 
 /// The waveform viewer's data, read back from its page.
@@ -736,7 +709,7 @@ async fn simulate_writes_the_waveform_viewer_with_the_failures_and_the_saved_vie
         ),
     )
     .unwrap();
-    let input = |extra: Value| simulate_input(&src, with(json!({"viewer": "logix"}), extra));
+    let input = |extra: Value| simulate_input(&src, extra);
     let out = simulate::run(&state, input(json!({})), &call())
         .await
         .unwrap();

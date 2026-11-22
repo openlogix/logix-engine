@@ -103,7 +103,7 @@ Operations that work on a design take these fields. Paths are absolute unless no
 | `constraint_file` | relative path | Depends on the operation | Constraint file, relative to the source folder |
 | `build_folder` | build folder path | Yes | The build folder, as an absolute path. It may or may not be inside the source folder, but it can't be the source folder itself |
 
-**Build folders are disposable.** A host or a person can delete a build folder whenever no operation is using it, and no data is lost: it holds only generated files, and the next operation that writes to it creates it again, with the same result. Until the next build, `program_board` returns a request error that says to build first. The only exceptions are files that a host or a person puts there, and a GTKWave layout that a `simulate` request without `layout_file` puts there (see Layout files). The full rule is in docs/requirements.md, Interaction with the file system.
+**Build folders are disposable.** A host or a person can delete a build folder whenever no operation is using it, and no data is lost: it holds only generated files, and the next operation that writes to it creates it again, with the same result. Until the next build, `program_board` returns a request error that says to build first. The only exceptions are files that a host or a person puts there. The full rule is in docs/requirements.md, Interaction with the file system.
 
 ### Display paths
 
@@ -126,7 +126,7 @@ Every tool that reports files (`lint`, `test`, `simulate`, `format`, `diagram`, 
 - **Which entry.** File entries come first, then folder entries; within each list, the first that matches wins. A folder matches by whole path parts: `/a/b` matches `/a/b/x.v`, never `/a/bc/x.v`.
 - **Real locations.** Paths are compared by where they really are, not by how they're spelled: through symbolic links (such as `/tmp` and `/private/tmp` on macOS), and as the same file on disk, so a case-insensitive volume's spellings match. A file that doesn't exist is compared by its path's parts.
 - **Where.** Diagnostics (`file`, and paths in `text`), error `message` and `details`, testbench `output`, the live tool output (`text` and `original_text`) and the source places in `diagram`'s model and page. In text, the engine finds paths it knows, as the request or a tool spelled them, and names them by the same rules.
-- **Never.** Command lines (`commands`, and `command` lines in the live output), which must stay rerunnable, and fields that are paths, such as `bitstream`, `page_file`, `waveform_file`, `layout_file` and `viewer_file`.
+- **Never.** Command lines (`commands`, and `command` lines in the live output), which must stay rerunnable, and fields that are paths, such as `bitstream`, `page_file`, `waveform_file` and `viewer_file`.
 - **No match.** A path that matches no entry, or any path when the request has no `display_paths`, is shown as the request gave it: source files relative to the source folder, custom board file as its absolute path. A path the request never gave, such as a toolchain file a tool mentions, is shown as the tool printed it.
 - **A path in an entry that isn't absolute** is a request error.
 
@@ -453,25 +453,16 @@ Output:
 
 ## simulate tool
 
-Simulates one testbench and opens its waveform in GTKWave. It compiles and runs the testbench as the test tool does, with the same commands, testbench rules and build folder files, except that `LOGIX_SIM` is defined as `1` and the testbench always runs to the end, so the whole waveform is there to look at. Then it makes sure there is a layout file and starts GTKWave fully detached with the waveform and the layout, and returns without waiting for it. For a layout the user saved, it adds `--rcvar=do_initial_zoom_fit 1` first; a default layout sets its own view, which that would replace. GTKWave keeps running after the operation and after the Logix Engine exits.
-
-**Layout files.** A GTKWave layout (`.gtkw`) holds the signals shown and how. It is a project file the user changes by saving from GTKWave, which reads and saves the same path, so the host names it in `layout_file`, usually next to the testbench, such as `main_tb.gtkw`.
-
-- **Missing or default:** when the file doesn't exist, or is a default one the engine generated (it has the engine's marker line; layouts any other tool made are the user's), the engine writes a default layout there with the testbench's top-level signals, so GTKWave doesn't open empty. The default layout also sets the view: the whole run when the testbench passed, or, when it failed, a window around the first failure that has a time, with GTKWave's marker on the failure about two thirds of the way across, so what led up to it shows too. The window is about 80 times the waveform's typical step between changes, roughly 40 cycles of a clock, and never wider than the run. A default is replaced on each simulation, so it follows design changes.
-- **Saved by the user:** a layout without the marker is the user's and is never changed. GTKWave opens it, and saving from GTKWave updates it.
-- **Unsaved defaults are cleaned up:** when GTKWave exits, the engine deletes the layout if it still has the marker, so default layouts the user never saved don't pile up in the project or end up in version control. This is best-effort: if the engine exits before GTKWave, the default stays until a later simulation replaces or deletes it.
-- **No layout file:** when `layout_file` is omitted, the layout goes into the build folder as `<testbench>.gtkw`, where a saved layout is lost when the folder is cleaned.
-
-This is the one case where the engine creates or deletes a file in the source folder. See [Safe file changes](requirements.md).
+Simulates one testbench and opens its waveform in Open Logix's waveform viewer (below). It compiles and runs the testbench as the test tool does, with the same commands, testbench rules and build folder files, except that `LOGIX_SIM` is defined as `1` and the testbench always runs to the end, so the whole waveform is there to look at. Then it writes the viewer's page next to the waveform and, unless `open_viewer` is false, opens it in the default web browser, and returns. The page keeps working after the operation and after the Logix Engine exits.
 
 **A failing testbench** is still simulated and shown, since its waveform is how the user finds the problem. `passed` is false. A testbench that writes no waveform, because it doesn't call `$dumpvars`, is a design error.
 
-**Viewer.** `open_viewer` set to false only writes the waveform, the layout and the waveform viewer's page, such as for an AI agent or when no one is at the screen. `viewer` chooses what `open_viewer` opens: `gtkwave` (the default for now) or `logix`, Open Logix's own waveform viewer in the default web browser. Opening a viewer needs a local frontend: a network adapter turns it off or refuses it for remote frontends, which view waveforms on their own.
+**Opening the viewer.** `open_viewer` set to false only writes the waveform and the waveform viewer's page, such as for an AI agent, when no one is at the screen, or for a host that shows the page in a window of its own. Opening the viewer needs a local frontend: a network adapter turns it off or refuses it for remote frontends, which view waveforms on their own.
 
-**The waveform viewer.** Every simulation also writes Open Logix's own waveform viewer next to the waveform, `<testbench>.html` in the build folder (`viewer_file`), which replaces GTKWave in Milestone 5 (docs/requirements.md, Waveform viewer). It's one self-contained page with the waveform in it: it needs no network and nothing installed, opens in any web browser, and keeps working after the engine exits. It opens on the testbench's own signals in the order the testbench declares them, or on the view the user saved; a failing run opens at its first failure, with the check's message and its place in the testbench, and every failure is marked. A waveform larger than 50 MB is cut at a timestamp, and the page says so.
+**The waveform viewer.** Every simulation also writes Open Logix's own waveform viewer next to the waveform, `<testbench>.html` in the build folder (`viewer_file`; docs/requirements.md, Waveform viewer). It's one self-contained page with the waveform in it: it needs no network and nothing installed, opens in any web browser, and keeps working after the engine exits. It opens on the testbench's own signals in the order the testbench declares them, or on the view the user saved; a failing run opens at its first failure, with the check's message and its place in the testbench, and every failure is marked. A waveform larger than 50 MB is cut at a timestamp, and the page says so.
 
 - **Views.** The signals shown, their order, formats and colors, blank rows and groups (a named row over the signals below it, which may be collapsed), the zoom, the cursor and the marker, and the clock whose cycles the time scale may count, are a view, kept in `view_file`, such as `main_tb.view` next to the testbench, a JSON file. The engine only reads it (a file that isn't a JSON object counts as no view): the page saves it through its host; in a browser with no host, the view isn't saved.
-- **Hosts** with a window of their own show the page themselves, as they show the diagram's (with `open_viewer` false, or `viewer` `gtkwave` until the default changes), and load it again after each simulation, with the view as it was. The page takes `?theme=light|dark` and the message `{type: "logix-wave:theme", theme}`. It posts `{type: "logix-wave:view", view}`, the view's JSON, after every change, for the host to save in `view_file`, and `{type: "logix-wave:open-source", file, line}` when the user double-clicks a signal's name (its declaration in the testbench) or clicks a failure's place, with `file` relative to the source folder. Save as image (SVG, or PNG at twice the size: the view as it shows, from the settings menu or a right-click on the time ruler) posts `{type: "logix-wave:save-file", name, mime, data}`, the SVG's text or the PNG as base64, for the host to save where the user chooses; in a browser with no host it downloads. A host that loads the page directly, not in an iframe, can define `window.logixWaveSaveView(view)`, `window.logixWaveOpenSource(file, line)` and `window.logixWaveSaveFile(name, mime, data)` instead.
+- **Hosts** with a window of their own show the page themselves, as they show the diagram's (with `open_viewer` false), and load it again after each simulation, with the view as it was. The page takes `?theme=light|dark` and the message `{type: "logix-wave:theme", theme}`. It posts `{type: "logix-wave:view", view}`, the view's JSON, after every change, for the host to save in `view_file`, and `{type: "logix-wave:open-source", file, line}` when the user double-clicks a signal's name (its declaration in the testbench) or clicks a failure's place, with `file` relative to the source folder. Save as image (SVG, or PNG at twice the size: the view as it shows, from the settings menu or a right-click on the time ruler) posts `{type: "logix-wave:save-file", name, mime, data}`, the SVG's text or the PNG as base64, for the host to save where the user chooses; in a browser with no host it downloads. A host that loads the page directly, not in an iframe, can define `window.logixWaveSaveView(view)`, `window.logixWaveOpenSource(file, line)` and `window.logixWaveSaveFile(name, mime, data)` instead.
 
 **Table 28.** simulate tool inputs
 
@@ -483,9 +474,7 @@ This is the one case where the engine creates or deletes a file in the source fo
 | `display_paths` | display paths | No | How to name paths in what people read. Omitted means as the request gave them (see Display paths) |
 | `source_folder`, `source_files`, `build_folder` | See folder fields in Table 2 | Yes | The design files, without testbenches |
 | `testbench_file` | relative path | Yes | The testbench to simulate, relative to the source folder |
-| `layout_file` | relative path | No | The GTKWave layout file, relative to the source folder, ending in `.gtkw`. Its folder must exist; the file may not. When omitted, the layout goes into the build folder |
-| `open_viewer` | boolean | No | Open a viewer on the waveform for the person at the screen. Defaults to true |
-| `viewer` | enum | No | Which viewer `open_viewer` opens: `gtkwave` (the default for now) or `logix`, the waveform viewer's page (`viewer_file`) in the default web browser |
+| `open_viewer` | boolean | No | Open the waveform viewer's page (`viewer_file`) in the default web browser, for the person at the screen. Defaults to true |
 | `view_file` | relative path | No | The waveform viewer's view, relative to the source folder, ending in `.view`, such as `main_tb.view`. Its folder must exist; the file may not. The engine only reads it. When omitted or missing, the viewer opens its default view |
 | `max_sim_time_ns` | integer | No | Stop the testbench when simulated time reaches this many nanoseconds. Defaults to no limit |
 | `timeout_seconds` | integer | No | Stop the testbench after this many seconds of real time. Defaults to no limit |
@@ -502,13 +491,11 @@ This is the one case where the engine creates or deletes a file in the source fo
 | `failure_count` | integer | How many failures the testbench reported, as in the test tool |
 | `ending` | enum | How the run ended, as in the test tool. Never `first_failure` |
 | `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder |
-| `layout_file` | absolute path | The layout file GTKWave opens |
-| `layout_created` | boolean | True if the engine wrote a default layout, false if it kept the user's |
-| `viewer_opened` | boolean | True if the viewer was started: GTKWave, or the waveform viewer's page in the web browser |
+| `viewer_opened` | boolean | True if the waveform viewer's page was opened in the web browser |
 | `viewer_file` | relative path | Open Logix's waveform viewer, a self-contained page with the waveform in it, relative to the build folder, such as `main_tb.html` |
 | `commands` | list of commands | The programs this call ran, in order, so they can be run again without the engine. See Commands |
 
-**Errors:** design errors for compile errors, `$dumpfile` and a testbench without `$dumpvars`. Setup errors with `download_packages`, or when the layout file can't be written. Request errors, such as a missing file, a layout file that isn't `.gtkw` or a view file that isn't `.view`, or whose folder doesn't exist, or a build folder that breaks the keyword rules. Tool failures, such as when GTKWave can't start, engine errors and cancellation.
+**Errors:** design errors for compile errors, `$dumpfile` and a testbench without `$dumpvars`. Setup errors with `download_packages`, or when the page can't be written. Request errors, such as a missing file, a view file that isn't `.view`, or whose folder doesn't exist, or a build folder that breaks the keyword rules. Tool failures, engine errors and cancellation.
 
 **Example**
 
@@ -521,7 +508,7 @@ Input:
   "source_files": ["main.v"],
   "testbench_file": "main_tb.v",
   "build_folder": "/home/user/proj/_build",
-  "layout_file": "main_tb.gtkw"
+  "view_file": "main_tb.view"
 }
 ```
 
@@ -535,8 +522,6 @@ Output:
   "failure_count": 0,
   "ending": "finished",
   "waveform_file": "main_tb.vcd",
-  "layout_file": "/home/user/proj/main_tb.gtkw",
-  "layout_created": true,
   "viewer_opened": true,
   "viewer_file": "main_tb.html"
 }
@@ -550,7 +535,7 @@ The same testbench serves two purposes: `test` is a batch check that should fail
 | --- | --- | --- |
 | At the first failure | Stops the testbench, unless `stop_at_first_failure` is false | Lets it run to the end |
 | Waveform | Kept, up to the failure | Complete |
-| Finding the failure | Each failure's file, line and simulation time (`time_ns`) | The same, and a default layout opens GTKWave zoomed in around the first failure, with its marker on it |
+| Finding the failure | Each failure's file, line and simulation time (`time_ns`) | The same, and the waveform viewer opens at the first failure, with its message and its place in the testbench |
 | Limits | `timeout_seconds` (default 600) and `max_sim_time_ns` | The same, with no default |
 | `passed` | False after any failure, or when stopped by a limit | The same |
 
@@ -1381,7 +1366,7 @@ Output:
 Deletes a host's old log session folders, by the policy the Logix Engine uses for its own logs, so every host that follows the Open Logix log layout (see Logs in [Command line](command-line.md)) cleans its logs the same way without coding the policy itself. A host calls it with its logs folder, usually once at startup, naming its current session folder in `keep`.
 
 - **Kept:** the newest 10 session folders, at most 100 MB in all, none older than 30 days.
-- **Never deleted:** the folders in `keep`; folders changed in the last 24 hours, since a program in them, such as GTKWave, may still run; and anything that isn't a session folder (named `<yyyymmdd>-<hhmmss>-<pid>`) holding only `.log` files, so a wrong path or a user's own file is never removed.
+- **Never deleted:** the folders in `keep`; folders changed in the last 24 hours, since a program in them may still run; and anything that isn't a session folder (named `<yyyymmdd>-<hhmmss>-<pid>`) holding only `.log` files, so a wrong path or a user's own file is never removed.
 
 The logs folder's last folder name must be `logs`, as given and after resolving symbolic links, and it can't be the file system root or the home folder. A logs folder that doesn't exist is not an error: nothing is deleted.
 
@@ -1563,7 +1548,7 @@ This model is only a suggestion for AI sessions that have no other requirements,
 - **`main.v`** holds the top module, `main`, or **`main.sv`** for SystemVerilog. Other source files sit next to it.
 - **One constraint file,** `pinout` with the extension of the FPGA's format: `pinout.pcf` (iCE40), `pinout.lpf` (ECP5), `pinout.cst` (Gowin) or `pinout.xdc` (Xilinx). `get_catalog` gives the board's FPGA.
 - **Testbenches** are named `<name>_tb.v` or `<name>_tb.sv`, next to the code they test (see Writing testbenches).
-- **GTKWave layouts** are named `<testbench>.gtkw`, next to the testbench, such as `main_tb.gtkw`, and passed as `layout_file`, so a layout the user saves is kept.
+- **Waveform views** are named `<testbench>.view`, next to the testbench, such as `main_tb.view`, and passed as `view_file`, so the view the user saves is kept.
 - **`_build`** inside the project folder is the build folder. It is disposable (see Folders), so add it to `.gitignore` in a git repository.
 
 ## Recipes for frontend developers
@@ -1625,8 +1610,8 @@ On Windows, a device whose `driver` isn't `ready` (in `devices` or `unreachable`
 ### Run and debug testbenches
 
 1. "Run tests" calls `test` with every testbench. Each stops at its first failure, so a failing run ends fast, and each result says where and when it failed.
-2. "Debug" on a failing testbench calls `simulate` with a `layout_file` next to the testbench, such as `main_tb.gtkw`. GTKWave opens zoomed in around the first failure.
-3. If the user saves the layout in GTKWave, the Logix Engine keeps it from then on; an unsaved default is deleted when GTKWave closes.
+2. "Debug" on a failing testbench calls `simulate` with a `view_file` next to the testbench, such as `main_tb.view`. The waveform viewer opens at the first failure.
+3. The viewer saves the user's view through the host, which writes it to `view_file`, so the next simulation opens with it.
 
 ### Pick a board
 
@@ -1661,4 +1646,4 @@ These are not decided and none of them is in the API today. They are listed so A
 - **What clean_build may delete.** Today it deletes only folders the Logix Engine marked with `.logix-build`, so it leaves old build folders made by other tools alone until the engine builds in them. The alternative is to delete any folder that passes the build folder path checks. That cleans other tools' old folders too, but a wrong path such as `/home/user/builds/myproject` passes those checks, since one of its last two folder names contains "build". A middle way would be to also refuse folders that directly contain design files, such as `.v`, `.sv` or `.pcf` files.
 - **Extra tool arguments for build.** Other FPGA tools let users pass extra options to the synthesis and place-and-route tools, so the build tool likely needs something similar. One option is to define abstract build phases, such as synthesis, place and route, and bitstream, offer portable options such as a target frequency and a seed, and add extra arguments per phase as an explicit escape hatch, passed unchanged to whatever tool runs that phase. The build output would then report which tool and version ran each phase.
 - **Include folders for build.** Some projects keep header files in a separate folder. An optional `include_folders` input, a list of relative paths under `source_folder`, would let the host name extra places to look up included files.
-- **Separating simulation from viewing.** Today `simulate` writes the waveform and also opens GTKWave. Longer term, `simulate` could only write the waveform and return the top-level signals, with opening a viewer as an optional step or its own tool. GTKWave layouts would then be one viewer's concern, and other viewers, such as Surfer or a waveform view inside an IDE, would fit the same way. It only adds fields and tools, so it breaks nothing.
+- **Separating simulation from viewing.** `simulate` writes the waveform and its viewer page, and opens the page unless `open_viewer` is false; `open_waveform` opens any waveform file. Longer term, `simulate` could also return the top-level signals, so other viewers, such as Surfer or a waveform view inside an IDE, fit the same way. It only adds fields, so it breaks nothing.

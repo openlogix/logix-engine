@@ -1,7 +1,6 @@
 //! The simulate tool (docs/tool-api.md, "simulate tool").
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -10,11 +9,9 @@ use super::build::check_build_folder;
 use super::lint::check_sources;
 use super::{Call, EngineTool};
 use crate::errors::{Category, Diagnostic, Severity, ToolError};
-use crate::paths;
 use crate::progress::Phases;
-use crate::runner::command_line;
 use crate::sim::testbench::{self, Ending, RunOptions, build_stem};
-use crate::sim::{SimLibrary, gtkwave, toolchain};
+use crate::sim::{SimLibrary, toolchain};
 use crate::state::EngineState;
 
 pub struct Simulate;
@@ -22,20 +19,16 @@ pub struct Simulate;
 impl EngineTool for Simulate {
     const NAME: &'static str = "simulate";
     const DESCRIPTION: &'static str = "Simulates one testbench with Icarus Verilog and opens \
-        its waveform in GTKWave: compiles the design files with the testbench, \
-        runs it to write the waveform (.vcd) into the build folder, then starts GTKWave \
-        detached and returns without waiting for it. The testbench must call $dumpvars and \
-        $finish, and must not call $dumpfile. GTKWave opens the layout file (.gtkw), which \
-        holds the signals shown; when it is missing, or is still a default one, the engine \
-        writes a default with the testbench's top-level signals, deleted again when GTKWave \
-        exits unless the user saved it; a layout the user saved is kept. Set open_viewer to false to only write the waveform, such as \
-        when no one is at the screen. It also writes Open Logix's own waveform viewer, a \
-        self-contained page with the waveform in it (viewer_file); set viewer to \
-        \"logix\" to open that page in the default web browser instead of GTKWave, where it \
-        shows the testbench's own signals, opens at the first failure, and keeps the \
-        user's view in view_file (<testbench>.view). A failing testbench runs to the end and is \
-        shown, with passed false and GTKWave's marker at the first failure in a default layout. Compile errors are a design error with diagnostics at file and line. To \
-        just check whether testbenches pass, use test.";
+        its waveform in Open Logix's waveform viewer: compiles the design files with the \
+        testbench, runs it to write the waveform (.vcd) into the build folder, writes the \
+        viewer, a self-contained page with the waveform in it (viewer_file), and opens it in \
+        the default web browser. The testbench must call $dumpvars and $finish, and must not \
+        call $dumpfile. The viewer shows the testbench's own signals, opens at the first \
+        failure, and keeps the user's view in view_file (<testbench>.view). Set open_viewer to \
+        false to only write the waveform and the page, such as when no one is at the screen \
+        or the host shows the page in a window of its own. A failing testbench runs to the end \
+        and is shown, with passed false. Compile errors are a design error with diagnostics at \
+        file and line. To just check whether testbenches pass, use test.";
     const READ_ONLY: bool = false;
     const OPEN_WORLD: bool = true;
     type Input = SimulateInput;
@@ -44,17 +37,6 @@ impl EngineTool for Simulate {
 
 fn default_true() -> bool {
     true
-}
-
-/// The waveform viewer simulate opens.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum Viewer {
-    /// GTKWave, from the core package.
-    #[default]
-    Gtkwave,
-    /// Open Logix's own waveform viewer, a page, in the default web browser.
-    Logix,
 }
 
 /// Which testbench to simulate, and how to show it.
@@ -108,25 +90,12 @@ pub struct SimulateInput {
     /// One of its last two folder names must contain "build", such as
     /// /home/user/proj/_build. It is created if needed.
     pub build_folder: String,
-    /// The GTKWave layout file (.gtkw), relative to the source folder, such
-    /// as main_tb.gtkw. GTKWave opens it and saves the user's changes to it.
-    /// When it is missing or is still a default one, the engine writes a
-    /// default there; a layout the user saved is never changed. Its folder
-    /// must exist. When omitted, the layout goes into the build folder, as
-    /// <testbench>.gtkw.
-    #[serde(default)]
-    pub layout_file: Option<String>,
-    /// Open the waveform in a viewer for the person at the screen. Defaults
-    /// to true. False only writes the waveform, the layout and the viewer's
-    /// page.
+    /// Open the waveform viewer's page (viewer_file) in the default web
+    /// browser, for the person at the screen. Defaults to true. False only
+    /// writes the waveform and the page, such as for a host that shows the
+    /// page in a window of its own.
     #[serde(default = "default_true")]
     pub open_viewer: bool,
-    /// Which viewer open_viewer opens: "gtkwave" (the default for now), or
-    /// "logix", Open Logix's own waveform viewer (viewer_file), in the
-    /// default web browser. A host with a window of its own can show
-    /// viewer_file itself, with open_viewer false.
-    #[serde(default)]
-    pub viewer: Viewer,
     /// The view the waveform viewer opens and saves (the signals shown,
     /// their formats and colors, the zoom), relative to the source folder,
     /// such as main_tb.view. The engine only reads it: the viewer's page
@@ -179,13 +148,7 @@ pub struct SimulateOutput {
     pub ending: Ending,
     /// The waveform (.vcd), relative to the build folder.
     pub waveform_file: String,
-    /// The layout file GTKWave opens, as an absolute path.
-    pub layout_file: String,
-    /// True if the engine wrote a default layout, false if it kept one the
-    /// user saved.
-    pub layout_created: bool,
-    /// True if the viewer was started: GTKWave, or the waveform viewer's
-    /// page in the web browser.
+    /// True if the waveform viewer's page was opened in the web browser.
     pub viewer_opened: bool,
     /// Open Logix's waveform viewer, a self-contained page with the
     /// waveform in it, relative to the build folder, such as main_tb.html.
@@ -194,36 +157,6 @@ pub struct SimulateOutput {
     /// a shell line that runs it again without the engine, such as for a bug
     /// report to the tool's developers.
     pub commands: Vec<crate::commands::CommandRecord>,
-}
-
-/// Checks the layout file: a relative path ending in .gtkw, in a folder
-/// that exists inside the source folder. The file itself may not exist yet.
-/// Returns its real path.
-pub fn check_layout_file(src: &Path, rel: &str) -> Result<PathBuf, ToolError> {
-    let req = |m: String| ToolError::request(format!("layout_file: {m}."));
-    paths::check_relative_path(rel).map_err(req)?;
-    if !rel.to_lowercase().ends_with(".gtkw") {
-        return Err(req(format!("{rel:?} must end with .gtkw")));
-    }
-    let (parent, name) = rel.rsplit_once('/').unwrap_or(("", rel));
-    let dir = if parent.is_empty() {
-        src.to_path_buf()
-    } else {
-        let dir = paths::resolve_inside(src, parent).map_err(req)?;
-        if !dir.is_dir() {
-            return Err(req(format!("{parent:?} isn't a folder")));
-        }
-        dir
-    };
-    let path = dir.join(name);
-    if path.symlink_metadata().is_ok() {
-        let real = paths::resolve_inside(src, rel).map_err(req)?;
-        if !real.is_file() {
-            return Err(req(format!("{rel:?} isn't a file")));
-        }
-        return Ok(real);
-    }
-    Ok(path)
 }
 
 pub async fn run(
@@ -254,10 +187,6 @@ pub async fn run(
     })?;
     let src = sources.source_folder.clone();
     let build_folder = check_build_folder(&input.build_folder, &src)?;
-    let layout = match &input.layout_file {
-        Some(rel) => check_layout_file(&src, rel)?,
-        None => build_folder.join(format!("{}.gtkw", build_stem(&tb))),
-    };
     let view_file = input
         .view_file
         .as_deref()
@@ -313,8 +242,6 @@ pub async fn run(
         return Err(err);
     };
     let vcd = build_folder.join(&waveform_file);
-    let layout_created =
-        gtkwave::write_default_if_needed(&layout, &vcd, &tb, r.first_failure_ticks)?;
 
     // Open Logix's waveform viewer: its page, with the waveform in it.
     let stem = build_stem(&tb);
@@ -342,34 +269,7 @@ pub async fn run(
     let page = build_folder.join(&viewer_file);
     crate::wave::write_page(&page, &data)?;
 
-    let mut viewer_opened = false;
-    if input.open_viewer && input.viewer == Viewer::Logix {
-        viewer_opened = crate::diagram::open_page(&page);
-    } else if input.open_viewer {
-        viewer_opened = true;
-        let program = crate::commands::program_in(&bin, "gtkwave");
-        let args = gtkwave::gtkwave_args(&vcd, &layout, !layout_created);
-        call.output
-            .command("gtkwave", &command_line(&program, &args));
-        call.commands
-            .push(crate::commands::record(&program, &args, &src, &bin));
-        let delete = layout.clone();
-        // GTKWave's own output, in this session's log folder (logging.rs).
-        let log_file = crate::logging::place().map(|p| p.child_file("gtkwave"));
-        let what = format!(
-            "GTKWave started for {} (by Logix Engine process {})",
-            vcd.display(),
-            std::process::id()
-        );
-        gtkwave::launch_detached(
-            &program,
-            &args,
-            &src,
-            &bin,
-            log_file.as_deref().map(|f| (f, what.as_str())),
-            move || gtkwave::delete_if_generated(&delete),
-        )?;
-    }
+    let viewer_opened = input.open_viewer && crate::diagram::open_page(&page);
     Ok(SimulateOutput {
         commands: call.commands.take(),
         passed: r.passed,
@@ -378,47 +278,7 @@ pub async fn run(
         failure_count: r.failure_count,
         ending: r.ending,
         waveform_file,
-        layout_file: layout.to_string_lossy().into_owned(),
-        layout_created,
         viewer_opened,
         viewer_file,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn layout_file_rules() {
-        let tmp = tempfile::tempdir().unwrap();
-        let src = dunce::canonicalize(tmp.path()).unwrap().join("src");
-        std::fs::create_dir_all(src.join("tb")).unwrap();
-        assert_eq!(
-            check_layout_file(&src, "main_tb.gtkw").unwrap(),
-            src.join("main_tb.gtkw")
-        );
-        assert_eq!(
-            check_layout_file(&src, "tb/x.GTKW").unwrap(),
-            src.join("tb/x.GTKW")
-        );
-        for (bad, needle) in [
-            ("main_tb.v", "must end with .gtkw"),
-            ("../x.gtkw", "layout_file"),
-            ("nofolder/x.gtkw", "can't be found"),
-        ] {
-            let err = check_layout_file(&src, bad).unwrap_err();
-            assert_eq!(err.category, Category::Request);
-            assert!(err.message.contains(needle), "{bad}: {}", err.message);
-        }
-        std::fs::create_dir(src.join("dir.gtkw")).unwrap();
-        assert!(check_layout_file(&src, "dir.gtkw").is_err());
-        #[cfg(unix)]
-        {
-            std::fs::write(tmp.path().join("out.gtkw"), "").unwrap();
-            std::os::unix::fs::symlink(tmp.path().join("out.gtkw"), src.join("link.gtkw")).unwrap();
-            let err = check_layout_file(&src, "link.gtkw").unwrap_err();
-            assert!(err.message.contains("outside"), "{}", err.message);
-        }
-    }
 }

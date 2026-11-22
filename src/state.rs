@@ -38,7 +38,7 @@ pub fn platform() -> String {
 /// 10.0.26100.2314", for system info; the platform's name when the version
 /// can't be read. On Linux, with the desktop and session type when known,
 /// such as "Ubuntu 22.04.5 LTS, GNOME on Wayland" (they change how some
-/// things behave, such as raising GTKWave's window; the user's decision,
+/// things behave, such as raising a window; the user's decision,
 /// 2026-11-16). Read once.
 pub fn operating_system() -> String {
     static OS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
