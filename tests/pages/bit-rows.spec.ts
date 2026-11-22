@@ -123,7 +123,9 @@ test("hiding the bus hides its bits, and undo brings both back", async ({ page }
   await menuOf(page, row(page, "pattern"));
   await page.getByRole("menuitem", { name: "Hide this signal" }).click();
   expect((await rows(page)).some((n) => n.startsWith("pattern"))).toBe(false);
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+z" : "Control+z");
+  // The page's Undo button: Ctrl+Z didn't reach the page in WebKit on
+  // Linux CI (2026-11-22).
+  await page.locator("#undoBtn").click();
   expect(await afterBus(page)).toEqual(BITS);
 });
 
