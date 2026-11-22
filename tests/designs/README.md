@@ -10,5 +10,6 @@ Small designs for the engine's tests and for trying the tools by hand. They aren
 | `blinky-xilinx` | The same blinky for the Digilent Arty A7-35T, a Xilinx board (`main.v`, `main.xdc`) |
 | `counter` | A 4-bit counter (`counter.v`) with a passing testbench (`counter_tb.v`) and a failing one (`counter_fail_tb.v`) |
 | `syntax-error` | A module with a syntax error on line 3 (`main.v`) |
+| `pages` | A Morse code beacon (`morse.v`) blinking HELLO FPGA, and a testbench (`morse_tb.v`) that reads it back: the waveform pages of the browser tests (`tests/pages/`), with a clock, a bus and irregular 1-bit signals |
 
 Tests copy a design into a temporary folder before using it, so these files are never changed.

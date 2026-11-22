@@ -34,3 +34,7 @@ __pycache__/
 # The docs site, built by mkdocs (mkdocs.yml), and its tools.
 _site/
 .venv-docs/
+# The page tests' packages and results (tests/pages/).
+tests/pages/node_modules/
+tests/pages/test-results/
+tests/pages/playwright-report/
