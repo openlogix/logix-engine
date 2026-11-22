@@ -1254,7 +1254,12 @@ $('#names').addEventListener('dblclick', (e) => {
   if (r && r.v && S.decl[r.v.path]) openSource(S.decl[r.v.path].file, S.decl[r.v.path].line);
 });
 let dragRow = null;
-$('#names').addEventListener('dragstart', (e) => { const el = e.target.closest('.nrow'); if (!el || isBit(+el.dataset.i)) { e.preventDefault(); return; } dragRow = +el.dataset.i; if (!isSel(dragRow)) { S.anchor = null; S.sel = dragRow; renderRows(); } e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', ''); } catch (_) {} });
+$('#names').addEventListener('dragstart', (e) => { const el = e.target.closest('.nrow'); if (!el || isBit(+el.dataset.i)) { e.preventDefault(); return; } dragRow = +el.dataset.i;
+  // Selects the row in place: redrawing the list would replace the row being
+  // dragged, and WebKit then cancels the drag (only a selected row could be
+  // dragged; the user's report, 2026-11-22).
+  if (!isSel(dragRow)) { S.anchor = null; S.sel = dragRow; document.querySelectorAll('#names .nrow').forEach((n) => n.classList.toggle('sel', isSel(+n.dataset.i))); renderValues(); draw(); }
+  e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', ''); } catch (_) {} });
 // Where a dragged row goes, from the pointer's height: the upper half of a
 // row drops above it, the lower half below it (below a collapsed group's
 // hidden rows), and the empty space under the last row at the end.
