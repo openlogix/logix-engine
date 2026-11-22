@@ -51,9 +51,10 @@ const INSTRUCTIONS: &str = "Logix Engine builds and tests FPGA designs and progr
     project model is: one folder with logix.json (board, board_variant, top_module), \
     main.v, a pinout constraint file, <name>_tb.v testbenches and a _build build folder, as \
     https://github.com/openlogix/logix-engine/blob/main/docs/tool-api.md#default-project-model \
-    describes. A project that already has a layout of its own, such as a frontend's (a Logix IDE \
-    project has logix-ide.toml), keeps it: follow its rules, which its AGENTS.md or CLAUDE.md \
-    may give, and don't add logix.json. Full reference, including how to launch the engine and \
+    describes. A project that already has a layout of its own, such as a frontend's, keeps it: \
+    follow its rules, which its AGENTS.md or CLAUDE.md may give, and don't add logix.json. Open \
+    Logix frontends, such as IDEs, may have their own project model; for those, read \
+    https://www.openlogix.org/llms.txt, or, if it isn't there, https://www.openlogix.org. Full reference, including how to launch the engine and \
     write your own client: tool API https://github.com/openlogix/logix-engine/blob/main/docs/tool-api.md, \
     command line https://github.com/openlogix/logix-engine/blob/main/docs/command-line.md.";
 
