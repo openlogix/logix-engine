@@ -104,7 +104,7 @@ button { font: inherit; color: inherit; }
 .btns button { border: 0; background: none; height: 26px; min-width: 28px; padding: 0 8px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; color: var(--fg); }
 .btns button:hover:not(:disabled) { background: var(--panel); }
 .btns button:disabled { opacity: .35; cursor: default; }
-.keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 12px; }
+.keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 12px; align-items: start; }
 .keys kbd { font-family: var(--mono); font-size: 11px; background: var(--soft); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; white-space: nowrap; justify-self: start; }
 /* A group row is a group's title: gray in the Signal column only, as the
    board picker's family headings, and an arrow that folds the group. */
@@ -968,7 +968,13 @@ function snapAt(x, y, alt) {
   return best ? { t: best.t, snapped: true } : { t, snapped: false };
 }
 waves.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; drag = { x: e.clientX, s: S.start, e: S.end, moved: false }; waves.setPointerCapture(e.pointerId); });
+// A pan always ends, even when something else took the button's release
+// (a menu, a window switch).
+const endPan = () => { drag = null; waves.style.cursor = ''; };
+waves.addEventListener('pointercancel', endPan);
+waves.addEventListener('lostpointercapture', () => { if (drag && drag.moved) endPan(); });
 waves.addEventListener('pointermove', (e) => {
+  if (drag && e.buttons === 0) endPan();
   const rect = waves.getBoundingClientRect(), x = e.clientX - rect.left, y = e.clientY - rect.top;
   if (drag && (drag.moved || Math.abs(e.clientX - drag.x) > 3)) {
     drag.moved = true; hideTip();
