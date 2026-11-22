@@ -89,6 +89,13 @@ pub struct Node {
     /// A memory port's memory: hovering one of its blocks lights up the
     /// others.
     pub memory: Option<String>,
+    /// A generic block that shows its ports' names inside it, inputs on the
+    /// left and outputs on the right, and is as wide as they need: module
+    /// instances and blocks drawn as written (the user's decision,
+    /// 2026-11-22: a module's own logic as one block per signal).
+    pub port_names: bool,
+    /// With `port_names`, its outputs' names too.
+    pub output_names: bool,
 }
 
 impl Node {
@@ -105,6 +112,8 @@ impl Node {
             is_dff: false,
             glyph: None,
             memory: None,
+            port_names: false,
+            output_names: false,
         }
     }
 
@@ -116,7 +125,29 @@ impl Node {
         }
         let (ins, outs) = (self.inputs.len() as f64, self.outputs.len() as f64);
         let n = if ins > outs { ins } else { outs };
-        (w, (h + PORT_GAP * (n - 2.0)).max(20.0))
+        (self.width(w), (h + PORT_GAP * (n - 2.0)).max(20.0))
+    }
+
+    /// A generic block's width: wide enough for its port names and its
+    /// sign when it shows them.
+    fn width(&self, w: f64) -> f64 {
+        if !(self.port_names && self.shape == Shape::Generic) {
+            return w;
+        }
+        let widest = |ports: &[Port]| {
+            ports
+                .iter()
+                .map(|p| text_width(&p.key))
+                .fold(0.0_f64, f64::max)
+        };
+        let outs = if self.output_names {
+            widest(&self.outputs)
+        } else {
+            0.0
+        };
+        let names = widest(&self.inputs) + outs;
+        let sign = self.glyph.as_deref().map_or(0.0, |g| text_width(g) + 8.0);
+        w.max(names + sign + 16.0)
     }
 
     /// Where a port is, relative to the node.
@@ -129,7 +160,7 @@ impl Node {
         let stacked = FIRST_PORT_Y + i * PORT_GAP;
         Some(match (self.shape, input) {
             (Shape::Generic, true) => (0.0, stacked),
-            (Shape::Generic, false) => (30.0, stacked),
+            (Shape::Generic, false) => (self.size().0, stacked),
             (Shape::Split, true) => (0.0, FIRST_PORT_Y),
             (Shape::Split, false) => (4.0, stacked),
             (Shape::Join, true) => (0.0, stacked),
@@ -583,9 +614,38 @@ fn render_node(
         r#"<g class="{class}"{data} transform="translate({},{})">{}"#,
         num(x),
         num(y),
-        n.shape.draw(h)
+        match n.shape {
+            Shape::Generic => format!(
+                r#"<rect width="{}" height="{}" class="body"/>"#,
+                num(w),
+                num(h)
+            ),
+            _ => n.shape.draw(h),
+        }
     )
     .unwrap();
+    if n.port_names && n.shape == Shape::Generic {
+        // Each port's name, inside the block next to its port.
+        let outputs: &[Port] = if n.output_names { &n.outputs } else { &[] };
+        for (ports, input) in [(n.inputs.as_slice(), true), (outputs, false)] {
+            for (i, p) in ports.iter().enumerate() {
+                let y = FIRST_PORT_Y + i as f64 * PORT_GAP + 3.5;
+                let (x, anchor) = if input {
+                    (4.0, "start")
+                } else {
+                    (w - 4.0, "end")
+                };
+                write!(
+                    out,
+                    r#"<text x="{}" y="{}" text-anchor="{anchor}" class="portname">{}</text>"#,
+                    num(x),
+                    num(y),
+                    esc(&p.key)
+                )
+                .unwrap();
+            }
+        }
+    }
     if let Some(t) = &n.title {
         // Where ELK put it, else centered just above the block.
         let (tx, ty) = match label {
@@ -602,10 +662,17 @@ fn render_node(
         .unwrap();
     }
     if let Some(g) = &n.glyph {
+        // In the middle; with input names, on the right, clear of them
+        // (outputs aren't named there).
+        let x = if n.port_names {
+            w - 5.0 - text_width(g) / 2.0
+        } else {
+            w / 2.0
+        };
         write!(
             out,
             r#"<text x="{}" y="{}" class="glyph">{}</text>"#,
-            num(w / 2.0),
+            num(x),
             num(h / 2.0 + 3.5),
             esc(g)
         )

@@ -116,15 +116,20 @@ async fn diagram_draws_the_design() {
     // No script in the SVG; its default style uses the variables.
     assert!(!svg.contains("<script"));
     assert!(svg.contains("var(--logix-diagram-register,"));
-    // The pins, the counter's register and its adder, and the wires.
+    // The pins, the counter's register (no adder: drawn as written), and
+    // the wires.
     assert!(
         svg.contains(r#"data-pin="CLK""#) && svg.contains(r#"data-pin="LED0""#),
         "{svg}"
     );
     assert!(
-        svg.contains("cat-reg") && svg.contains("cat-arith"),
+        svg.contains(r#"class="block cat-reg""#) && !svg.contains(r#"class="block cat-arith""#),
         "{svg}"
     );
+    // As written (the user's decision, 2026-11-22): the counter is one
+    // register block, named after it, reading itself; no adder.
+    assert!(svg.contains(r#"data-block="$logix_reg$count""#), "{svg}");
+    assert!(svg.contains(r#"class="portname">count</text>"#), "{svg}");
     assert!(
         svg.contains(r#"class="wire"#) && svg.contains("portbox"),
         "{svg}"
@@ -133,7 +138,7 @@ async fn diagram_draws_the_design() {
     // No folder in what yosys names: cells are named after their file as
     // the request gave it.
     assert!(!svg.contains(&src.display().to_string()), "{svg}");
-    assert!(svg.contains(r#"data-block="$main.v:"#), "{svg}");
+    assert!(!svg.contains("$main.v:"), "{svg}");
 
     // The model: every block with its source line.
     let model = model(&src);
@@ -280,8 +285,16 @@ async fn diagram_draws_every_module_with_the_prototype_rules() {
         svg.contains("cat-module") && svg.contains("lbltext signal"),
         "{svg}"
     );
-    // A bus split: part of b goes to the XOR.
-    assert!(svg.contains(r#"data-kind="split""#), "{svg}");
+    // As written: LEDS is one block of logic reading a and b, not an XOR
+    // with a bus split.
+    let leds = &blocks["$logix_logic$LEDS"];
+    assert_eq!(leds["title"], "Logic");
+    assert_eq!(leds["name"], "LEDS");
+    assert!(
+        leds["ports"]["a"].is_object() && leds["ports"]["b"].is_object(),
+        "{leds}"
+    );
+    assert!(!blocks.values().any(|b| b["type"] == "$xor"));
     let page = read(&src, "diagram-main.html");
     assert!(page.contains(r#""counter-2""#));
 }
@@ -330,13 +343,13 @@ async fn diagram_names_fpga_blocks_for_every_family() {
     assert_eq!(lut["title"], "Logic cell (4-input LUT)");
     assert_eq!(lut["ports"]["O"]["direction"], "output");
     assert_eq!(lut["fixed"]["I1"], "1");
-    // The define reached yosys: its inverter is drawn.
+    // The define reached yosys: its inverter's logic is drawn, as written.
     assert!(
         main["blocks"]
             .as_object()
             .unwrap()
             .values()
-            .any(|b| b["type"] == "$not")
+            .any(|b| b["type"] == "$logix_logic")
     );
 }
 
