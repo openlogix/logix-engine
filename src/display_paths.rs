@@ -358,8 +358,9 @@ impl Display {
     }
 
     /// A tool result or error, as JSON, with the paths people read named:
-    /// every diagnostic's `file` and `text`, and `message`, `details` and
-    /// `output` text. `commands` and fields that are paths are left as they are.
+    /// every diagnostic's `file` and `text`, `message`, `details` and
+    /// `output` text, and `checked_files` (named as diagnostics name files,
+    /// so hosts can match them). `commands` and fields that are paths are left as they are.
     pub fn json(&self, value: &mut Value) {
         if self.is_empty() {
             return;
@@ -373,6 +374,13 @@ impl Display {
                         ("file", Value::String(s)) if diagnostic => *s = self.file(s),
                         ("text", Value::String(s)) if diagnostic => *s = self.text(s),
                         ("message" | "details" | "output", Value::String(s)) => *s = self.text(s),
+                        ("checked_files", Value::Array(files)) => {
+                            for f in files {
+                                if let Value::String(s) = f {
+                                    *s = self.file(s);
+                                }
+                            }
+                        }
                         (_, v) => self.json(v),
                     }
                 }
@@ -717,6 +725,22 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn checked_files_are_named_as_diagnostics_name_files() {
+        let d = display(
+            json!({"folders": [{"path": "/s/7", "as": "/home/you/blinky"}]}),
+            Some("/s/7"),
+        );
+        let mut v = json!({"checked_files": ["main.v", "rtl/uart.v"], "data": {"checked_files": ["main.v"]}});
+        d.json(&mut v);
+        assert_eq!(
+            v,
+            json!({"checked_files": ["/home/you/blinky/main.v", "/home/you/blinky/rtl/uart.v"],
+                "data": {"checked_files": ["/home/you/blinky/main.v"]}})
+        );
+    }
+
     #[test]
     fn live_output_lines_get_the_place_they_name() {
         let tmp = tempfile::tempdir().unwrap();
@@ -727,8 +751,15 @@ mod tests {
         }
         let src_text = src.to_string_lossy().into_owned();
         let at = |d: &Display, text: &str| {
-            d.location(text)
-                .map(|l| format!("{}:{}:{}", l.file, l.line, l.column.unwrap_or(0)))
+            // Windows names files with its own separator.
+            d.location(text).map(|l| {
+                format!(
+                    "{}:{}:{}",
+                    l.file.replace('\\', "/"),
+                    l.line,
+                    l.column.unwrap_or(0)
+                )
+            })
         };
         let d = display(json!({}), Some(&src_text));
         assert_eq!(

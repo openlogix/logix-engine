@@ -73,6 +73,11 @@ pub struct FormatOutput {
     pub files: Vec<FileResult>,
     /// Why files failed, such as syntax errors at file, line and column.
     pub diagnostics: Vec<Diagnostic>,
+    /// The files this call read and checked, named as the request names
+    /// files: the listed files, formatted or not. A host
+    /// replaces these files' earlier problems with this result's; other
+    /// files keep theirs.
+    pub checked_files: Vec<String>,
     /// The programs this call ran, in order, each with the exact command and
     /// a shell line that runs it again without the engine, such as for a bug
     /// report to the tool's developers.
@@ -123,8 +128,11 @@ pub async fn run(
     input: FormatInput,
     call: &Call,
 ) -> Result<FormatOutput, ToolError> {
-    let r = format::format(state, check(input)?, call).await?;
+    let req = check(input)?;
+    let checked = req.files.clone();
+    let r = format::format(state, req, call).await?;
     Ok(FormatOutput {
+        checked_files: checked,
         commands: call.commands.take(),
         passed: r.files.iter().all(|f| f.status != FileStatus::Failed),
         files: r.files,

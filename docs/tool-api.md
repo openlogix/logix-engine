@@ -270,6 +270,10 @@ Example:
 
 Files the engine generated for a step, such as lint's Verilator config in the engine folder's `tmp/` or a testbench's `.limit.v` in the build folder, are named by absolute path and stay where they are, so the line works as long as they do.
 
+### Checked files
+
+Results of the tools that check files (`lint`, `test`, `simulate`, `format`, `diagram` and `build`) list in `checked_files` the files the call read and checked: the listed files, then the files they include, as the engine finds them, then, for `build`, the constraint file. A design error from one of them has the same list in `data.checked_files`. They're named as diagnostics name files (relative to the source folder, or as `display_paths` says), so a host that shows problems on files can replace exactly those files' earlier problems with the call's, and leave the others: a pin file's problems stay after `test`, which never reads it, and a testbench's after `build`.
+
 ### Progress
 
 A host that wants progress adds an MCP progress token to its request. The engine then sends progress notifications with a progress value, an optional total and an optional message, such as "Placing and routing".
@@ -333,6 +337,7 @@ The Logix Engine adds the FPGA's primitive models, so designs that use primitive
 | --- | --- | --- |
 | `passed` | boolean | True when Verilator found no errors and no warnings |
 | `diagnostics` | list of diagnostics | The problems found, at file, line and column where known. A Verilator warning code, such as `WIDTHTRUNC`, ends the text in parentheses, since a `/* verilator lint_off WIDTHTRUNC */` comment names it. Problems in the primitive models keep their location in the text |
+| `checked_files` | list of relative paths | The files lint read and checked: the design files, the testbenches and the files they include (see Checked files) |
 | `commands` | list of commands | The programs this call ran, in order, so they can be run again without the Logix Engine. See Commands |
 
 **Errors:** setup errors with `download_packages`. Request errors, such as an unknown board, a missing file or an included file outside the source folder. Tool failures, when Verilator fails without reporting a problem. Engine errors and cancellation.
@@ -400,6 +405,7 @@ Testbenches run in the source folder, so they read data files, such as with `$re
 | --- | --- | --- |
 | `passed` | boolean | True when every testbench passed |
 | `testbenches` | list of testbench results | Each testbench's result, in the order given. See Table 27 |
+| `checked_files` | list of relative paths | The files it read and checked: the design files, the testbenches and the files they include (see Checked files) |
 | `commands` | list of commands | The programs this call ran, in order, so they can be run again without the engine. See Commands |
 
 **Table 27.** Testbench result fields
@@ -499,6 +505,7 @@ Simulates one testbench and opens its waveform in Open Logix's waveform viewer (
 | `viewer_opened` | boolean | True if the waveform viewer's page opened in a window |
 | `viewer_problem` | text | Optional. Why it didn't open, in plain words for the person at the screen, such as a missing library, with what fixes it. Only when `open_viewer` was true and it didn't open |
 | `viewer_file` | relative path | Open Logix's waveform viewer, a self-contained page with the waveform in it, relative to the build folder, such as `main_tb.html` |
+| `checked_files` | list of relative paths | The files it read and checked: the design files, the testbench and the files they include (see Checked files) |
 | `commands` | list of commands | The programs this call ran, in order, so they can be run again without the engine. See Commands |
 
 **Errors:** design errors for compile errors, `$dumpfile` and a testbench without `$dumpvars`. Setup errors with `download_packages`, or when the page can't be written. Request errors, such as a missing file, a view file that isn't `.view`, or whose folder doesn't exist, or a build folder that breaks the keyword rules. Tool failures, engine errors and cancellation.
@@ -620,6 +627,7 @@ Each file is formatted on its own, in order, with the request's `verible_options
 | `passed` | boolean | True when every file is formatted now, whether it was rewritten or already formatted |
 | `files` | list of objects | Each file, in the request's order, with its `file` as given and its `status`: `formatted` (rewritten), `unchanged` (already formatted) or `failed` (left unchanged; see `diagnostics`) |
 | `diagnostics` | list of diagnostics | Why files failed, such as syntax errors at file, line and column |
+| `checked_files` | list of relative paths | The files it checked, formatted or not: the request's `source_files` (see Checked files) |
 | `commands` | list of commands | The programs this call ran, one per file. See Commands |
 
 **Errors:** setup errors with `download_packages`, for the `verible` package. Request errors, such as a missing file, a file that isn't Verilog or SystemVerilog, a file outside the source folder or an option that isn't allowed. Tool failures, when Verible fails without reporting a problem, such as for an option it doesn't know. Engine errors and cancellation.
@@ -697,6 +705,7 @@ Each call writes its page, `diagram-<top_module>.html` in the build folder (one 
 | `opened` | boolean | Whether the page opened in a window |
 | `viewer_problem` | text | Optional. Why it didn't open, in plain words, such as a missing library. Only when `open` was true and it didn't open |
 | `diagnostics` | list of diagnostics | Yosys warnings while reading the design, at file and line where known. Often empty |
+| `checked_files` | list of relative paths | The files it read: the design files and the files they include (see Checked files) |
 | `commands` | list of commands | The program this call ran: yosys. See Commands |
 
 **Errors:** design errors, with diagnostics, for errors in the design, such as a syntax error, or a `top_module` that isn't in the files. Setup errors with `download_packages`, for the toolchain package. Request errors, such as a missing file or an unknown board. Tool failures, when yosys fails without reporting a problem. Engine errors and cancellation.
@@ -770,6 +779,7 @@ Xilinx builds use two of the core's tools, `oss-cad-suite` and `openxc7`. Two Xi
 | `report` | multiline text | The build's report for people, the preferred way to show its resource use to people, a line each: the main resource always, the others in `resources_summary` when used, then each clock, such as "The design uses 27 of 7680 logic cells (1%)." and "Maximum clock speed: 194.4 MHz (sys_clk).", with each `display_percent`. A share that isn't valid is left out. Show it as is (a console, a CLI's output); its wording can change in any version, so programs read the fields above |
 | `report_summary` | text | The report in one line, for a status bar: the main resource's share and the slowest clock, such as "Uses 1% of logic cells, max clock 194.4 MHz." Empty when there's nothing to report |
 | `warnings` | list of diagnostics | Warnings from the build's tools. See diagnostic fields in Table 4 |
+| `checked_files` | list of relative paths | The files the build read and checked: the design files, the files they include and the constraint file (see Checked files) |
 | `diagnostics` | list of diagnostics | Every problem the call found, each with its `tool`: with `lint`, lint's first, then the build's warnings without the ones lint already reported (see Lint first); without it, the same as `warnings` |
 | `commands` | list of commands | The programs this call ran, in order, so they can be run again without the Logix Engine. See Commands |
 
@@ -1670,6 +1680,7 @@ On Windows, a device whose `driver` isn't `ready` (in `devices` or `unreachable`
 ### Show problems in the editor
 
 - Every tool reports problems as diagnostics with `file` relative to the source folder, `line`, `column` and `severity`, so one routine can underline them for lint, test, build and format alike.
+- When a call ends, replace the problems of the files in its `checked_files` (or a design error's `data.checked_files`) with its diagnostics, and keep the other files' problems: each tool reads only some files, such as the pin file only in `build`.
 - `lint` is fast and writes nothing, so it suits running on save. For a Verify button that checks and builds, call `build` with `lint` true and show its `diagnostics` (or, when it fails, the error's): lint's and the build's problems in one list, without repeats.
 - Show a build's result with the engine's text: `report_summary` in a status bar ("Uses 1% of logic cells, max clock 194.4 MHz.") and `report` in a console, so every frontend words it the same way. For a full report, show `resources` as a table: the toolchain's name, its description, used, available and `display_percent` ("n/a" when it's `null`), the used ones by default, with a way to show the rest (on Xilinx FPGAs most are unused), and `clocks_summary` with each clock's name, maximum speed and net. Logix IDE's Board Utilization window does this (`ui/src/lib/BuildReport.svelte`).
 - Turn an error's `action` code into a button: `download_packages` calls the download_packages tool, and `connect_board`, `fix_device_permissions`, `install_drivers` and `disconnect_devices` show short instructions.

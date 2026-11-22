@@ -155,6 +155,13 @@ pub struct DiagramOutput {
     /// Yosys warnings while reading the design, at file and line where
     /// known. Often empty.
     pub diagnostics: Vec<Diagnostic>,
+    /// The files this call read and checked, named as the request names
+    /// files: the listed files and the files they include. A host
+    /// replaces these files' earlier problems with this result's; other
+    /// files keep theirs. A design error has the same list in
+    /// data.checked_files.
+    pub checked_files: Vec<String>,
+
     /// The programs this call ran, in order, each with the exact command and
     /// a shell line that runs it again without the engine, such as for a bug
     /// report to the tool's developers.
@@ -217,7 +224,8 @@ pub async fn run(
     let req = check(input)?;
     let build_folder = req.build_folder.clone();
     let source_folder = req.source_folder.clone();
-    let r = diagram::diagram(state, req, call).await?;
+    let checked = super::checked_files(&req.source_folder, &req.source_files, &[]);
+    let r = super::with_checked(diagram::diagram(state, req, call).await, &checked)?;
     let viewer_problem = open.then(|| {
         let name = crate::viewer::app_name(&state.packages, crate::viewer::DIAGRAM);
         let project = source_folder
@@ -253,6 +261,7 @@ pub async fn run(
         opened: open && viewer_problem.as_ref().is_some_and(Option::is_none),
         viewer_problem: viewer_problem.flatten(),
         diagnostics: r.diagnostics,
+        checked_files: checked,
         commands: call.commands.take(),
     })
 }

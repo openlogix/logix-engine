@@ -156,6 +156,12 @@ pub struct BuildOutput {
     /// flagged the same line with the same severity; without lint, the
     /// warnings.
     pub diagnostics: Vec<Diagnostic>,
+    /// The files this call read and checked, named as the request names
+    /// files: the listed files, the files they include and the constraint file. A host
+    /// replaces these files' earlier problems with this result's; other
+    /// files keep theirs. A design error has the same list in
+    /// data.checked_files.
+    pub checked_files: Vec<String>,
     /// The programs this call ran, in order, each with the exact command and
     /// a shell line that runs it again without the engine, such as for a bug
     /// report to the tool's developers.
@@ -304,6 +310,11 @@ pub async fn run(
         verbose: input.verbose,
     });
     let request = check(input)?;
+    let checked = super::checked_files(
+        &request.source_folder,
+        &request.source_files,
+        &[&request.constraint_file],
+    );
     let arch = request.board.fpga.toolchain();
     let board_variant = request.board.variant.selector.clone();
     // Lint first, then the build, each with its own progress phases on one
@@ -326,7 +337,7 @@ pub async fn run(
         }
     };
     let call = build_call.as_ref().unwrap_or(call);
-    let r = match build::build(state, request, call).await {
+    let r = match super::with_checked(build::build(state, request, call).await, &checked) {
         Ok(r) => r,
         Err(mut e) => {
             if e.category != crate::errors::Category::Cancelled {
@@ -348,6 +359,7 @@ pub async fn run(
         board_variant,
         up_to_date: r.up_to_date,
         diagnostics: merge_diagnostics(linted, r.warnings.clone()),
+        checked_files: checked,
         warnings: r.warnings,
     })
 }

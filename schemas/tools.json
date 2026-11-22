@@ -2817,6 +2817,13 @@
             "$ref": "#/$defs/Diagnostic"
           }
         },
+        "checked_files": {
+          "description": "The files this call read and checked, named as the request names\nfiles: the listed files, the files they include and the testbenches. A host\nreplaces these files' earlier problems with this result's; other\nfiles keep theirs. A design error has the same list in\ndata.checked_files.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "commands": {
           "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
           "type": "array",
@@ -2829,6 +2836,7 @@
       "required": [
         "passed",
         "diagnostics",
+        "checked_files",
         "commands"
       ],
       "$defs": {
@@ -3136,6 +3144,13 @@
             "$ref": "#/$defs/TestbenchResult"
           }
         },
+        "checked_files": {
+          "description": "The files this call read and checked, named as the request names\nfiles: the listed files, the files they include and the testbenches. A host\nreplaces these files' earlier problems with this result's; other\nfiles keep theirs. A design error has the same list in\ndata.checked_files.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "commands": {
           "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
           "type": "array",
@@ -3148,6 +3163,7 @@
       "required": [
         "passed",
         "testbenches",
+        "checked_files",
         "commands"
       ],
       "$defs": {
@@ -3593,6 +3609,13 @@
           "description": "Open Logix's waveform viewer, a self-contained page with the\nwaveform in it, relative to the build folder, such as main_tb.html.",
           "type": "string"
         },
+        "checked_files": {
+          "description": "The files this call read and checked, named as the request names\nfiles: the listed files, the files they include and the testbench. A host\nreplaces these files' earlier problems with this result's; other\nfiles keep theirs. A design error has the same list in\ndata.checked_files.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "commands": {
           "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
           "type": "array",
@@ -3611,6 +3634,7 @@
         "waveform_file",
         "viewer_opened",
         "viewer_file",
+        "checked_files",
         "commands"
       ],
       "$defs": {
@@ -4007,6 +4031,13 @@
             "$ref": "#/$defs/Diagnostic"
           }
         },
+        "checked_files": {
+          "description": "The files this call read and checked, named as the request names\nfiles: the listed files, formatted or not. A host\nreplaces these files' earlier problems with this result's; other\nfiles keep theirs.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "commands": {
           "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
           "type": "array",
@@ -4020,6 +4051,7 @@
         "passed",
         "files",
         "diagnostics",
+        "checked_files",
         "commands"
       ],
       "$defs": {
@@ -4376,6 +4408,13 @@
             "$ref": "#/$defs/Diagnostic"
           }
         },
+        "checked_files": {
+          "description": "The files this call read and checked, named as the request names\nfiles: the listed files and the files they include. A host\nreplaces these files' earlier problems with this result's; other\nfiles keep theirs. A design error has the same list in\ndata.checked_files.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "commands": {
           "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
           "type": "array",
@@ -4391,6 +4430,7 @@
         "modules",
         "opened",
         "diagnostics",
+        "checked_files",
         "commands"
       ],
       "$defs": {
@@ -4823,6 +4863,13 @@
             "$ref": "#/$defs/Diagnostic"
           }
         },
+        "checked_files": {
+          "description": "The files this call read and checked, named as the request names\nfiles: the listed files, the files they include and the constraint file. A host\nreplaces these files' earlier problems with this result's; other\nfiles keep theirs. A design error has the same list in\ndata.checked_files.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "commands": {
           "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
           "type": "array",
@@ -4843,6 +4890,7 @@
         "report_summary",
         "warnings",
         "diagnostics",
+        "checked_files",
         "commands"
       ],
       "$defs": {

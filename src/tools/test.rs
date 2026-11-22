@@ -184,6 +184,13 @@ pub struct TestOutput {
     pub passed: bool,
     /// Each testbench's result, in the order given.
     pub testbenches: Vec<TestbenchResult>,
+    /// The files this call read and checked, named as the request names
+    /// files: the listed files, the files they include and the testbenches. A host
+    /// replaces these files' earlier problems with this result's; other
+    /// files keep theirs. A design error has the same list in
+    /// data.checked_files.
+    pub checked_files: Vec<String>,
+
     /// The programs this call ran, in order, each with the exact command and
     /// a shell line that runs it again without the engine, such as for a bug
     /// report to the tool's developers.
@@ -223,7 +230,28 @@ pub async fn run(
         testbench::check_no_dumpfile(&sources.source_folder, tb)?;
     }
     let includes = sources.include_args()?;
+    let checked = super::checked_files(&sources.source_folder, &sources.all_files(), &[]);
+    let results = super::with_checked(
+        run_testbenches(state, &sources, &includes, &build_folder, options, call).await,
+        &checked,
+    )?;
+    Ok(TestOutput {
+        commands: call.commands.take(),
+        passed: results.iter().all(|r| r.passed),
+        testbenches: results,
+        checked_files: checked,
+    })
+}
 
+/// Compiles and runs each testbench, in order.
+async fn run_testbenches(
+    state: &EngineState,
+    sources: &Sources,
+    includes: &[std::ffi::OsString],
+    build_folder: &std::path::Path,
+    options: RunOptions,
+    call: &Call,
+) -> Result<Vec<TestbenchResult>, ToolError> {
     let needed = state
         .packages
         .needing_download(&[crate::packages::CORE])
@@ -239,11 +267,11 @@ pub async fn run(
     for tb in &sources.testbench_files {
         let r = testbench::compile_and_run(
             "test",
-            &sources,
+            sources,
             &lib,
-            &includes,
+            includes,
             &bin,
-            &build_folder,
+            build_folder,
             tb,
             options,
             &phases,
@@ -252,9 +280,5 @@ pub async fn run(
         .await?;
         results.push(TestbenchResult::from(r));
     }
-    Ok(TestOutput {
-        commands: call.commands.take(),
-        passed: results.iter().all(|r| r.passed),
-        testbenches: results,
-    })
+    Ok(results)
 }

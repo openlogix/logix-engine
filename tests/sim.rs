@@ -374,6 +374,54 @@ async fn test_runs_every_testbench_and_reports_failures_as_results() {
     assert!(src.join("_build/tb/sub_tb.out").is_file());
 }
 
+/// Each result names the files it read and checked (the listed files,
+/// then their includes), and so does a design error, so a host replaces
+/// those files' old problems.
+#[tokio::test]
+async fn results_name_the_files_they_checked() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    let all = ["main.v", "rtl/counter.v", "main_tb.v", "rtl/width.vh"];
+    let out = lint::run(&state, lint_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    assert_eq!(out.checked_files, all);
+    let out = lint::run(
+        &state,
+        lint_input(&src, json!({"testbench_files": []})),
+        &call(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        out.checked_files,
+        ["main.v", "rtl/counter.v", "rtl/width.vh"]
+    );
+    let out = test::run(&state, test_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    assert_eq!(out.checked_files, all);
+    let out = simulate::run(&state, simulate_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    assert_eq!(out.checked_files, all);
+    // A design error.
+    std::fs::write(
+        src.join("rtl/counter.v"),
+        COUNTER.replace("cnt + 1'b1;", "cnt +;"),
+    )
+    .unwrap();
+    let err = test::run(&state, test_input(&src, json!({})), &call())
+        .await
+        .unwrap_err();
+    assert_eq!(err.category, Category::Design);
+    assert_eq!(err.data.unwrap()["checked_files"], json!(all));
+    let err = simulate::run(&state, simulate_input(&src, json!({})), &call())
+        .await
+        .unwrap_err();
+    assert_eq!(err.data.unwrap()["checked_files"], json!(all));
+}
+
 #[tokio::test]
 async fn test_compile_errors_are_design_errors() {
     let state = engine().await;

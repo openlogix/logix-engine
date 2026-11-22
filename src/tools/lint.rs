@@ -112,6 +112,12 @@ pub struct LintOutput {
     /// The problems found, in Verilator's order: errors and warnings at file
     /// and line where known.
     pub diagnostics: Vec<Diagnostic>,
+    /// The files this call read and checked, named as the request names
+    /// files: the listed files, the files they include and the testbenches. A host
+    /// replaces these files' earlier problems with this result's; other
+    /// files keep theirs. A design error has the same list in
+    /// data.checked_files.
+    pub checked_files: Vec<String>,
     /// The programs this call ran, in order, each with the exact command and
     /// a shell line that runs it again without the engine, such as for a bug
     /// report to the tool's developers.
@@ -188,8 +194,11 @@ pub async fn run(
     input: LintInput,
     call: &Call,
 ) -> Result<LintOutput, ToolError> {
-    let r = lint::lint(state, check(input)?, call).await?;
+    let req = check(input)?;
+    let checked = super::checked_files(&req.sources.source_folder, &req.sources.all_files(), &[]);
+    let r = super::with_checked(lint::lint(state, req, call).await, &checked)?;
     Ok(LintOutput {
+        checked_files: checked,
         commands: call.commands.take(),
         passed: r.passed,
         diagnostics: r.diagnostics,

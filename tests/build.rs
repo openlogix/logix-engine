@@ -743,9 +743,14 @@ endmodule
     let (last, total, _) = got.last().unwrap();
     assert!(last < total);
 
-    // Without lint: diagnostics are the build's warnings.
+    // Without lint: diagnostics are the build's warnings. The files it
+    // checked: the sources, their includes and the pin file.
     let out = build_it(&state, &src, json!({})).await.unwrap();
     assert_eq!(out.diagnostics, out.warnings);
+    assert_eq!(out.checked_files, ["main.v", "pinout.pcf"]);
+    let (_tmp2, with_include) = project();
+    let out = build_it(&state, &with_include, json!({})).await.unwrap();
+    assert_eq!(out.checked_files, ["main.v", "defs.vh", "pinout.pcf"]);
 
     // A syntax error: a design error whose diagnostics have lint's first,
     // and the build's for the same line left out.
@@ -758,6 +763,10 @@ endmodule
         .await
         .unwrap_err();
     assert_eq!(err.category, Category::Design, "{err:?}");
+    assert_eq!(
+        err.data.as_ref().unwrap()["checked_files"],
+        json!(["main.v", "pinout.pcf"])
+    );
     assert_eq!(
         err.diagnostics[0].tool.as_deref(),
         Some("verilator"),

@@ -169,6 +169,12 @@ pub struct SimulateOutput {
     /// Open Logix's waveform viewer, a self-contained page with the
     /// waveform in it, relative to the build folder, such as main_tb.html.
     pub viewer_file: String,
+    /// The files this call read and checked, named as the request names
+    /// files: the listed files, the files they include and the testbench. A host
+    /// replaces these files' earlier problems with this result's; other
+    /// files keep theirs. A design error has the same list in
+    /// data.checked_files.
+    pub checked_files: Vec<String>,
     /// The programs this call ran, in order, each with the exact command and
     /// a shell line that runs it again without the engine, such as for a bug
     /// report to the tool's developers.
@@ -187,6 +193,13 @@ pub async fn run(
         return Err(ToolError::request("timeout_seconds must be at least 1."));
     }
     let tb = input.testbench_file.clone();
+    let input_rest = Rest {
+        testbench_file: tb.clone(),
+        open_viewer: input.open_viewer,
+        save_view: input.save_view,
+        max_sim_time_ns: input.max_sim_time_ns,
+        timeout_seconds: input.timeout_seconds,
+    };
     let sources = check_sources(
         &input.board,
         &input.board_variant,
@@ -210,7 +223,40 @@ pub async fn run(
         .transpose()?;
     testbench::check_no_dumpfile(&src, &tb)?;
     let includes = sources.include_args()?;
+    let checked = super::checked_files(&src, &sources.all_files(), &[]);
+    super::with_checked(
+        simulate_and_show(
+            state,
+            &input_rest,
+            &sources,
+            &includes,
+            &build_folder,
+            view_file,
+            call,
+        )
+        .await,
+        &checked,
+    )
+    .map(|mut out| {
+        out.checked_files = checked.clone();
+        out
+    })
+}
 
+/// What simulate does once the request is checked: runs the testbench,
+/// writes the viewer's page and shows it.
+async fn simulate_and_show(
+    state: &EngineState,
+    input: &Rest,
+    sources: &crate::sim::Sources,
+    includes: &[std::ffi::OsString],
+    build_folder: &std::path::Path,
+    view_file: Option<std::path::PathBuf>,
+    call: &Call,
+) -> Result<SimulateOutput, ToolError> {
+    let src = sources.source_folder.clone();
+    let tb = input.testbench_file.clone();
+    let build_folder = build_folder.to_path_buf();
     let needed = state
         .packages
         .needing_download(&[crate::packages::CORE])
@@ -220,9 +266,9 @@ pub async fn run(
     let lib = SimLibrary::for_board(&sources.board, &package);
     let r = testbench::compile_and_run(
         "simulation",
-        &sources,
+        sources,
         &lib,
-        &includes,
+        includes,
         &bin,
         &build_folder,
         &tb,
@@ -320,5 +366,15 @@ pub async fn run(
         viewer_opened,
         viewer_problem: viewer_problem.flatten(),
         viewer_file,
+        checked_files: Vec::new(),
     })
+}
+
+/// What simulate_and_show needs of the request after the checks.
+struct Rest {
+    testbench_file: String,
+    open_viewer: bool,
+    save_view: bool,
+    max_sim_time_ns: Option<u64>,
+    timeout_seconds: Option<u64>,
 }

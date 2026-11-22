@@ -107,6 +107,7 @@ async fn diagram_draws_the_design() {
     assert_eq!(out.page_file, "diagram-main.html");
     assert_eq!(out.model_file, "diagram/diagram.json");
     assert!(!out.opened);
+    assert_eq!(out.checked_files, ["main.v"]);
     assert_eq!(out.modules.len(), 1);
     let m = &out.modules[0];
     assert!(m.top && m.key == "main" && m.note.is_none(), "{m:?}");

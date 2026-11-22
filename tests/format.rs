@@ -106,6 +106,8 @@ async fn formats_each_file_and_reports_syntax_errors() {
         ]
     );
     assert!(!out.passed);
+    // Every file it checked, formatted or not.
+    assert_eq!(out.checked_files, ["main.v", "rtl/tidy.v", "broken.v"]);
     assert_eq!(std::fs::read_to_string(src.join("main.v")).unwrap(), TIDY);
     assert_eq!(
         std::fs::read_to_string(src.join("rtl/tidy.v")).unwrap(),
