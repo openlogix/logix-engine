@@ -603,27 +603,18 @@ pub async fn newer_release(
 /// outside prod, which the shared check enforces).
 pub const NEWEST: &str = "newest";
 
-/// The tag `newest` stands for, from GitHub's release list (JSON): the
-/// newest date-tagged release, stable or pre-release, not drafts.
-pub fn newest_tag(list: &str) -> Option<String> {
-    let releases: Vec<serde_json::Value> = serde_json::from_str(list).ok()?;
-    releases
-        .iter()
-        .filter(|r| r["draft"] != serde_json::Value::Bool(true))
-        .filter_map(|r| r["tag_name"].as_str())
+/// The tag `newest` stands for: the newest date-tagged release in the
+/// repo's release feed (`releases.atom`, newest first, published releases
+/// only, stable or pre-release, never drafts). The feed is an ordinary page,
+/// not GitHub's API, whose 60 requests an hour per address without a token
+/// ran out on CI (HTTP 403, 2026-11-22) and could on a shared network.
+pub fn newest_tag(feed: &str) -> Option<String> {
+    feed.split("/releases/tag/")
+        .skip(1)
+        .filter_map(|rest| rest.split(['"', '<', '&']).next())
         .filter(|t| manifest::is_date_tag(t))
         .max()
         .map(str::to_string)
-}
-
-/// Where the release list is read, for `release_base`: GitHub's API, or
-/// `<base>/api` on a test server.
-fn api_base(release_base: &str) -> String {
-    if release_base.trim_end_matches('/') == manifest::GITHUB {
-        "https://api.github.com".to_string()
-    } else {
-        format!("{}/api", release_base.trim_end_matches('/'))
-    }
 }
 
 /// Resolves a config for a platform: each package's file, with its SHA-256
@@ -643,8 +634,8 @@ pub async fn resolve(
         let mut e = entries[name].clone();
         if e.release == NEWEST {
             let url = format!(
-                "{}/repos/{}/{}/releases?per_page=30",
-                api_base(release_base),
+                "{}/{}/{}/releases.atom",
+                release_base.trim_end_matches('/'),
                 e.owner,
                 e.repo
             );
@@ -865,18 +856,16 @@ mod tests {
     }
 
     #[test]
-    fn newest_is_the_newest_dated_release_not_a_draft() {
-        let list = r#"[
-            {"tag_name": "2026-11-21", "draft": false, "prerelease": false},
-            {"tag_name": "2026-11-23", "draft": true, "prerelease": true},
-            {"tag_name": "2026-11-22", "draft": false, "prerelease": true},
-            {"tag_name": "v1.0", "draft": false, "prerelease": false}
-        ]"#;
-        assert_eq!(newest_tag(list).as_deref(), Some("2026-11-22"));
-        assert_eq!(newest_tag("[]"), None);
-        assert_eq!(newest_tag("not json"), None);
-        assert_eq!(api_base(manifest::GITHUB), "https://api.github.com");
-        assert_eq!(api_base("http://127.0.0.1:9/"), "http://127.0.0.1:9/api");
+    fn newest_is_the_newest_dated_release_in_the_feed() {
+        let feed = r#"<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry><link rel="alternate" type="text/html" href="https://github.com/openlogix/logix-catalog/releases/tag/2026-11-21"/></entry>
+  <entry><link rel="alternate" type="text/html" href="https://github.com/openlogix/logix-catalog/releases/tag/2026-11-22"/></entry>
+  <entry><link rel="alternate" type="text/html" href="https://github.com/openlogix/logix-catalog/releases/tag/v1.0"/></entry>
+</feed>"#;
+        assert_eq!(newest_tag(feed).as_deref(), Some("2026-11-22"));
+        assert_eq!(newest_tag("<feed></feed>"), None);
+        assert_eq!(newest_tag("not a feed"), None);
     }
 
     #[test]
