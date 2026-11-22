@@ -21,13 +21,14 @@ impl EngineTool for Diagram {
         registers, adders, comparators, multiplexers, memories, the FPGA's own blocks and \
         other modules as symbols, with the wires between them. Yosys reads the design as \
         written, without synthesizing it, and the engine lays out and draws every module \
-        itself. Writes, in the build folder's diagram/ folder (replaced by each call): \
-        diagram.html, one self-contained page with every module (click a module to open it, \
-        drag to pan, scroll to zoom, hover anything for its details; it needs no network or \
-        other software, so any web browser shows it), each module's SVG, and diagram.json, a \
-        model of every module's blocks, ports, signals and source lines. To show the user \
-        the diagram, set open to true, which opens the page in their web browser, or give \
-        them page_file's path. List the design files; the engine doesn't search for them. \
+        itself. Writes, in the build folder, diagram-<top_module>.html, one self-contained \
+        page with every module (click a module to open it, drag to pan, scroll to zoom, hover \
+        anything for its details; it needs no network or other software, so any web browser \
+        shows it), and in its diagram/ folder (replaced by each call) each module's SVG and \
+        diagram.json, a model of every module's blocks, ports, signals and source lines. To \
+        show the user the diagram, set open to true, which opens the page in a window of its \
+        own (Logix Diagrams; if it can't, viewer_problem says why), or give them page_file's \
+        path. List the design files; the engine doesn't search for them. \
         Errors in the design, such as a syntax error or a top module that isn't in the \
         files, are design errors with diagnostics at file and line. The first call may \
         download the toolchain package first, which takes a few minutes.";
@@ -77,9 +78,10 @@ pub struct DiagramInput {
     /// `ifdef. SYNTHESIZE is always defined, as in build.
     #[serde(default)]
     pub defines: BTreeMap<String, String>,
-    /// Open the page in the user's default web browser when it's written,
-    /// so they see the diagram at once. Defaults to false. opened says
-    /// whether it was.
+    /// Open the page in a window of its own (Logix Diagrams) when it's
+    /// written, so the person at the screen sees the diagram at once; a
+    /// later call for the same page reloads that window. Defaults to false.
+    /// opened says whether it was.
     #[serde(default)]
     pub open: bool,
     /// How many levels of modules below top_module are drawn, such as 1
@@ -132,8 +134,9 @@ pub struct DiagramModule {
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DiagramOutput {
-    /// The page with every module, relative to the build folder:
-    /// diagram/diagram.html. Opening it in a web browser shows the diagram.
+    /// The page with every module, relative to the build folder, named by
+    /// the module it starts at: diagram-main.html. Opening it in a web
+    /// browser shows the diagram too.
     pub page_file: String,
     /// The model, relative to the build folder: diagram/diagram.json. For
     /// each module: its blocks (each with its kind, plain title, yosys type,
@@ -142,8 +145,13 @@ pub struct DiagramOutput {
     pub model_file: String,
     /// Every module, the top module first.
     pub modules: Vec<DiagramModule>,
-    /// Whether the page was opened in the web browser (open).
+    /// Whether the page opened in a window (open).
     pub opened: bool,
+    /// Why the page didn't open, in plain words for the person at the
+    /// screen, such as a missing library; only when open was true and it
+    /// didn't open.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub viewer_problem: Option<String>,
     /// Yosys warnings while reading the design, at file and line where
     /// known. Often empty.
     pub diagnostics: Vec<Diagnostic>,
@@ -204,7 +212,29 @@ pub async fn run(
     input: DiagramInput,
     call: &Call,
 ) -> Result<DiagramOutput, ToolError> {
-    let r = diagram::diagram(state, check(input)?, call).await?;
+    let open = input.open;
+    let top = input.top_module.clone();
+    let req = check(input)?;
+    let build_folder = req.build_folder.clone();
+    let source_folder = req.source_folder.clone();
+    let r = diagram::diagram(state, req, call).await?;
+    let viewer_problem = open.then(|| {
+        let name = crate::viewer::app_name(&state.packages, crate::viewer::DIAGRAM);
+        let project = source_folder
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        crate::viewer::present(
+            &state.packages,
+            &crate::viewer::Page {
+                kind: crate::viewer::DIAGRAM,
+                page: &build_folder.join(&r.page_file),
+                title: crate::viewer::title(&name, &[&project, &top]),
+                declared: Default::default(),
+                source_folder: Some(&source_folder),
+            },
+        )
+    });
     Ok(DiagramOutput {
         page_file: r.page_file,
         model_file: r.model_file,
@@ -220,7 +250,8 @@ pub async fn run(
                 note: m.note,
             })
             .collect(),
-        opened: r.opened,
+        opened: open && viewer_problem.as_ref().is_some_and(Option::is_none),
+        viewer_problem: viewer_problem.flatten(),
         diagnostics: r.diagnostics,
         commands: call.commands.take(),
     })

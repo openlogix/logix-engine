@@ -3046,7 +3046,7 @@
   },
   {
     "name": "simulate",
-    "description": "Simulates one testbench with Icarus Verilog and opens its waveform in Open Logix's waveform viewer: compiles the design files with the testbench, runs it to write the waveform (.vcd) into the build folder, writes the viewer, a self-contained page with the waveform in it (viewer_file), and opens it in the default web browser. The testbench must call $dumpvars and $finish, and must not call $dumpfile. The viewer shows the testbench's own signals, opens at the first failure, and keeps the user's view in view_file (<testbench>.view). Set open_viewer to false to only write the waveform and the page, such as when no one is at the screen or the host shows the page in a window of its own. A failing testbench runs to the end and is shown, with passed false. Compile errors are a design error with diagnostics at file and line. To just check whether testbenches pass, use test.",
+    "description": "Simulates one testbench with Icarus Verilog and opens its waveform in Open Logix's waveform viewer: compiles the design files with the testbench, runs it to write the waveform (.vcd) into the build folder, writes the viewer, a self-contained page with the waveform in it (viewer_file), and opens it in a window of its own (Logix Waveforms). The testbench must call $dumpvars and $finish, and must not call $dumpfile. The viewer shows the testbench's own signals, opens at the first failure, and saves the person's view as they change it, in view_file (<testbench>.view), unless save_view is false. If the window can't open, viewer_problem says why. Set open_viewer to false to only write the waveform and the page, such as when no one is at the screen or the host shows the page in a window of its own. A failing testbench runs to the end and is shown, with passed false. Compile errors are a design error with diagnostics at file and line. To just check whether testbenches pass, use test.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "SimulateInput",
@@ -3110,17 +3110,22 @@
           "type": "string"
         },
         "open_viewer": {
-          "description": "Open the waveform viewer's page (viewer_file) in the default web\nbrowser, for the person at the screen. Defaults to true. False only\nwrites the waveform and the page, such as for a host that shows the\npage in a window of its own.",
+          "description": "Open the waveform viewer's page (viewer_file) in a window of its own\n(Logix Waveforms), for the person at the screen. Defaults to true.\nFalse only writes the waveform and the page, such as for a host that\nshows the page in a window of its own.",
           "type": "boolean",
           "default": true
         },
         "view_file": {
-          "description": "The view the waveform viewer opens and saves (the signals shown,\ntheir formats and colors, the zoom), relative to the source folder,\nsuch as main_tb.view. The engine only reads it: the viewer's page\nsaves it, through its host, or as a download in a browser. Its folder\nmust exist. When omitted or missing, the viewer opens its default\nview, the testbench's own signals.",
+          "description": "The view the waveform viewer opens and saves (the signals shown,\ntheir formats and colors, the zoom), relative to the source folder,\nsuch as main_tb.view. Its folder must exist; the file may not yet.\nWhen omitted, the view is <testbench>.view in the build folder, kept\nuntil the build folder is cleaned. When there's no view yet, the\nviewer opens its default view, the testbench's own signals.",
           "type": [
             "string",
             "null"
           ],
           "default": null
+        },
+        "save_view": {
+          "description": "Let the waveform viewer save the person's view (to view_file) as\nthey change it. Defaults to true. False opens the view without\nwriting anything, such as for a host that keeps views its own way.",
+          "type": "boolean",
+          "default": true
         },
         "max_sim_time_ns": {
           "description": "Stop the testbench when simulated time reaches this many nanoseconds,\nsuch as one that never calls $finish. Defaults to no limit.",
@@ -3263,8 +3268,15 @@
           "type": "string"
         },
         "viewer_opened": {
-          "description": "True if the waveform viewer's page was opened in the web browser.",
+          "description": "True if the waveform viewer's page opened in a window.",
           "type": "boolean"
+        },
+        "viewer_problem": {
+          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library; only when open_viewer was true\nand it didn't open.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "viewer_file": {
           "description": "Open Logix's waveform viewer, a self-contained page with the\nwaveform in it, relative to the build folder, such as main_tb.html.",
@@ -3433,7 +3445,7 @@
   },
   {
     "name": "open_waveform",
-    "description": "Opens Open Logix's waveform viewer on a waveform file (.vcd), such as one from another simulator, an earlier run, or one you made, in the default web browser for the person at the screen. The file is only read. To point the person at something, name the signals to show (paths as in the file, such as main_tb.dut.count) and a time range in nanoseconds; signals the file doesn't have come back in unknown_signals. To simulate a testbench and open its waveform, use simulate instead, which also marks its failures.",
+    "description": "Opens Open Logix's waveform viewer on a waveform file (.vcd), such as one from another simulator, an earlier run, or one you made, in a window of its own (Logix Waveforms) for the person at the screen; the viewer saves the person's view as they change it (view_file). The waveform is only read. To point the person at something, name the signals to show (paths as in the file, such as main_tb.dut.count) and a time range in nanoseconds; signals the file doesn't have come back in unknown_signals. To simulate a testbench and open its waveform, use simulate instead, which also marks its failures.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "OpenWaveformInput",
@@ -3453,12 +3465,17 @@
           "default": null
         },
         "view_file": {
-          "description": "A saved view (.view) to open with, as an absolute path, such as one\nthe viewer saved for a testbench. It is only read.",
+          "description": "The view (.view) to open with and save to, as an absolute path, such\nas one the viewer saved for a testbench. Its folder must exist; the\nfile may not yet. When omitted, the view goes next to the page, as\n<waveform>.view.",
           "type": [
             "string",
             "null"
           ],
           "default": null
+        },
+        "save_view": {
+          "description": "Let the viewer save the person's view (to view_file) as they change\nit. Defaults to true. False opens the view without writing anything.",
+          "type": "boolean",
+          "default": true
         },
         "signals": {
           "description": "The signals to show, in this order, as paths in the file, such as\n[\"main_tb.clk\", \"main_tb.dut.count\"]. Omitted means the view's, or\nthe file's top-level signals.",
@@ -3496,7 +3513,7 @@
           "default": null
         },
         "open_viewer": {
-          "description": "Open the page in the default web browser. Defaults to true. False\nonly writes it, such as for a host that shows the page itself.",
+          "description": "Open the page in a window of its own (Logix Waveforms) for the person\nat the screen. Defaults to true. False only writes it, such as for a\nhost that shows the page itself.",
           "type": "boolean",
           "default": true
         }
@@ -3517,8 +3534,15 @@
           "type": "string"
         },
         "viewer_opened": {
-          "description": "True if the page was opened in the web browser.",
+          "description": "True if the page opened in a window.",
           "type": "boolean"
+        },
+        "viewer_problem": {
+          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library; only when open_viewer was true\nand it didn't open.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "signal_count": {
           "description": "How many signals the file has.",
@@ -3838,7 +3862,7 @@
   },
   {
     "name": "diagram",
-    "description": "Draws the design as schematic diagrams, one per module: registers, adders, comparators, multiplexers, memories, the FPGA's own blocks and other modules as symbols, with the wires between them. Yosys reads the design as written, without synthesizing it, and the engine lays out and draws every module itself. Writes, in the build folder's diagram/ folder (replaced by each call): diagram.html, one self-contained page with every module (click a module to open it, drag to pan, scroll to zoom, hover anything for its details; it needs no network or other software, so any web browser shows it), each module's SVG, and diagram.json, a model of every module's blocks, ports, signals and source lines. To show the user the diagram, set open to true, which opens the page in their web browser, or give them page_file's path. List the design files; the engine doesn't search for them. Errors in the design, such as a syntax error or a top module that isn't in the files, are design errors with diagnostics at file and line. The first call may download the toolchain package first, which takes a few minutes.",
+    "description": "Draws the design as schematic diagrams, one per module: registers, adders, comparators, multiplexers, memories, the FPGA's own blocks and other modules as symbols, with the wires between them. Yosys reads the design as written, without synthesizing it, and the engine lays out and draws every module itself. Writes, in the build folder, diagram-<top_module>.html, one self-contained page with every module (click a module to open it, drag to pan, scroll to zoom, hover anything for its details; it needs no network or other software, so any web browser shows it), and in its diagram/ folder (replaced by each call) each module's SVG and diagram.json, a model of every module's blocks, ports, signals and source lines. To show the user the diagram, set open to true, which opens the page in a window of its own (Logix Diagrams; if it can't, viewer_problem says why), or give them page_file's path. List the design files; the engine doesn't search for them. Errors in the design, such as a syntax error or a top module that isn't in the files, are design errors with diagnostics at file and line. The first call may download the toolchain package first, which takes a few minutes.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "DiagramInput",
@@ -3898,7 +3922,7 @@
           "default": {}
         },
         "open": {
-          "description": "Open the page in the user's default web browser when it's written,\nso they see the diagram at once. Defaults to false. opened says\nwhether it was.",
+          "description": "Open the page in a window of its own (Logix Diagrams) when it's\nwritten, so the person at the screen sees the diagram at once; a\nlater call for the same page reloads that window. Defaults to false.\nopened says whether it was.",
           "type": "boolean",
           "default": false
         },
@@ -4009,7 +4033,7 @@
       "type": "object",
       "properties": {
         "page_file": {
-          "description": "The page with every module, relative to the build folder:\ndiagram/diagram.html. Opening it in a web browser shows the diagram.",
+          "description": "The page with every module, relative to the build folder, named by\nthe module it starts at: diagram-main.html. Opening it in a web\nbrowser shows the diagram too.",
           "type": "string"
         },
         "model_file": {
@@ -4024,8 +4048,15 @@
           }
         },
         "opened": {
-          "description": "Whether the page was opened in the web browser (open).",
+          "description": "Whether the page opened in a window (open).",
           "type": "boolean"
+        },
+        "viewer_problem": {
+          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library; only when open was true and it\ndidn't open.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "diagnostics": {
           "description": "Yosys warnings while reading the design, at file and line where\nknown. Often empty.",
@@ -4204,6 +4235,57 @@
       "readOnlyHint": false,
       "destructiveHint": false,
       "openWorldHint": true
+    }
+  },
+  {
+    "name": "close_viewers",
+    "description": "Closes windows this engine opened for the person at the screen (simulate, open_waveform and diagram, in Logix Waveforms and Logix Diagrams): one page's window, every window of one kind, or all of them. Never touches windows another engine opened. Views are saved as they change, so nothing is lost. The windows also close when the engine exits.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "CloseViewersInput",
+      "description": "Which windows to close; omitted fields mean all.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "description": "The kind of page: \"waveforms\" or \"diagram\". Omitted means every kind.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "page": {
+          "description": "One page's window, by the page's path as the tool that wrote it\nreturned it (absolute, such as /home/user/proj/_build/main_tb.html).\nOmitted means every page.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "CloseViewersOutput",
+      "description": "What closed.",
+      "type": "object",
+      "properties": {
+        "closed": {
+          "description": "How many windows closed.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "closed"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": false
     }
   },
   {

@@ -20,7 +20,8 @@ impl EngineTool for OpenWaveform {
     const NAME: &'static str = "open_waveform";
     const DESCRIPTION: &'static str = "Opens Open Logix's waveform viewer on a waveform \
         file (.vcd), such as one from another simulator, an earlier run, or one you made, \
-        in the default web browser for the person at the screen. The file is only read. \
+        in a window of its own (Logix Waveforms) for the person at the screen; the viewer \
+        saves the person's view as they change it (view_file). The waveform is only read. \
         To point the person at something, name the signals to show (paths as in the \
         file, such as main_tb.dut.count) and a time range in nanoseconds; signals the file \
         doesn't have come back in unknown_signals. To simulate a testbench and open its \
@@ -47,10 +48,16 @@ pub struct OpenWaveformInput {
     /// own folder, which keeps the last 20.
     #[serde(default)]
     pub build_folder: Option<String>,
-    /// A saved view (.view) to open with, as an absolute path, such as one
-    /// the viewer saved for a testbench. It is only read.
+    /// The view (.view) to open with and save to, as an absolute path, such
+    /// as one the viewer saved for a testbench. Its folder must exist; the
+    /// file may not yet. When omitted, the view goes next to the page, as
+    /// <waveform>.view.
     #[serde(default)]
     pub view_file: Option<String>,
+    /// Let the viewer save the person's view (to view_file) as they change
+    /// it. Defaults to true. False opens the view without writing anything.
+    #[serde(default = "default_true")]
+    pub save_view: bool,
     /// The signals to show, in this order, as paths in the file, such as
     /// ["main_tb.clk", "main_tb.dut.count"]. Omitted means the view's, or
     /// the file's top-level signals.
@@ -68,8 +75,9 @@ pub struct OpenWaveformInput {
     /// column shows every signal's value there.
     #[serde(default)]
     pub cursor_ns: Option<f64>,
-    /// Open the page in the default web browser. Defaults to true. False
-    /// only writes it, such as for a host that shows the page itself.
+    /// Open the page in a window of its own (Logix Waveforms) for the person
+    /// at the screen. Defaults to true. False only writes it, such as for a
+    /// host that shows the page itself.
     #[serde(default = "default_true")]
     pub open_viewer: bool,
 }
@@ -81,8 +89,13 @@ pub struct OpenWaveformOutput {
     /// The viewer's page, as an absolute path: self-contained, with the
     /// waveform in it.
     pub viewer_file: String,
-    /// True if the page was opened in the web browser.
+    /// True if the page opened in a window.
     pub viewer_opened: bool,
+    /// Why the page didn't open, in plain words for the person at the
+    /// screen, such as a missing library; only when open_viewer was true
+    /// and it didn't open.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub viewer_problem: Option<String>,
     /// How many signals the file has.
     pub signal_count: usize,
     /// The run's length, in nanoseconds.
@@ -142,10 +155,33 @@ fn check_file(field: &str, path: &str, extension: &str) -> Result<PathBuf, ToolE
     Ok(dunce::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()))
 }
 
+/// Checks a view file's path: absolute, ending in .view, in a folder that
+/// exists. The file itself may not exist yet.
+fn check_view_path(path: &str) -> Result<PathBuf, ToolError> {
+    let req = |m: String| ToolError::request(format!("view_file: {m}."));
+    let p = Path::new(path);
+    if !p.is_absolute() {
+        return Err(req(format!("{path:?} must be an absolute path")));
+    }
+    if !p
+        .extension()
+        .is_some_and(|x| x.eq_ignore_ascii_case(wave::VIEW_EXTENSION))
+    {
+        return Err(req(format!(
+            "{path:?} must end with .{}",
+            wave::VIEW_EXTENSION
+        )));
+    }
+    match p.parent() {
+        Some(dir) if dir.is_dir() => Ok(p.to_path_buf()),
+        _ => Err(req(format!("{path:?} is in a folder that doesn't exist"))),
+    }
+}
+
 pub fn run(state: &EngineState, input: OpenWaveformInput) -> Result<OpenWaveformOutput, ToolError> {
     let vcd = check_file("waveform_file", &input.waveform_file, "vcd")?;
-    let view = match &input.view_file {
-        Some(v) => wave::read_view(&check_file("view_file", v, wave::VIEW_EXTENSION)?),
+    let view_file = match &input.view_file {
+        Some(v) => Some(check_view_path(v)?),
         None => None,
     };
     for (field, value) in [
@@ -194,16 +230,17 @@ pub fn run(state: &EngineState, input: OpenWaveformInput) -> Result<OpenWaveform
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
     let page = folder.join(wave::page_name(&stem));
+    let view_path = view_file
+        .clone()
+        .unwrap_or_else(|| folder.join(format!("{stem}.{}", wave::VIEW_EXTENSION)));
+    let view = wave::read_view(&view_path);
     let data = wave::PageData {
         waveform: waveform.clone(),
         testbench: waveform,
-        view_file: match &input.view_file {
-            Some(v) => Path::new(v)
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-            None => format!("{stem}.{}", wave::VIEW_EXTENSION),
-        },
+        view_file: view_path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default(),
         vcd: text,
         truncated,
         order: Vec::new(),
@@ -219,10 +256,28 @@ pub fn run(state: &EngineState, input: OpenWaveformInput) -> Result<OpenWaveform
         }),
     };
     wave::write_page(&page, &data)?;
-    let viewer_opened = input.open_viewer && crate::diagram::open_page(&page);
+    let viewer_problem = input.open_viewer.then(|| {
+        let name = crate::viewer::app_name(&state.packages, crate::viewer::WAVEFORMS);
+        let mut declared = std::collections::BTreeMap::new();
+        if input.save_view {
+            declared.insert("view".to_string(), view_path.clone());
+        }
+        crate::viewer::present(
+            &state.packages,
+            &crate::viewer::Page {
+                kind: crate::viewer::WAVEFORMS,
+                page: &page,
+                title: crate::viewer::title(&name, &[&stem]),
+                declared,
+                source_folder: None,
+            },
+        )
+    });
+    let viewer_opened = input.open_viewer && viewer_problem.as_ref().is_some_and(Option::is_none);
     Ok(OpenWaveformOutput {
         viewer_file: page.to_string_lossy().into_owned(),
         viewer_opened,
+        viewer_problem: viewer_problem.flatten(),
         signal_count: all.len(),
         end_ns,
         unknown_signals,
@@ -232,6 +287,27 @@ pub fn run(state: &EngineState, input: OpenWaveformInput) -> Result<OpenWaveform
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_view_file_may_not_exist_yet_but_its_folder_must() {
+        let tmp = tempfile::tempdir().unwrap();
+        let new = tmp.path().join("main_tb.view");
+        assert_eq!(check_view_path(new.to_str().unwrap()).unwrap(), new);
+        for (bad, needle) in [
+            ("main_tb.view".to_string(), "absolute"),
+            (
+                tmp.path().join("main_tb.txt").display().to_string(),
+                ".view",
+            ),
+            (
+                tmp.path().join("nope/main_tb.view").display().to_string(),
+                "doesn't exist",
+            ),
+        ] {
+            let err = check_view_path(&bad).unwrap_err();
+            assert!(err.message.contains(needle), "{bad}: {}", err.message);
+        }
+    }
 
     #[test]
     fn files_must_be_absolute_and_exist() {

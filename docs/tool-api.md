@@ -453,16 +453,16 @@ Output:
 
 ## simulate tool
 
-Simulates one testbench and opens its waveform in Open Logix's waveform viewer (below). It compiles and runs the testbench as the test tool does, with the same commands, testbench rules and build folder files, except that `LOGIX_SIM` is defined as `1` and the testbench always runs to the end, so the whole waveform is there to look at. Then it writes the viewer's page next to the waveform and, unless `open_viewer` is false, opens it in the default web browser, and returns. The page keeps working after the operation and after the Logix Engine exits.
+Simulates one testbench and opens its waveform in Open Logix's waveform viewer (below). It compiles and runs the testbench as the test tool does, with the same commands, testbench rules and build folder files, except that `LOGIX_SIM` is defined as `1` and the testbench always runs to the end, so the whole waveform is there to look at. Then it writes the viewer's page next to the waveform and, unless `open_viewer` is false, opens it in a window of its own, in Logix Waveforms (see Logix Viewer), and returns.
 
 **A failing testbench** is still simulated and shown, since its waveform is how the user finds the problem. `passed` is false. A testbench that writes no waveform, because it doesn't call `$dumpvars`, is a design error.
 
-**Opening the viewer.** `open_viewer` set to false only writes the waveform and the waveform viewer's page, such as for an AI agent, when no one is at the screen, or for a host that shows the page in a window of its own. Opening the viewer needs a local frontend: a network adapter turns it off or refuses it for remote frontends, which view waveforms on their own.
+**Opening the viewer.** `open_viewer` set to false only writes the waveform and the waveform viewer's page, such as when no one is at the screen, or for a host that shows the page in a window of its own. When the window can't open, the simulation still succeeds, with `viewer_opened` false and `viewer_problem` saying why. Opening the viewer needs a local frontend: a network adapter turns it off or refuses it for remote frontends, which view waveforms on their own.
 
 **The waveform viewer.** Every simulation also writes Open Logix's own waveform viewer next to the waveform, `<testbench>.html` in the build folder (`viewer_file`; docs/requirements.md, Waveform viewer). It's one self-contained page with the waveform in it: it needs no network and nothing installed, opens in any web browser, and keeps working after the engine exits. It opens on the testbench's own signals in the order the testbench declares them, or on the view the user saved; a failing run opens at its first failure, with the check's message and its place in the testbench, and every failure is marked. A waveform larger than 50 MB is cut at a timestamp, and the page says so.
 
-- **Views.** The signals shown, their order, formats and colors, blank rows and groups (a named row over the signals below it, which may be collapsed), the zoom, the cursor and the marker, and the clock whose cycles the time scale may count, are a view, kept in `view_file`, such as `main_tb.view` next to the testbench, a JSON file. The engine only reads it (a file that isn't a JSON object counts as no view): the page saves it through its host; in a browser with no host, the view isn't saved.
-- **Hosts** with a window of their own show the page themselves, as they show the diagram's (with `open_viewer` false), and load it again after each simulation, with the view as it was. The page takes `?theme=light|dark` and the message `{type: "logix-wave:theme", theme}`. It posts `{type: "logix-wave:view", view}`, the view's JSON, after every change, for the host to save in `view_file`, and `{type: "logix-wave:open-source", file, line}` when the user double-clicks a signal's name (its declaration in the testbench) or clicks a failure's place, with `file` relative to the source folder. Save as image (SVG, or PNG at twice the size: the view as it shows, from the settings menu or a right-click on the time ruler) posts `{type: "logix-wave:save-file", name, mime, data}`, the SVG's text or the PNG as base64, for the host to save where the user chooses; in a browser with no host it downloads. A host that loads the page directly, not in an iframe, can define `window.logixWaveSaveView(view)`, `window.logixWaveOpenSource(file, line)` and `window.logixWaveSaveFile(name, mime, data)` instead.
+- **Views.** The signals shown, their order, formats and colors, blank rows and groups (a named row over the signals below it, which may be collapsed), the zoom, the cursor and the marker, and the clock whose cycles the time scale may count, are a view, kept in `view_file`, such as `main_tb.view` next to the testbench, a JSON file (one that isn't a JSON object counts as no view). Without `view_file`, the view is `<testbench>.view` in the build folder, kept until the build folder is cleaned. The page saves it after every change through its host: Logix Viewer writes exactly that file, unless `save_view` is false; a host with its own window saves it as it likes; in a browser with no host, the view isn't saved.
+- **Hosts** with a window of their own show the page themselves, as they show the diagram's (with `open_viewer` false), and load it again after each simulation, with the view as it was. The page takes `?theme=light|dark` and the message `{type: "logix-wave:theme", theme}`. It posts `{type: "logix-wave:view", view}`, the view's JSON, after every change, for the host to save in `view_file`, and `{type: "logix-wave:open-source", file, line}` when the user double-clicks a signal's name (its declaration in the testbench) or clicks a failure's place, with `file` relative to the source folder. Save as image (SVG, or PNG at twice the size: the view as it shows, from the settings menu or a right-click on the time ruler) posts `{type: "logix-wave:save-file", name, mime, data}`, the SVG's text or the PNG as base64, for the host to save where the user chooses; in a browser with no host it downloads. A host that loads the page directly, not in an iframe, can define `window.logixWaveSaveView(view)`, `window.logixWaveOpenSource(file, line)` and `window.logixWaveSaveFile(name, mime, data)` instead, or the page contract's `window.logixHost` (see Logix Viewer).
 
 **Table 28.** simulate tool inputs
 
@@ -474,8 +474,9 @@ Simulates one testbench and opens its waveform in Open Logix's waveform viewer (
 | `display_paths` | display paths | No | How to name paths in what people read. Omitted means as the request gave them (see Display paths) |
 | `source_folder`, `source_files`, `build_folder` | See folder fields in Table 2 | Yes | The design files, without testbenches |
 | `testbench_file` | relative path | Yes | The testbench to simulate, relative to the source folder |
-| `open_viewer` | boolean | No | Open the waveform viewer's page (`viewer_file`) in the default web browser, for the person at the screen. Defaults to true |
-| `view_file` | relative path | No | The waveform viewer's view, relative to the source folder, ending in `.view`, such as `main_tb.view`. Its folder must exist; the file may not. The engine only reads it. When omitted or missing, the viewer opens its default view |
+| `open_viewer` | boolean | No | Open the waveform viewer's page (`viewer_file`) in a window of its own (Logix Waveforms), for the person at the screen. Defaults to true |
+| `view_file` | relative path | No | The waveform viewer's view, relative to the source folder, ending in `.view`, such as `main_tb.view`. Its folder must exist; the file may not. When omitted, `<testbench>.view` in the build folder. While there's none, the viewer opens its default view |
+| `save_view` | boolean | No | Let Logix Waveforms save the person's view to `view_file` as they change it. Defaults to true. False opens the view and writes nothing |
 | `max_sim_time_ns` | integer | No | Stop the testbench when simulated time reaches this many nanoseconds. Defaults to no limit |
 | `timeout_seconds` | integer | No | Stop the testbench after this many seconds of real time. Defaults to no limit |
 | `defines` | map of text | No | Macro definitions, as in the build tool. `LOGIX_SIM` is always defined as `1` |
@@ -491,7 +492,8 @@ Simulates one testbench and opens its waveform in Open Logix's waveform viewer (
 | `failure_count` | integer | How many failures the testbench reported, as in the test tool |
 | `ending` | enum | How the run ended, as in the test tool. Never `first_failure` |
 | `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder |
-| `viewer_opened` | boolean | True if the waveform viewer's page was opened in the web browser |
+| `viewer_opened` | boolean | True if the waveform viewer's page opened in a window |
+| `viewer_problem` | text | Optional. Why it didn't open, in plain words for the person at the screen, such as a missing library, with what fixes it. Only when `open_viewer` was true and it didn't open |
 | `viewer_file` | relative path | Open Logix's waveform viewer, a self-contained page with the waveform in it, relative to the build folder, such as `main_tb.html` |
 | `commands` | list of commands | The programs this call ran, in order, so they can be run again without the engine. See Commands |
 
@@ -659,9 +661,9 @@ The diagram starts at `top_module`: the design's top module, or any module of th
 - **What isn't logic isn't drawn.** A memory's initialization isn't a block: the memory says where its initial contents are loaded.
 - **Large modules.** A module with more than 1,500 blocks isn't drawn: its diagram would be unreadable. Modules over 150 blocks get a faster, simpler layout. A layout that fails or takes more than 60 seconds leaves only its module undrawn, with a `note`; the engine runs each layout in a process of its own, so a failure never stops the engine. The progress phase is "Preparing the diagram", or "Preparing the diagram (large)" when the modules drawn have more than 300 blocks in all.
 
-Each call writes the build folder's `diagram/` folder again, deleting the old one first, so a failed call never leaves an old diagram looking current:
+Each call writes its page, `diagram-<top_module>.html` in the build folder (one per starting module, so each keeps its own window), and the build folder's `diagram/` folder again, deleting the old page and folder first, so a failed call never leaves an old diagram looking current:
 
-- **`diagram.html`**, the page: every module, self-contained in one file, which any web browser opens, with no network. Double-click a module to open it (the bar at the top goes back), drag to pan, scroll to zoom, and hover a block, port, wire, pin or label for its details. Hosts can embed it (see Showing the diagram).
+- **`diagram-<top_module>.html`**, the page, such as `diagram-main.html`: every module, self-contained in one file, which any web browser opens, with no network. Double-click a module to open it (the bar at the top goes back), drag to pan, scroll to zoom, and hover a block, port, wire, pin or label for its details. Hosts can embed it (see Showing the diagram).
 - **`<module key>.svg`**, each module's drawing: no script, with a default style scoped to it (`svg.logix-diagram`) whose colors are CSS variables, such as `--logix-diagram-register` and `--logix-diagram-wire`, so a host can theme it without changing the file. Its elements carry data attributes for hosts that add their own interaction: `data-block` (a cell, by its yosys name), `data-port`, `data-pin`, `data-label`, `data-bits` (a wire's net bits) and `data-sj` (a bus split or join).
 - **`diagram.json`**, the model: `top`, the top module's key, and `modules`, by key, each with `name`, `top`, `source` (its file and line), `svg_file`, `note`, `blocks` (each cell, by its yosys name, with `kind` (`logic`, `module` or `fpga`), `category`, `title`, `type`, `width`, `name`, `instance`, `module` (the key of the module it instantiates), `source`, `memory_init`, `fixed` inputs and `ports`, each with `direction`, `width`, `signal` and `by_label`), `labels`, `pins`, `signals` (by net bit, each with its `name` and `width`) and `clocks`. Source files are named as diagnostics name them.
 - **`netlist.json`**, yosys's netlist, which the diagram is drawn from.
@@ -677,7 +679,7 @@ Each call writes the build folder's `diagram/` folder again, deleting the old on
 | `levels` | number | No | How many levels of modules below `top_module` are drawn, such as 1 for it and the modules it uses. Defaults to 3 |
 | `source_folder`, `source_files`, `build_folder` | See folder fields in Table 2 | Yes | The design files, without testbenches or included files. Paths with a double quote (`"`) are refused, since yosys reads them from a script |
 | `defines` | map of text | No | Macro definitions, as in the build tool. `SYNTHESIZE` is always defined |
-| `open` | boolean | No | Open the page in the user's default web browser when it's written. Defaults to false |
+| `open` | boolean | No | Open the page in a window of its own (Logix Diagrams) when it's written; a later call for the same page reloads that window. Defaults to false |
 | `verbose` | boolean | No | Run yosys without `-q`. Defaults to false |
 | `display_paths` | display paths | No | How to name paths in what people read, including the diagram's source places. Omitted means as the request gave them (see Display paths) |
 
@@ -685,16 +687,17 @@ Each call writes the build folder's `diagram/` folder again, deleting the old on
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `page_file` | relative path | The page, relative to the build folder: `diagram/diagram.html` |
+| `page_file` | relative path | The page, relative to the build folder: `diagram-<top_module>.html`, such as `diagram-main.html` |
 | `model_file` | relative path | The model, relative to the build folder: `diagram/diagram.json` |
 | `modules` | list of objects | Every module, the top module first, each with `key` (its key in the model and the page, usually its name; a module used with different parameters gets one per version, such as `genrom` and `genrom-2`), `name`, `top`, `svg_file` (relative to the build folder; omitted when it wasn't drawn), `blocks` (how many its diagram has) and `note` (why it wasn't drawn) |
-| `opened` | boolean | Whether the page was opened in the web browser |
+| `opened` | boolean | Whether the page opened in a window |
+| `viewer_problem` | text | Optional. Why it didn't open, in plain words, such as a missing library. Only when `open` was true and it didn't open |
 | `diagnostics` | list of diagnostics | Yosys warnings while reading the design, at file and line where known. Often empty |
 | `commands` | list of commands | The program this call ran: yosys. See Commands |
 
 **Errors:** design errors, with diagnostics, for errors in the design, such as a syntax error, or a `top_module` that isn't in the files. Setup errors with `download_packages`, for the toolchain package. Request errors, such as a missing file or an unknown board. Tool failures, when yosys fails without reporting a problem. Engine errors and cancellation.
 
-**Showing the diagram.** An AI agent shows the user the diagram with `open: true`, or gives them `page_file`'s path to open; nothing needs to be generated or installed. A frontend shows the page in a web view, or embeds it in an iframe and talks to it with messages: `?theme=light` or `?theme=dark` in its address sets the theme (otherwise it follows the system), `#main/uart` opens a module, it posts `{"type": "logix-diagram:open-source", "file", "line"}` when the user double-clicks a block other than a module (to show its source; a double-click on a module opens it; `file` is named as in diagnostics, so check it's a project file before opening it) and `{"type": "logix-diagram:module", "path"}` when the module shown changes, and it takes `{"type": "logix-diagram:theme", "theme"}`. A host that loads the page directly can define `window.logixDiagramOpenSource(file, line)` instead. The page shows "Go to source" for the module and "Double-click to go to its source" on blocks only when it's hosted this way.
+**Showing the diagram.** An AI agent shows the user the diagram with `open: true`, which opens it in Logix Diagrams (see Logix Viewer), or gives them `page_file`'s path to open; nothing needs to be generated or installed. A frontend shows the page in a web view, or embeds it in an iframe and talks to it with messages: `?theme=light` or `?theme=dark` in its address sets the theme (otherwise it follows the system), `#main/uart` opens a module, it posts `{"type": "logix-diagram:open-source", "file", "line"}` when the user double-clicks a block other than a module (to show its source; a double-click on a module opens it; `file` is named as in diagnostics, so check it's a project file before opening it) and `{"type": "logix-diagram:module", "path"}` when the module shown changes, and it takes `{"type": "logix-diagram:theme", "theme"}`. A host that loads the page directly can define `window.logixDiagramOpenSource(file, line)` instead. The page shows "Go to source" for the module and "Double-click to go to its source" on blocks only when it's hosted this way.
 
 **Example**
 
@@ -715,7 +718,7 @@ Output:
 
 ```json
 {
-  "page_file": "diagram/diagram.html",
+  "page_file": "diagram-main.html",
   "model_file": "diagram/diagram.json",
   "modules": [
     { "key": "main", "name": "main", "top": true, "svg_file": "diagram/main.svg", "blocks": 14 },
@@ -1477,7 +1480,7 @@ Four tools give frontends and AI agents a board's serial port, such as its UART 
 
 ## open_waveform tool
 
-Opens Open Logix's waveform viewer (see The waveform viewer, under the simulate tool) on any waveform file a client names: another simulator's, an earlier run's, or one an AI agent or a client made itself, which need not come from a simulation (docs/requirements.md, Waveform viewer, R3 and R8). The file is only read. The engine writes the viewer's page, with the waveform in it, into the build folder the request names, or, without one, into its own folder (`<engine folder>/waveforms`, which keeps the 20 newest), and opens it in the default web browser for the person at the screen.
+Opens Open Logix's waveform viewer (see The waveform viewer, under the simulate tool) on any waveform file a client names: another simulator's, an earlier run's, or one an AI agent or a client made itself, which need not come from a simulation (docs/requirements.md, Waveform viewer, R3 and R8). The file is only read. The engine writes the viewer's page, with the waveform in it, into the build folder the request names, or, without one, into its own folder (`<engine folder>/waveforms`, which keeps the 20 newest), and opens it in a window of its own, in Logix Waveforms, for the person at the screen. The view is `view_file`, or `<waveform>.view` next to the page, and Logix Waveforms saves it as it changes, unless `save_view` is false.
 
 A client can point the person at something: the signals to show, in order, a time range, and the cursor, which the page opens on, over the saved view the request names. Signals the file doesn't have are left out and come back in `unknown_signals`. Unlike simulate's page, this one has no testbench, so it shows the file's top-level signals by default and marks no failures.
 
@@ -1487,23 +1490,25 @@ A client can point the person at something: the signals to show, in order, a tim
 | --- | --- | --- | --- |
 | `waveform_file` | absolute path | Yes | The waveform (`.vcd`). Only read |
 | `build_folder` | absolute path | No | Where the page goes: a build folder, as in the build tool. When omitted, the engine's own folder |
-| `view_file` | absolute path | No | A saved view (`.view`) to open with. Only read |
+| `view_file` | absolute path | No | The view (`.view`) to open with and save to. Its folder must exist; the file may not. When omitted, `<waveform>.view` next to the page |
+| `save_view` | boolean | No | Let Logix Waveforms save the person's view as they change it. Defaults to true |
 | `signals` | list of text | No | The signals to show, in order, as paths in the file, such as `main_tb.dut.count` |
 | `from_ns`, `to_ns` | number | No | The time range to show, in nanoseconds. Omitted means the whole run, or the view's |
 | `cursor_ns` | number | No | Where to put the cursor, in nanoseconds |
-| `open_viewer` | boolean | No | Open the page in the default web browser. Defaults to true. False only writes it |
+| `open_viewer` | boolean | No | Open the page in a window of its own (Logix Waveforms). Defaults to true. False only writes it |
 
 **Table 52.** open_waveform tool outputs
 
 | Field | Type | Description |
 | --- | --- | --- |
 | `viewer_file` | absolute path | The viewer's page |
-| `viewer_opened` | boolean | True if the page was opened in the web browser |
+| `viewer_opened` | boolean | True if the page opened in a window |
+| `viewer_problem` | text | Optional. Why it didn't open, in plain words. Only when `open_viewer` was true and it didn't open |
 | `signal_count` | integer | How many signals the file has |
 | `end_ns` | number | The run's length, in nanoseconds |
 | `unknown_signals` | list of text | Requested signals the file doesn't have, which the page leaves out |
 
-**Errors:** request errors for a waveform or view file that isn't an absolute path to an existing `.vcd` or `.view` file, a build folder that breaks the keyword rules, and times below 0 or a range whose start isn't before its end.
+**Errors:** request errors for a waveform file that isn't an absolute path to an existing `.vcd` file, a view file that isn't an absolute `.view` path in a folder that exists, a build folder that breaks the keyword rules, and times below 0 or a range whose start isn't before its end.
 
 **Example**
 
@@ -1530,6 +1535,35 @@ Output:
   "unknown_signals": []
 }
 ```
+
+## close_viewers tool
+
+Closes windows this engine opened in Logix Viewer (see below): one page's window, every window of one kind, or all of them. It never touches windows another engine opened. Views are saved as they change, so nothing is lost. An engine's windows also close when it exits.
+
+**Table 53.** close_viewers tool inputs
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `kind` | text | No | `waveforms` or `diagram`. Omitted means every kind |
+| `page` | absolute path | No | One page's window, by the page's path, such as `/home/user/proj/_build/main_tb.html`. Omitted means every page |
+
+**Table 54.** close_viewers tool outputs
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `closed` | integer | How many windows closed |
+
+**Errors:** request errors for a `page` that isn't an absolute path.
+
+## Logix Viewer
+
+The engine shows its pages to the person at the screen in Logix Viewer, logix-core's `logix-viewer` program (docs/requirements.md, Logix Viewer), run as one app per kind of page, each with its own name and icon: **Logix Waveforms** (`simulate`, `open_waveform`) and **Logix Diagrams** (`diagram`). A host with a window of its own, such as Logix IDE, shows the pages itself instead (`open_viewer` or `open` false).
+
+- **One app per kind, for every engine.** Each app runs once per user, however many engines run; the first engine that needs it starts it, and every engine talks to it over a local socket (`~/.logix/viewer/<kind>.sock`, or a named pipe on Windows), staying connected while it runs.
+- **A window per page.** Each page file shows in one window, titled with the app, the project and the page (`Logix Waveforms · blinky · main_tb`). Showing the same page again reloads that window in place, with the view kept, and brings it to the front. New windows open staggered down and to the right, at the size the person last gave one of the app's windows.
+- **Each window belongs to its engine:** the one that showed its page last. `close_viewers` closes it, and so does the engine's exit, even when killed.
+- **No fallback.** When the app can't start, such as on Linux without WebKitGTK, or with no screen, the engine opens nothing else: the tool succeeds with its results and its page, and `viewer_problem` says why and what fixes it, for the client to tell the person.
+- **The page contract.** Pages call `window.logixHost` (version 1): `saveAs(name, mime, data)` (the Save dialog; `data` is text, or base64 for a PNG), `writeDeclared(id, text)` (a file the engine declared for the page, such as `view`, never any other), `openSource(file, line)` (a source file, relative to the source folder, in the system's default app) and `openUrl(url)` (`https://` only). Pages work without it, as in a plain browser.
 
 ## Default project model
 
@@ -1646,4 +1680,4 @@ These are not decided and none of them is in the API today. They are listed so A
 - **What clean_build may delete.** Today it deletes only folders the Logix Engine marked with `.logix-build`, so it leaves old build folders made by other tools alone until the engine builds in them. The alternative is to delete any folder that passes the build folder path checks. That cleans other tools' old folders too, but a wrong path such as `/home/user/builds/myproject` passes those checks, since one of its last two folder names contains "build". A middle way would be to also refuse folders that directly contain design files, such as `.v`, `.sv` or `.pcf` files.
 - **Extra tool arguments for build.** Other FPGA tools let users pass extra options to the synthesis and place-and-route tools, so the build tool likely needs something similar. One option is to define abstract build phases, such as synthesis, place and route, and bitstream, offer portable options such as a target frequency and a seed, and add extra arguments per phase as an explicit escape hatch, passed unchanged to whatever tool runs that phase. The build output would then report which tool and version ran each phase.
 - **Include folders for build.** Some projects keep header files in a separate folder. An optional `include_folders` input, a list of relative paths under `source_folder`, would let the host name extra places to look up included files.
-- **Separating simulation from viewing.** `simulate` writes the waveform and its viewer page, and opens the page unless `open_viewer` is false; `open_waveform` opens any waveform file. Longer term, `simulate` could also return the top-level signals, so other viewers, such as Surfer or a waveform view inside an IDE, fit the same way. It only adds fields, so it breaks nothing.
+- **Separating simulation from viewing.** `simulate` writes the waveform and its viewer page, and opens the page in Logix Waveforms unless `open_viewer` is false; `open_waveform` opens any waveform file. Longer term, `simulate` could also return the top-level signals, so other viewers, such as Surfer or a waveform view inside an IDE, fit the same way. It only adds fields, so it breaks nothing.

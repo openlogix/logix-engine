@@ -104,7 +104,7 @@ async fn diagram_draws_the_design() {
     let out = diagram::run(&state, input(&src, json!({})), &c)
         .await
         .unwrap();
-    assert_eq!(out.page_file, "diagram/diagram.html");
+    assert_eq!(out.page_file, "diagram-main.html");
     assert_eq!(out.model_file, "diagram/diagram.json");
     assert!(!out.opened);
     assert_eq!(out.modules.len(), 1);
@@ -146,7 +146,7 @@ async fn diagram_draws_the_design() {
     assert!(reg["name"].is_string(), "{reg}");
 
     // The page: self-contained, with the data and no outside resources.
-    let page = read(&src, "diagram/diagram.html");
+    let page = read(&src, "diagram-main.html");
     assert!(page.contains(r#""top":"main""#));
     assert!(!page.contains("/*__DATA__*/"));
     assert!(!page.contains("<link"));
@@ -282,7 +282,7 @@ async fn diagram_draws_every_module_with_the_prototype_rules() {
     );
     // A bus split: part of b goes to the XOR.
     assert!(svg.contains(r#"data-kind="split""#), "{svg}");
-    let page = read(&src, "diagram/diagram.html");
+    let page = read(&src, "diagram-main.html");
     assert!(page.contains(r#""counter-2""#));
 }
 
@@ -467,14 +467,14 @@ async fn diagram_design_errors_and_no_stale_diagram() {
     let (_tmp, src) = design("syntax-error", "proj");
     // An old diagram is removed, so a failure never leaves it looking current.
     std::fs::create_dir_all(src.join("_build/diagram")).unwrap();
-    std::fs::write(src.join("_build/diagram/diagram.html"), "old").unwrap();
+    std::fs::write(src.join("_build/diagram-main.html"), "old").unwrap();
     let err = diagram::run(&state, input(&src, json!({})), &call())
         .await
         .unwrap_err();
     assert_eq!(err.category, Category::Design, "{err:?}");
     assert_eq!(err.diagnostics[0].file.as_deref(), Some("main.v"));
     assert_eq!(err.diagnostics[0].line, Some(3));
-    assert!(!src.join("_build/diagram/diagram.html").exists());
+    assert!(!src.join("_build/diagram-main.html").exists());
 
     let (_tmp, src) = design("blinky", "proj");
     let err = diagram::run(&state, input(&src, json!({"top_module": "nope"})), &call())

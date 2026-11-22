@@ -36,4 +36,5 @@ pub mod state;
 pub mod text;
 pub mod tools;
 pub mod versions;
+pub mod viewer;
 pub mod wave;
