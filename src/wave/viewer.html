@@ -1399,7 +1399,9 @@ function load() {
     const rows = v.rows.map(deserRow).filter(Boolean);
     if (rows.length) S.rows = rows;
     if (v.row_height) S.rowH = v.row_height;
-    S.cursor = v.cursor ?? null; S.marker = v.marker ?? null;
+    // A cursor or marker past the run's end (a shorter run since) is dropped.
+    const inRun = (t) => (Number.isFinite(t) && t >= 0 && t <= w.end ? t : null);
+    S.cursor = inRun(v.cursor); S.marker = inRun(v.marker);
     if (v.view) { S.start = v.view.from; S.end = v.view.to; }
     if (v.clock) {
       setClock(v.clock);
@@ -1478,9 +1480,20 @@ function serRow(r) {
   if (r.v) return Object.assign({ signal: r.v.path, show_as: r.radix, color: r.color }, r.expanded ? { expanded: true } : {}, r.analog ? { analog: true } : {});
   return r.kind === 'group' ? (r.collapsed ? { group: r.text, collapsed: true } : { group: r.text }) : { blank: true };
 }
+// A saved row, or null for one this run can't show: a signal that's gone
+// (the testbench changed since), or anything the viewer never writes. A
+// format or color it doesn't know becomes the default.
 function deserRow(o) {
-  if (o.signal) { const v = varByPath().get(o.signal); return v && { kind: 'signal', v, radix: o.show_as || 'hex', color: o.color || 1, expanded: !!o.expanded, analog: !!o.analog }; }
-  if (o.group != null) return { kind: 'group', text: String(o.group), collapsed: !!o.collapsed };
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+  if (typeof o.signal === 'string') {
+    const v = varByPath().get(o.signal); if (!v) return null;
+    const radix = RADIX.some(([k]) => k === o.show_as) ? o.show_as : sigRow(v, 0).radix;
+    const color = Number.isInteger(o.color) && o.color >= 1 && o.color <= 6 ? o.color : 1;
+    // Analog is for buses and reals (R59), bits for buses (R58).
+    const analog = !!o.analog && (v.width > 1 || v.type === 'real');
+    return { kind: 'signal', v, radix, color, expanded: !!o.expanded && v.width > 1, analog };
+  }
+  if (typeof o.group === 'string') return { kind: 'group', text: o.group, collapsed: !!o.collapsed };
   if (o.blank) return { kind: 'blank' };
   return null;
 }

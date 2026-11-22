@@ -96,6 +96,15 @@ jobs:
           rustup toolchain install
           rustup show active-toolchain
 
+      # Node, for the page tests (tests/pages/: the viewer and diagram pages
+      # in WebKit, with Playwright).
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: tests/pages/package-lock.json
+
       # The build tests download the toolchain package (about 526 MB) into
       # target/tmp/test-engine. Cached until the remote config changes.
       - name: Cache the test toolchain

@@ -512,3 +512,32 @@ async fn the_counter_test_design_has_a_passing_and_a_failing_testbench() {
         out.testbenches[1].diagnostics
     );
 }
+
+// ----- A page for the browser tests (tests/pages/): the blinky's diagram
+// page, with the files it reads, in target/tmp/pages/diagram/.
+
+#[tokio::test]
+async fn writes_the_diagram_page_the_browser_tests_use() {
+    let state = engine().await;
+    let (_tmp, src) = design("blinky", "pages");
+    let out = diagram::run(&state, input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    let to = Path::new(env!("CARGO_TARGET_TMPDIR")).join("pages/diagram");
+    let _ = std::fs::remove_dir_all(&to);
+    copy_dir(&src.join("_build"), &to);
+    assert!(to.join(&out.page_file).is_file());
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.is_dir() {
+            copy_dir(&path, &to.join(entry.file_name()));
+        } else {
+            std::fs::copy(&path, to.join(entry.file_name())).unwrap();
+        }
+    }
+}
