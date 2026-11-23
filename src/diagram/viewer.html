@@ -293,19 +293,47 @@ button[hidden] { display: none; }
     const t = document.createElement("div"); t.className = "toast"; t.textContent = text;
     document.body.appendChild(t); setTimeout(() => t.remove(), 3000);
   }
+  // The picture as plain SVG, the way the waveform page writes it, so any
+  // app shows it as the page does: each shape's colors, line and font as
+  // attributes, from the page's computed style (no stylesheet, no CSS
+  // variables, which Inkscape and older librsvg drop: a blank picture), a
+  // background over the whole picture, and whole-pixel sizes (macOS
+  // Preview framed the fractional ones). The user's tests, 2026-11-23.
+  const PAINT = ["fill", "stroke", "stroke-width", "stroke-linecap", "stroke-dasharray", "opacity",
+    "font-family", "font-size", "font-weight", "font-style", "text-anchor", "dominant-baseline"];
+  function background(el) {
+    for (let e = el; e; e = e.parentElement) {
+      const c = getComputedStyle(e).backgroundColor;
+      if (c && c !== "transparent" && !/rgba\(.*,\s*0\)$/.test(c)) return c;
+    }
+    return "#ffffff";
+  }
   function shownSvg() {
     const svg = canvas.querySelector("svg");
     if (!svg || !vb) return null;
+    // No highlight in the picture: only what the diagram shows.
+    const lit = [...svg.querySelectorAll(".hl, .netHl")].map((e) => [e, e.getAttribute("class")]);
+    lit.forEach(([e]) => e.classList.remove("hl", "netHl"));
     const copy = svg.cloneNode(true);
-    copy.querySelectorAll(".hit").forEach((h) => h.remove());
-    copy.querySelectorAll(".hl, .netHl").forEach((h) => h.classList.remove("hl", "netHl"));
-    const w = Math.round(vb.w), h = Math.round(vb.h);
+    const live = [svg, ...svg.querySelectorAll("*")], copied = [copy, ...copy.querySelectorAll("*")];
+    live.forEach((el, k) => {
+      const c = copied[k];
+      if (!c || el.tagName === "style") return;
+      const cs = getComputedStyle(el);
+      for (const p of PAINT) { const v = cs.getPropertyValue(p); if (v) c.setAttribute(p, v); }
+      c.removeAttribute("style");
+    });
+    lit.forEach(([e, c]) => e.setAttribute("class", c));
+    copy.querySelectorAll("style, .hit").forEach((e) => e.remove());
+    copy.removeAttribute("class");
+    const w = Math.ceil(vb.w), h = Math.ceil(vb.h);
     copy.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-    copy.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+    copy.setAttribute("viewBox", `${vb.x} ${vb.y} ${w} ${h}`);
     copy.setAttribute("width", w); copy.setAttribute("height", h);
+    copy.removeAttribute("preserveAspectRatio");
     const sheet = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    sheet.setAttribute("x", vb.x); sheet.setAttribute("y", vb.y); sheet.setAttribute("width", vb.w); sheet.setAttribute("height", vb.h);
-    sheet.setAttribute("fill", getComputedStyle(canvas).backgroundColor);
+    sheet.setAttribute("x", vb.x); sheet.setAttribute("y", vb.y); sheet.setAttribute("width", w); sheet.setAttribute("height", h);
+    sheet.setAttribute("fill", background(canvas)); sheet.setAttribute("stroke", "none");
     copy.insertBefore(sheet, copy.firstChild);
     return { text: new XMLSerializer().serializeToString(copy), w, h };
   }
