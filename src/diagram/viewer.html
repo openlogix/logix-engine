@@ -307,7 +307,21 @@ button[hidden] { display: none; }
     sheet.setAttribute("x", vb.x); sheet.setAttribute("y", vb.y); sheet.setAttribute("width", vb.w); sheet.setAttribute("height", vb.h);
     sheet.setAttribute("fill", getComputedStyle(canvas).backgroundColor);
     copy.insertBefore(sheet, copy.firstChild);
+    const style = copy.querySelector("style");
+    if (style) style.textContent = plainColors(style.textContent, getComputedStyle(svg));
     return { text: new XMLSerializer().serializeToString(copy), w, h };
+  }
+  // The style's CSS variables as the values they have now (the theme's),
+  // innermost first: image viewers on older librsvg, such as Ubuntu
+  // 22.04's, drop every var() rule, which left the saved picture blank
+  // (the user's Linux test, 2026-11-23).
+  function plainColors(css, computed) {
+    const inner = /var\((--[\w-]+)(?:,([^()]*))?\)/g;
+    for (let i = 0; i < 10 && inner.test(css); i++) {
+      inner.lastIndex = 0;
+      css = css.replace(inner, (_, name, fallback) => computed.getPropertyValue(name).trim() || (fallback || "").trim());
+    }
+    return css;
   }
   function pngCanvas(done) {
     const s = shownSvg(); if (!s) return;
