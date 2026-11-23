@@ -1194,6 +1194,13 @@ waves.addEventListener('pointerup', (e) => {
   }
   drag = null;
 });
+// Double-click a signal's wave: its declaration too, as on its name (the
+// user's report, 2026-11-23: double-clicking the wave did nothing).
+waves.addEventListener('click', (e) => {
+  if (e.detail !== 2 || e.shiftKey) return;
+  const rect = waves.getBoundingClientRect();
+  showDeclaration(rowAtY(e.clientY - rect.top));
+});
 waves.addEventListener('pointerleave', () => { S.hoverT = null; S.hoverSnap = false; hideTip(); draw(); });
 function hideTip() { $('#tip').hidden = true; }
 $('#wavecol').addEventListener('wheel', (e) => {
@@ -1261,13 +1268,20 @@ $('#names').addEventListener('click', (e) => {
   S.anchor = null; S.sel = i;
   if (S.rows[i] && S.rows[i].kind === 'group') toggleGroup(i);
   else showSelection();
+  // A double-click: the click's count, not the dblclick event, which
+  // WebKitGTK doesn't always send for a draggable row (Linux, the user's
+  // report, 2026-11-23).
+  if (e.detail === 2) showDeclaration(i);
 });
-// Double-click a signal's name: its declaration, in hosts that can (R27).
-$('#names').addEventListener('dblclick', (e) => {
-  const el = e.target.closest('.nrow'); if (!el) return;
-  const r = S.rows[+el.dataset.i];
-  if (r && r.v && S.decl[r.v.path]) openSource(S.decl[r.v.path].file, S.decl[r.v.path].line);
-});
+// A double-clicked signal's declaration, in hosts that can (R27). Only the
+// testbench's own signals have a known place: for others, say so rather
+// than do nothing.
+function showDeclaration(i) {
+  const r = S.rows[i]; if (!r || !r.v || !hosted) return;
+  const d = S.decl[r.v.path];
+  if (d) openSource(d.file, d.line);
+  else toast(`Where ${r.v.path} is declared isn't known: only the testbench's own signals show their place in the source.`);
+}
 let dragRow = null;
 $('#names').addEventListener('dragstart', (e) => { const el = e.target.closest('.nrow'); if (!el || isBit(+el.dataset.i)) { e.preventDefault(); return; } dragRow = +el.dataset.i;
   // Selects the row in place: redrawing the list would replace the row being
@@ -1287,7 +1301,11 @@ function dropAt(y) {
   return { at: below ? t + blockLen(t) : t, el: t, below };
 }
 function clearDrop() { document.querySelectorAll('.nrow.drop, .nrow.drop-below').forEach((n) => n.classList.remove('drop', 'drop-below')); }
-$('#rows').addEventListener('dragover', (e) => {
+// Over the whole page, not only the rows: a row dragged past the top or
+// bottom of the list still lands where its line shows, the first or last
+// place (the user's report, 2026-11-23: dropped above the list, the line
+// showed first place and the row didn't move).
+document.addEventListener('dragover', (e) => {
   if (dragRow == null) return; e.preventDefault(); clearDrop();
   // The line shows where the rows will land, after landing()'s rule.
   const sp = editSpan(), from = dragRow, inSpan = sp && from >= sp.lo && from < sp.end;
@@ -1297,7 +1315,7 @@ $('#rows').addEventListener('dragover', (e) => {
   const el = before != null ? $(`.nrow[data-i="${before}"]`) : after != null && $(`.nrow[data-i="${after}"]`);
   if (el) el.classList.add(before != null ? 'drop' : 'drop-below');
 });
-$('#rows').addEventListener('drop', (e) => {
+document.addEventListener('drop', (e) => {
   if (dragRow == null) return; e.preventDefault(); e.stopPropagation();
   clearDrop(); moveBlockTo(dragRow, dropAt(e.clientY).at); dragRow = null;
   $('#names').classList.add('after-drop');

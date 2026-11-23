@@ -437,7 +437,7 @@ The requirements keep the numbers they had in review (R1 to R40), so earlier dis
 **Choosing signals, keeping and sharing them**
 
 - **R21.** A signal list shows the design's modules and signals, with a search by name. Each signal has a check box: ticked means shown, and clicking it (only the box, not the name: the user's request, 2026-11-21; or Enter or Space on the entry) shows or hides the signal (not GTKWave's double-click to add and Delete to remove: the check boxes show at a glance what's shown; the user's choice). A new signal goes right after the selected row (at the end when none is selected), so selecting a group row and ticking signals fills the group in place. Showing one signal twice is left for later.
-- **R22.** Signals are reordered by dragging, and each can get one of six colors.
+- **R22.** Signals are reordered by dragging, and each can get one of six colors. A row dragged past the top or bottom of the list lands first or last, where its line shows (the user's report, 2026-11-23).
 - **R23.** The chosen rows, formats, colors, zoom, cursor and marker are a **view** (one word for it everywhere, the file's extension: the user's decision), kept next to the testbench as `<testbench>.view`, such as `main_tb.view`, in place of GTKWave's `.gtkw` files. It holds JSON (old `.gtkw` files are ignored: no backward compatibility before the first release). It also keeps blank rows and groups (R33), as `{"blank": true}` and `{"group": "<name>", "collapsed": true}`. In Logix IDE it's a project file, saved with the project.
 - **R24.** The engine never changes a view the user saved: it writes a default only where none exists.
 - **R33.** Blank rows and **groups** (a named title row, such as "UART receiver", over the signals below it; named group, not comment, since it folds them: the user's decision, 2026-11-21) can be added between signals, from the right-click menu of a row (above or below it; below a collapsed group means after its rows, and a blank row added there, which joins the group, opens it), the waves or the time ruler (no toolbar buttons: the user's decision, 2026-11-21, to keep the toolbar short); they move and are saved like signals. A group's name is edited from its right-click menu (Rename the group), and right away when it's added.
@@ -451,7 +451,7 @@ The requirements keep the numbers they had in review (R1 to R40), so earlier dis
 
 - **R25.** When a testbench fails, the viewer opens zoomed around the first failure, with the cursor at its time and the check's message shown above the waveforms.
 - **R26.** Every failure is a red flag on the time axis and a thin red line through the waveforms, with its message on hover; a list of failures jumps to each, and Next and Previous step through them.
-- **R27.** Double-clicking a signal's name opens its declaration in the source, in hosts that can (Logix IDE), as the diagram does.
+- **R27.** Double-clicking a signal's name or its wave opens its declaration in the source, in hosts that can (Logix IDE; Logix Viewer shows the file and line in a note), as the diagram does. Only the testbench's own signals have a known place: for any other, a message says so, rather than nothing happening (the user's report on Linux, 2026-11-23: double-clicking showed nothing).
 - **R35.** Each failure names its check's file and line in the testbench; in hosts that can (Logix IDE), clicking it opens that line.
 
 **Hosts, platforms and files**
