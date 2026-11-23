@@ -415,10 +415,10 @@ button[hidden] { display: none; }
     const items = [
       { label: "Copy shown image", act: copyImage },
       "-",
-      { label: "Save shown image (PNG)…", act: () => saveImage("png"), disabled: !canSave() },
-      { label: "Save shown image (SVG)…", act: () => saveImage("svg"), disabled: !canSave() },
+      { label: "Shown image (PNG)…", act: () => saveImage("png"), disabled: !canSave() },
+      { label: "Shown image (SVG)…", act: () => saveImage("svg"), disabled: !canSave() },
       "-",
-      { label: "Save interactive diagram (HTML)…", act: savePage, disabled: !canSave() || !PAGE },
+      { label: "Web viewer (HTML)…", act: savePage, disabled: !canSave() || !PAGE },
     ];
     menu = document.createElement("div"); menu.className = "ctx"; menu.setAttribute("role", "menu");
     for (const it of items) {

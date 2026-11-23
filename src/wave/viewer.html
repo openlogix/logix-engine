@@ -1709,14 +1709,14 @@ function copyImage() {
 const EXPORT_ITEMS = () => [
   { label: 'Copy shown image', act: copyImage },
   '-',
-  { label: 'Save shown image (PNG)…', act: () => exportImage('png') },
-  { label: 'Save shown image (SVG)…', act: () => exportImage('svg') },
+  { label: 'Shown image (PNG)…', act: () => exportImage('png') },
+  { label: 'Shown image (SVG)…', act: () => exportImage('svg') },
   '-',
-  { label: 'Spreadsheet of all signals…', act: () => exportCSV(true) },
-  { label: 'Spreadsheet of shown signals…', act: () => exportCSV(false) },
+  { label: 'Spreadsheet, all waveforms (CSV)…', act: () => exportCSV(true) },
+  { label: 'Spreadsheet, shown waveforms (CSV)…', act: () => exportCSV(false) },
   '-',
-  { label: 'Web page of all signals…', act: () => exportPage(true), disabled: !PAGE },
-  { label: 'Web page of shown signals…', act: () => exportPage(false), disabled: !PAGE },
+  { label: 'Web viewer, all waveforms (HTML)…', act: () => exportPage(true), disabled: !PAGE },
+  { label: 'Web viewer, shown waveforms (HTML)…', act: () => exportPage(false), disabled: !PAGE },
 ];
 function imageMenu(x, y) { openMenu(x, y, EXPORT_ITEMS()); }
 
