@@ -67,10 +67,13 @@ test("the diagram page opens a block's source with openSource, and saves images 
   await page.getByRole("menuitem", { name: /SVG/ }).first().click();
   await expect.poll(async () => (await hostCalls(page)).some((c) => c[0] === "saveAs")).toBe(true);
   // Plain colors, no CSS variables: older librsvg, as Ubuntu 22.04's image
-  // viewer uses, drops var() rules and showed a blank picture (2026-11-23).
+  // viewer uses, drops var() rules and showed a blank picture (2026-11-23),
   const [, , mime, svg] = (await hostCalls(page)).find((c) => c[0] === "saveAs")!;
   expect(mime).toBe("image/svg+xml");
+  // and each shape's paint as attributes, with no stylesheet: Inkscape
+  // showed a blank canvas on macOS too.
   expect(svg as string).not.toContain("var(");
-  expect(svg as string).toContain("stroke:#");
+  expect(svg as string).not.toContain("<style");
+  expect(svg as string).toMatch(/<rect[^>]*class="body"[^>]*fill="rgb\(/);
   expect(errors).toEqual([]);
 });
