@@ -42,6 +42,27 @@ test("double-clicking a design signal says its place isn't known, and opens noth
   expect((await hostCalls(page)).some((c) => c[0] === "openSource")).toBe(false);
 });
 
+test("a waveform opened without its testbench says so on a double-click, and opens nothing", async ({ page }) => {
+  await open(page, "no-testbench");
+  await row(page, "led_on").dblclick();
+  await expect(page.locator("#toast")).toContainText("opened without its testbench");
+  expect((await hostCalls(page)).some((c) => c[0] === "openSource")).toBe(false);
+});
+
+test("the help list fits a short window and scrolls to its last line", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 320 });
+  await open(page, "plain");
+  await page.locator("#helpBtn").click();
+  const pop = page.locator(".pop");
+  const box = (await pop.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(320);
+  const last = pop.locator(".keys span").last();
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport();
+  expect(await pop.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(true);
+});
+
 test("the waveform page saves an image with saveAs", async ({ page }) => {
   await open(page, "plain");
   await page.locator("#imageBtn").click();

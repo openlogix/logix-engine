@@ -228,7 +228,7 @@ button { font: inherit; color: inherit; }
 .ctx .sub { padding: 4px 10px 6px; display: flex; flex-direction: column; gap: 5px; }
 .ctx .sub .lbl { font-size: 11px; color: var(--muted); }
 .ctx .seg button { font-size: 11.5px; }
-.pop { position: fixed; z-index: 40; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.18); padding: 12px; width: 250px; display: flex; flex-direction: column; gap: 12px; }
+.pop { position: fixed; z-index: 40; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.18); padding: 12px; width: 250px; display: flex; flex-direction: column; gap: 12px; box-sizing: border-box; max-height: calc(100vh - 16px); overflow-y: auto; overscroll-behavior: contain; }
 .pop h3 { margin: 0; font-size: 12px; font-family: var(--mono); font-weight: 600; overflow-wrap: anywhere; }
 .pop .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
 .seg { display: flex; flex-wrap: wrap; gap: 2px; background: var(--soft); padding: 2px; border-radius: 8px; }
@@ -1280,6 +1280,9 @@ function showDeclaration(i) {
   const r = S.rows[i]; if (!r || !r.v || !hosted) return;
   const d = S.decl[r.v.path];
   if (d) openSource(d.file, d.line);
+  // A waveform opened without its testbench knows no places at all: say
+  // that, rather than blame the signal.
+  else if (!Object.keys(S.decl).length) toast(`Where ${r.v.path} is declared isn't known: this waveform was opened without its testbench, so no signal's place in the source is known.`);
   else toast(`Where ${r.v.path} is declared isn't known: only the testbench's own signals show their place in the source.`);
 }
 let dragRow = null;
@@ -1325,11 +1328,17 @@ $('#names').addEventListener('dragend', () => { dragRow = null; clearDrop(); });
 /* ---------- Popovers ---------- */
 let pop = null;
 function closePop() { if (pop) { pop.remove(); pop = null; } }
+// A box taller than the room below its button goes above it if it fits
+// there; otherwise below, as tall as the window leaves, scrolling (the
+// help list was cut off in a short window, the user's macOS test,
+// 2026-11-23).
 function placePop(el, anchor) {
   document.body.appendChild(el); pop = el;
-  const a = anchor.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight;
+  const a = anchor.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight, H = window.innerHeight;
   el.style.left = Math.max(8, Math.min(a.left, window.innerWidth - w - 8)) + 'px';
-  el.style.top = (a.bottom + h + 8 > window.innerHeight ? Math.max(8, a.top - h - 6) : a.bottom + 6) + 'px';
+  const top = a.bottom + 6 + h + 8 <= H || a.top - h - 6 < 8 ? a.bottom + 6 : a.top - h - 6;
+  el.style.top = top + 'px';
+  el.style.maxHeight = Math.max(80, H - top - 8) + 'px';
 }
 // The group or blank row's box: a group's name, and Remove.
 function openRowPop(i, anchor) {

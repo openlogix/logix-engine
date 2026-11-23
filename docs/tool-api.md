@@ -1528,7 +1528,7 @@ Four tools give frontends and AI agents a board's serial port, such as its UART 
 
 Opens Open Logix's waveform viewer (see The waveform viewer, under the simulate tool) on any waveform file a client names: another simulator's, an earlier run's, or one an AI agent or a client made itself, which need not come from a simulation (docs/requirements.md, Waveform viewer, R3 and R8). The file is only read. The engine writes the viewer's page, with the waveform in it, into the build folder the request names, or, without one, into its own folder (`<engine folder>/waveforms`, which keeps the 20 newest), and opens it in a window of its own, in Logix Waveforms, for the person at the screen. The view is `view_file`, or `<waveform>.view` next to the page, and Logix Waveforms saves it as it changes, unless `save_view` is false.
 
-A client can point the person at something: the signals to show, in order, a time range, and the cursor, which the page opens on, over the saved view the request names. Signals the file doesn't have are left out and come back in `unknown_signals`. Unlike simulate's page, this one has no testbench, so it shows the file's top-level signals by default and marks no failures.
+A client can point the person at something: the signals to show, in order, a time range, and the cursor, which the page opens on, over the saved view the request names. Signals the file doesn't have are left out and come back in `unknown_signals`. Unlike simulate's page, this one marks no failures. It knows the waveform's testbench when the request names it (`source_folder` and `testbench_file`), or when `simulate` wrote the waveform: simulate leaves a note next to it, `<waveform>.testbench.json` (such as `main_tb.vcd.testbench.json`), with its source folder and testbench, rewritten by every run like the rest of the build folder. With a testbench, the page lists its own signals first, in its order, and double-clicking one shows where it's declared, as simulate's page does; without one, it shows the file's top-level signals and no signal's place is known (the user's macOS test, 2026-11-23: a waveform shown again lost its places).
 
 **Table 51.** open_waveform tool inputs
 
@@ -1541,6 +1541,8 @@ A client can point the person at something: the signals to show, in order, a tim
 | `signals` | list of text | No | The signals to show, in order, as paths in the file, such as `main_tb.dut.count` |
 | `from_ns`, `to_ns` | number | No | The time range to show, in nanoseconds. Omitted means the whole run, or the view's |
 | `cursor_ns` | number | No | Where to put the cursor, in nanoseconds |
+| `source_folder` | absolute path | No | The folder of the testbench that wrote the waveform, with `testbench_file`. When both are omitted, simulate's note next to the waveform, if any |
+| `testbench_file` | relative path | No | That testbench, relative to `source_folder`, such as `main_tb.v`. Only with `source_folder` |
 | `open` | boolean | No | Open the page in a window of its own (Logix Waveforms). Defaults to true. False only writes it |
 
 **Table 52.** open_waveform tool outputs
@@ -1554,7 +1556,7 @@ A client can point the person at something: the signals to show, in order, a tim
 | `end_ns` | number | The run's length, in nanoseconds |
 | `unknown_signals` | list of text | Requested signals the file doesn't have, which the page leaves out |
 
-**Errors:** request errors for a waveform file that isn't an absolute path to an existing `.vcd` file, a view file that isn't an absolute `.view` path in a folder that exists, a build folder that breaks the keyword rules, and times below 0 or a range whose start isn't before its end.
+**Errors:** request errors for a waveform file that isn't an absolute path to an existing `.vcd` file, a view file that isn't an absolute `.view` path in a folder that exists, a build folder that breaks the keyword rules, `source_folder` without `testbench_file` or the other way round, a source folder that isn't an absolute path to a folder, a testbench that isn't in it, and times below 0 or a range whose start isn't before its end.
 
 **Example**
 

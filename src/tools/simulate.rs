@@ -332,6 +332,14 @@ async fn simulate_and_show(
     .page_data();
     let page = build_folder.join(&page_file);
     crate::wave::write_page(&page, &data)?;
+    // For open_waveform on this waveform later: where its testbench is.
+    crate::wave::write_testbench_note(
+        &vcd,
+        &crate::wave::TestbenchNote {
+            source_folder: src.clone(),
+            testbench: tb.clone(),
+        },
+    );
 
     let viewer_problem = input.open.then(|| {
         let name = crate::viewer::app_name(&state.packages, crate::viewer::WAVEFORMS);
