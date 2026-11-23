@@ -162,8 +162,9 @@ pub struct SimulateOutput {
     /// True if the waveform viewer's page opened in a window.
     pub opened: bool,
     /// Why the page didn't open, in plain words for the person at the
-    /// screen, such as a missing library; only when open was true
-    /// and it didn't open.
+    /// screen, such as a missing library, with what fixes it; only when
+    /// open was true and it didn't open. Tell the person, rather than
+    /// showing the page's content another way.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub viewer_problem: Option<String>,
     /// Open Logix's waveform viewer, a self-contained page with the

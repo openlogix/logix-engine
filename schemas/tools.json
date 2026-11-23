@@ -3697,7 +3697,7 @@
           "type": "boolean"
         },
         "viewer_problem": {
-          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library; only when open was true\nand it didn't open.",
+          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library, with what fixes it; only when\nopen was true and it didn't open. Tell the person, rather than\nshowing the page's content another way.",
           "type": [
             "string",
             "null"
@@ -3971,7 +3971,7 @@
           "type": "boolean"
         },
         "viewer_problem": {
-          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library; only when open was true\nand it didn't open.",
+          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library, with what fixes it; only when\nopen was true and it didn't open. Tell the person, rather than\nshowing the page's content another way.",
           "type": [
             "string",
             "null"
@@ -4493,7 +4493,7 @@
           "type": "boolean"
         },
         "viewer_problem": {
-          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library; only when open was true and it\ndidn't open.",
+          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library, with what fixes it; only when\nopen was true and it didn't open. Tell the person, rather than\nshowing the page's content another way.",
           "type": [
             "string",
             "null"

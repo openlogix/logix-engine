@@ -196,10 +196,7 @@ fn open_connection(folder: &Path, app: &App) -> Result<Connection, String> {
                 match connect(&name) {
                     Ok(s) => break s,
                     Err(e) if started.elapsed() > START_WAIT => {
-                        return Err(format!(
-                            "{} didn't start: {e}. On Linux it needs WebKitGTK (the libwebkit2gtk-4.1 package); with no screen, such as over SSH, no window can open.",
-                            app.name
-                        ));
+                        return Err(not_started(&app.name, &exe, &e));
                     }
                     Err(_) => std::thread::sleep(Duration::from_millis(100)),
                 }
@@ -225,6 +222,45 @@ fn open_connection(folder: &Path, app: &App) -> Result<Connection, String> {
             .to_string());
     }
     Ok(conn)
+}
+
+/// Why an app didn't start, in plain words. On Linux, the libraries its
+/// program needs that aren't installed, from `ldd`, since a missing one
+/// stops it before it can say anything (libxdo, found in the Linux test,
+/// 2026-11-23).
+fn not_started(name: &str, exe: &Path, error: &std::io::Error) -> String {
+    if !cfg!(target_os = "linux") {
+        return format!("{name} didn't start: {error}.");
+    }
+    let missing = std::process::Command::new("ldd")
+        .arg(exe)
+        .output()
+        .map(|o| missing_libraries(&String::from_utf8_lossy(&o.stdout)))
+        .unwrap_or_default();
+    linux_reason(name, &missing, error)
+}
+
+/// The Linux message: the missing libraries when `ldd` named some, else
+/// what it usually needs.
+fn linux_reason(name: &str, missing: &[String], error: &std::io::Error) -> String {
+    if missing.is_empty() {
+        format!(
+            "{name} didn't start: {error}. On Linux it needs WebKitGTK and GTK (the libwebkit2gtk-4.1 and libgtk-3 packages); with no screen, such as over SSH, no window can open."
+        )
+    } else {
+        format!(
+            "{name} didn't start: it needs {}, which isn't installed on this computer. Install the package that has it, then try again.",
+            missing.join(", ")
+        )
+    }
+}
+
+/// The libraries `ldd`'s output says are missing (`libxdo.so.3 => not found`).
+fn missing_libraries(ldd: &str) -> Vec<String> {
+    ldd.lines()
+        .filter_map(|l| l.trim().strip_suffix("=> not found"))
+        .map(|l| l.trim().to_string())
+        .collect()
 }
 
 /// Shows a page in its kind's app: opens its window, or reloads the one
@@ -300,9 +336,13 @@ pub fn close(kind: Option<&str>, page: Option<&Path>) -> usize {
 /// threads.
 pub fn present(packages: &crate::packages::PackageManager, page: &Page) -> Option<String> {
     let work = || {
-        apps_folder(packages)
+        let problem = apps_folder(packages)
             .and_then(|folder| show(&folder, page))
-            .err()
+            .err();
+        if let Some(p) = &problem {
+            log::warn!("Didn't show {}: {p}", page.page.display());
+        }
+        problem
     };
     match tokio::runtime::Handle::try_current() {
         Ok(h) if h.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
@@ -331,6 +371,28 @@ pub fn title(app_name: &str, parts: &[&str]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ldd_names_the_missing_libraries() {
+        let ldd = "\tlinux-vdso.so.1 (0x00007ffd)\n\tlibxdo.so.3 => not found\n\tlibgtk-3.so.0 => /lib/x86_64-linux-gnu/libgtk-3.so.0 (0x7f00)\n\tlibfoo.so.1 => not found\n";
+        assert_eq!(
+            super::missing_libraries(ldd),
+            ["libxdo.so.3", "libfoo.so.1"]
+        );
+        assert!(super::missing_libraries("\tlibc.so.6 => /lib/libc.so.6 (0x7f)\n").is_empty());
+    }
+
+    #[test]
+    fn the_linux_reason_names_what_is_missing() {
+        let e = std::io::Error::from(std::io::ErrorKind::NotFound);
+        let named = super::linux_reason("Logix Waveforms", &["libxdo.so.3".into()], &e);
+        assert!(
+            named.contains("needs libxdo.so.3, which isn't installed"),
+            "{named}"
+        );
+        let general = super::linux_reason("Logix Waveforms", &[], &e);
+        assert!(general.contains("WebKitGTK"), "{general}");
+    }
+
     use super::*;
 
     #[test]

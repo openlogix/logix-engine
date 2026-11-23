@@ -504,7 +504,7 @@ Simulates one testbench and opens its waveform in Open Logix's waveform viewer (
 | `ending_text` | text | Optional. How it ended, for people, as in the test tool |
 | `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder |
 | `opened` | boolean | True if the waveform viewer's page opened in a window |
-| `viewer_problem` | text | Optional. Why it didn't open, in plain words for the person at the screen, such as a missing library, with what fixes it. Only when `open` was true and it didn't open |
+| `viewer_problem` | text | Optional. Why it didn't open, in plain words for the person at the screen, such as a missing library (on Linux, named from `ldd`), with what fixes it. Only when `open` was true and it didn't open. Agents pass it on to the person rather than showing the page's content another way. The engine logs it too |
 | `page_file` | relative path | Open Logix's waveform viewer, a self-contained page with the waveform in it, relative to the build folder, such as `main_tb.html` |
 | `checked_files` | list of relative paths | The files it read and checked: the design files, the testbench and the files they include (see Checked files) |
 | `commands` | list of commands | The programs this call ran, in order, so they can be run again without the engine. See Commands |

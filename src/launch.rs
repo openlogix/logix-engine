@@ -63,10 +63,15 @@ pub fn launch_detached(program: &Path, args: &[OsString], cwd: &Path) -> Result<
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Can't start {}: {e}", program.display()))?;
-    log::info!("Started {} (process {})", program.display(), child.id());
-    // Reap it when it exits, so it doesn't linger as a zombie.
-    std::thread::spawn(move || {
-        let _ = child.wait();
+    let pid = child.id();
+    log::info!("Started {} (process {pid})", program.display());
+    // Reap it when it exits, so it doesn't linger as a zombie, and log how
+    // it ended: a program that dies at once, such as for a missing library,
+    // says nothing else.
+    let name = program.display().to_string();
+    std::thread::spawn(move || match child.wait() {
+        Ok(status) => log::info!("{name} (process {pid}) exited: {status}"),
+        Err(e) => log::warn!("{name} (process {pid}): can't wait for it: {e}"),
     });
     Ok(())
 }
