@@ -418,7 +418,7 @@ button[hidden] { display: none; }
       { label: "Save shown image (PNG)…", act: () => saveImage("png"), disabled: !canSave() },
       { label: "Save shown image (SVG)…", act: () => saveImage("svg"), disabled: !canSave() },
       "-",
-      { label: "Web page of the design…", act: savePage, disabled: !canSave() || !PAGE },
+      { label: "Save interactive diagram (HTML)…", act: savePage, disabled: !canSave() || !PAGE },
     ];
     menu = document.createElement("div"); menu.className = "ctx"; menu.setAttribute("role", "menu");
     for (const it of items) {

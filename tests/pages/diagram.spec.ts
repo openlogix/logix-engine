@@ -27,7 +27,7 @@ test("Export saves the design as a web page that opens at the zoom shown", async
   await page.locator("#zoomIn").click();
   const shown = await page.locator("svg.logix-diagram").getAttribute("viewBox");
   await page.getByRole("button", { name: /Export/ }).click();
-  await page.getByRole("menuitem", { name: /Web page/ }).click();
+  await page.getByRole("menuitem", { name: /interactive diagram/ }).click();
   await expect.poll(async () => (await hostCalls(page)).some((c) => c[0] === "saveAs")).toBe(true);
   const [, name, mime, html] = (await hostCalls(page)).find((c) => c[0] === "saveAs")!;
   expect(name).toMatch(/^diagram-.*\.html$/);
