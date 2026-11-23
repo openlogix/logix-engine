@@ -161,10 +161,13 @@ impl Node {
         Some(match (self.shape, input) {
             (Shape::Generic, true) => (0.0, stacked),
             (Shape::Generic, false) => (self.size().0, stacked),
-            (Shape::Split, true) => (0.0, FIRST_PORT_Y),
-            (Shape::Split, false) => (4.0, stacked),
-            (Shape::Join, true) => (0.0, stacked),
-            (_, _) => (5.0, FIRST_PORT_Y),
+            // A split's or join's ports are the centers of their squares,
+            // beside the bar, so a wire ends under its square instead of
+            // running past it to the bar (the user's report, 2026-11-23).
+            (Shape::Split, true) => (-SJ_PORT_OUT, FIRST_PORT_Y),
+            (Shape::Split, false) => (SJ_BAR + SJ_PORT_OUT, stacked),
+            (Shape::Join, true) => (-SJ_PORT_OUT, stacked),
+            (_, _) => (SJ_BAR + SJ_PORT_OUT, FIRST_PORT_Y),
         })
     }
 
@@ -189,6 +192,11 @@ impl Node {
         out
     }
 }
+
+/// A split's or join's bar width, and how far outside it its ports'
+/// squares are centered.
+const SJ_BAR: f64 = 5.0;
+const SJ_PORT_OUT: f64 = 3.0;
 
 /// A net and the ports it connects.
 struct Wire {
@@ -761,14 +769,18 @@ fn render_node(
                     } else {
                         verilog_part(&p.key)
                     };
-                    // Beside the bar, outside it.
-                    let px = if input { -3.0 } else { 5.0 + 3.0 };
+                    // Beside the bar, outside it, where the wire ends.
+                    let px = if input {
+                        -SJ_PORT_OUT
+                    } else {
+                        SJ_BAR + SJ_PORT_OUT
+                    };
                     let data = format!(
                         r#" data-sj="{}" data-part="{part}" data-side="{}""#,
                         esc(&n.id),
                         if input { "in" } else { "out" }
                     );
-                    square(boxes, x + px, y + py + 0.5, data);
+                    square(boxes, x + px, y + py, data);
                 }
             }
         }
