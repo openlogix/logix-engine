@@ -3945,6 +3945,22 @@
           ],
           "default": null
         },
+        "source_folder": {
+          "description": "The folder of the testbench that wrote the waveform, as an absolute\npath, with testbench_file. Given both, the viewer lists the\ntestbench's own signals first, in its order, and double-clicking one\nshows where it's declared. When omitted, a waveform simulate wrote\nstill knows its testbench, from the note simulate leaves next to it.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "testbench_file": {
+          "description": "The testbench that wrote the waveform, relative to source_folder,\nsuch as main_tb.v. Given only with source_folder.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
         "open": {
           "description": "Open the page in a window of its own (Logix Waveforms) for the person\nat the screen. Defaults to true. False only writes it, such as for a\nhost that shows the page itself.",
           "type": "boolean",

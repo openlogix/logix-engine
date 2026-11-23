@@ -75,6 +75,17 @@ pub struct OpenWaveformInput {
     /// column shows every signal's value there.
     #[serde(default)]
     pub cursor_ns: Option<f64>,
+    /// The folder of the testbench that wrote the waveform, as an absolute
+    /// path, with testbench_file. Given both, the viewer lists the
+    /// testbench's own signals first, in its order, and double-clicking one
+    /// shows where it's declared. When omitted, a waveform simulate wrote
+    /// still knows its testbench, from the note simulate leaves next to it.
+    #[serde(default)]
+    pub source_folder: Option<String>,
+    /// The testbench that wrote the waveform, relative to source_folder,
+    /// such as main_tb.v. Given only with source_folder.
+    #[serde(default)]
+    pub testbench_file: Option<String>,
     /// Open the page in a window of its own (Logix Waveforms) for the person
     /// at the screen. Defaults to true. False only writes it, such as for a
     /// host that shows the page itself.
@@ -179,8 +190,49 @@ fn check_view_path(path: &str) -> Result<PathBuf, ToolError> {
     }
 }
 
+/// The waveform's testbench: the request's, else simulate's note next to
+/// the waveform, else none.
+fn testbench_of(
+    vcd: &Path,
+    input: &OpenWaveformInput,
+) -> Result<Option<wave::TestbenchNote>, ToolError> {
+    let (folder, file) = match (&input.source_folder, &input.testbench_file) {
+        (None, None) => return Ok(wave::read_testbench_note(vcd)),
+        (Some(f), Some(t)) => (f, t),
+        _ => {
+            return Err(ToolError::request(
+                "source_folder and testbench_file go together: give both, or neither.",
+            ));
+        }
+    };
+    let req = |field: &str, m: String| ToolError::request(format!("{field}: {m}."));
+    let dir = Path::new(folder);
+    if !dir.is_absolute() {
+        return Err(req(
+            "source_folder",
+            format!("{folder:?} must be an absolute path"),
+        ));
+    }
+    if !dir.is_dir() {
+        return Err(req("source_folder", format!("{folder:?} can't be found")));
+    }
+    crate::paths::check_relative_path(file).map_err(|m| req("testbench_file", m))?;
+    let dir = dunce::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    if !dir.join(file).is_file() {
+        return Err(req(
+            "testbench_file",
+            format!("{file:?} can't be found in the source folder"),
+        ));
+    }
+    Ok(Some(wave::TestbenchNote {
+        source_folder: dir,
+        testbench: file.clone(),
+    }))
+}
+
 pub fn run(state: &EngineState, input: OpenWaveformInput) -> Result<OpenWaveformOutput, ToolError> {
     let vcd = check_file("waveform_file", &input.waveform_file, "vcd")?;
+    let testbench = testbench_of(&vcd, &input)?;
     let view_file = match &input.view_file {
         Some(v) => Some(check_view_path(v)?),
         None => None,
@@ -235,17 +287,23 @@ pub fn run(state: &EngineState, input: OpenWaveformInput) -> Result<OpenWaveform
         .clone()
         .unwrap_or_else(|| folder.join(format!("{stem}.{}", wave::VIEW_EXTENSION)));
     let view = wave::read_view(&view_path);
+    let (order, declarations) = match &testbench {
+        Some(t) => wave::testbench_signals(&text, &t.source_folder, &t.testbench),
+        None => Default::default(),
+    };
     let data = wave::PageData {
-        waveform: waveform.clone(),
-        testbench: waveform,
+        testbench: testbench
+            .as_ref()
+            .map_or_else(|| waveform.clone(), |t| t.testbench.clone()),
+        waveform,
         view_file: view_path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default(),
         vcd: text,
         truncated,
-        order: Vec::new(),
-        declarations: Default::default(),
+        order,
+        declarations,
         failures: Vec::new(),
         failure_count: 0,
         view,

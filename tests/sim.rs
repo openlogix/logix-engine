@@ -830,6 +830,32 @@ async fn open_waveform_shows_any_waveform_at_a_place_a_client_chooses() {
     assert_eq!(data["failures"], json!([]));
     // The waveform file is only read.
     assert!(vcd.is_file());
+    // Simulate's note next to the waveform names its testbench: shown
+    // again, its own signals come first and know their places (the user's
+    // macOS test, 2026-11-23: every double-click said the place wasn't known).
+    assert_eq!(data["order"], json!(["main_tb.clk", "main_tb.q"]));
+    assert_eq!(data["declarations"]["main_tb.q"]["file"], "main_tb.v");
+    assert_eq!(data["testbench"], "main_tb.v");
+
+    // Without the note, nothing is known, unless the request names the
+    // testbench.
+    std::fs::remove_file(src.join("_build/main_tb.vcd.testbench.json")).unwrap();
+    let data = page_data(Path::new(
+        &open_waveform::run(&state, input(json!({})))
+            .unwrap()
+            .page_file,
+    ));
+    assert_eq!(data["declarations"], json!({}));
+    assert_eq!(data["testbench"], "main_tb.vcd");
+    let data = page_data(Path::new(
+        &open_waveform::run(
+            &state,
+            input(json!({"source_folder": src, "testbench_file": "main_tb.v"})),
+        )
+        .unwrap()
+        .page_file,
+    ));
+    assert_eq!(data["declarations"]["main_tb.clk"]["file"], "main_tb.v");
 
     for (extra, needle) in [
         (json!({"waveform_file": "main_tb.vcd"}), "absolute"),
@@ -840,6 +866,15 @@ async fn open_waveform_shows_any_waveform_at_a_place_a_client_chooses() {
         (json!({"from_ns": 50, "to_ns": 10}), "before to_ns"),
         (json!({"cursor_ns": -1}), "cursor_ns"),
         (json!({"build_folder": src.join("pages")}), "build_folder"),
+        (json!({"testbench_file": "main_tb.v"}), "go together"),
+        (
+            json!({"source_folder": src, "testbench_file": "other_tb.v"}),
+            "testbench_file",
+        ),
+        (
+            json!({"source_folder": "here", "testbench_file": "main_tb.v"}),
+            "absolute",
+        ),
     ] {
         let err = open_waveform::run(&state, input(extra)).unwrap_err();
         assert_eq!(err.category, Category::Request);
@@ -1346,5 +1381,16 @@ async fn writes_the_waveform_pages_the_browser_tests_use() {
             out_dir.join(format!("{name}.html")),
         )
         .unwrap();
+        // The same waveform opened without its testbench: no signal knows
+        // its place.
+        if name == "plain" {
+            let vcd = src.join("_build/morse_tb.vcd");
+            std::fs::remove_file(src.join("_build/morse_tb.vcd.testbench.json")).unwrap();
+            let input = json!({"waveform_file": vcd, "build_folder": src.join("_view_build"), "open": false});
+            let page = open_waveform::run(&state, serde_json::from_value(input).unwrap())
+                .unwrap()
+                .page_file;
+            std::fs::copy(page, out_dir.join("no-testbench.html")).unwrap();
+        }
     }
 }

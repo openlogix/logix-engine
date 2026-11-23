@@ -419,6 +419,73 @@ fn declaration(toks: &[Token], mut i: usize, found: &mut Vec<(String, u32)>) -> 
     i
 }
 
+/// The testbench's own signals in a waveform, as paths such as main_tb.clk,
+/// in the order it declares them, and where each is declared, read from the
+/// testbench's source (`testbench`, relative to `source_folder`). Nothing
+/// when the source can't be read.
+pub fn testbench_signals(
+    vcd: &str,
+    source_folder: &Path,
+    testbench: &str,
+) -> (Vec<String>, BTreeMap<String, Declaration>) {
+    let (mut order, mut declarations) = (Vec::new(), BTreeMap::new());
+    let Some(top) = top_scope(vcd) else {
+        return (order, declarations);
+    };
+    let source = std::fs::read_to_string(source_folder.join(testbench)).unwrap_or_default();
+    for (name, line) in declared_signals(&source, Some(&top)) {
+        let path = format!("{top}.{name}");
+        declarations.insert(
+            path.clone(),
+            Declaration {
+                file: testbench.to_string(),
+                line,
+            },
+        );
+        order.push(path);
+    }
+    (order, declarations)
+}
+
+/// Where a waveform's testbench is: the note simulate leaves next to the
+/// waveform it writes (`<waveform>.testbench.json`), so open_waveform, on
+/// that waveform later, still lists the testbench's own signals first and
+/// knows where each is declared (the user's macOS test, 2026-11-23: shown
+/// again, every signal's place was unknown). Written again by every run,
+/// like the rest of the build folder.
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
+pub struct TestbenchNote {
+    /// The source folder, as an absolute path.
+    pub source_folder: PathBuf,
+    /// The testbench, relative to the source folder.
+    pub testbench: String,
+}
+
+/// The note's path for a waveform file.
+pub fn testbench_note_path(waveform: &Path) -> PathBuf {
+    let mut p = waveform.as_os_str().to_owned();
+    p.push(".testbench.json");
+    PathBuf::from(p)
+}
+
+/// Writes the note next to a waveform. A note that can't be written only
+/// costs open_waveform the places, so it isn't an error.
+pub fn write_testbench_note(waveform: &Path, note: &TestbenchNote) {
+    let text = serde_json::to_string_pretty(note).expect("the note serializes") + "\n";
+    let _ = write_atomically(&testbench_note_path(waveform), text.as_bytes());
+}
+
+/// The note next to a waveform, when there is one and its testbench is
+/// still there.
+pub fn read_testbench_note(waveform: &Path) -> Option<TestbenchNote> {
+    let text = std::fs::read_to_string(testbench_note_path(waveform)).ok()?;
+    let note: TestbenchNote = serde_json::from_str(&text).ok()?;
+    note.source_folder
+        .join(&note.testbench)
+        .is_file()
+        .then_some(note)
+}
+
 /// The page's data from a testbench's run.
 pub struct RunInfo<'a> {
     pub source_folder: &'a Path,
@@ -436,23 +503,8 @@ pub struct RunInfo<'a> {
 
 impl RunInfo<'_> {
     pub fn page_data(self) -> PageData {
-        let top = top_scope(&self.vcd);
-        let source =
-            std::fs::read_to_string(self.source_folder.join(self.testbench)).unwrap_or_default();
-        let (mut order, mut declarations) = (Vec::new(), BTreeMap::new());
-        if let Some(top) = &top {
-            for (name, line) in declared_signals(&source, Some(top)) {
-                let path = format!("{top}.{name}");
-                declarations.insert(
-                    path.clone(),
-                    Declaration {
-                        file: self.testbench.to_string(),
-                        line,
-                    },
-                );
-                order.push(path);
-            }
-        }
+        let (order, declarations) =
+            testbench_signals(&self.vcd, self.source_folder, self.testbench);
         let failures = self
             .diagnostics
             .iter()

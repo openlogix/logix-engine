@@ -2,7 +2,7 @@
 // host through window.logixHost, the one way for a host's own window (the
 // user's decision, 2026-11-22).
 import { test, expect } from "@playwright/test";
-import { open, row, hostCalls, hostScript, showSignal, PAGES } from "./helpers";
+import { open, row, hostCalls, hostScript, showSignal, PAGES, VIEWER_FEATURES } from "./helpers";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -39,6 +39,48 @@ test("double-clicking a design signal says its place isn't known, and opens noth
   await showSignal(page, "dut", "pattern");
   await row(page, "pattern").dblclick();
   await expect(page.locator("#toast")).toContainText("isn't known");
+  expect((await hostCalls(page)).some((c) => c[0] === "openSource")).toBe(false);
+});
+
+test("a waveform opened without its testbench says so on a double-click, and opens nothing", async ({ page }) => {
+  await open(page, "no-testbench");
+  await row(page, "led_on").dblclick();
+  await expect(page.locator("#toast")).toContainText("opened without its testbench");
+  expect((await hostCalls(page)).some((c) => c[0] === "openSource")).toBe(false);
+});
+
+test("the help list fits a short window and scrolls to its last line", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 320 });
+  await open(page, "plain");
+  await page.locator("#helpBtn").click();
+  const pop = page.locator(".pop");
+  const box = (await pop.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(320);
+  const last = pop.locator(".keys span").last();
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport();
+  expect(await pop.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(true);
+});
+
+test("a testbench signal's place is in its hover boxes", async ({ page }) => {
+  await open(page, "plain", VIEWER_FEATURES);
+  expect(await row(page, "led_on").getAttribute("title")).toMatch(/^morse_tb\.led_on\nDeclared in morse_tb\.v, line \d+$/);
+  const r = (await row(page, "led_on").boundingBox())!;
+  const w = (await page.locator("#waves").boundingBox())!;
+  await page.mouse.move(w.x + w.width / 2, r.y + r.height / 2);
+  await expect(page.locator("#tip")).toContainText("Declared in morse_tb.v, line");
+  // A design signal has no known place: its hover box has none.
+  await showSignal(page, "dut", "pattern");
+  expect(await row(page, "pattern").getAttribute("title")).toBe("morse_tb.dut.pattern");
+});
+
+test("in Logix Viewer, with no openSource, double-clicking a signal does nothing", async ({ page }) => {
+  await open(page, "plain", VIEWER_FEATURES);
+  await row(page, "led_on").dblclick();
+  await showSignal(page, "dut", "pattern");
+  await row(page, "pattern").dblclick();
+  await expect(page.locator("#toast")).toBeHidden();
   expect((await hostCalls(page)).some((c) => c[0] === "openSource")).toBe(false);
 });
 
@@ -81,4 +123,17 @@ test("the diagram page opens a block's source with openSource, and saves images 
   const [w, h] = [/ width="(\d+)"/, / height="(\d+)"/].map((r) => Number((svg as string).match(r)![1]));
   expect(Math.abs(w - box.width) <= 2 || Math.abs(h - box.height) <= 2).toBe(true);
   expect(errors).toEqual([]);
+});
+
+test("in Logix Viewer, with no openSource, the diagram offers no source: its places are in the hover boxes", async ({ page }) => {
+  const dir = path.join(PAGES, "diagram");
+  const file = fs.readdirSync(dir).find((f) => f.endsWith(".html"))!;
+  await page.addInitScript(hostScript, VIEWER_FEATURES);
+  await page.goto("file://" + path.join(dir, file) + "?theme=light");
+  await expect(page.locator("svg.logix-diagram")).toBeVisible();
+  await expect(page.locator("#source")).toBeHidden();
+  await page.locator("#helpBtn").click();
+  await expect(page.locator(".help")).toBeVisible();
+  await expect(page.locator(".help")).not.toContainText("Double-click a block");
+  expect((await hostCalls(page)).some((c) => c[0] === "openSource")).toBe(false);
 });
