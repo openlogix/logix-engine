@@ -137,6 +137,11 @@ button[hidden] { display: none; }
   const host = () => (window.logixHost && window.logixHost.version >= 1 ? window.logixHost : null);
   const inFrame = window.parent !== window;
   const hosted = !!host() || inFrame;
+  // Hosts that open a source file at a line list openSource in their
+  // features (Logix IDE); Logix Viewer has no editor and doesn't: there a
+  // block's place shows only in its hover box (the user's decision,
+  // 2026-11-23, as on the waveform page).
+  const opensSource = inFrame || !!(host() && Array.isArray(host().features) && host().features.includes("openSource"));
   let path = [];
   let vb = null, home = null, startView = null;
 
@@ -181,7 +186,7 @@ button[hidden] { display: none; }
       a.onclick = () => go(path.slice(0, Number(a.dataset.depth)));
     });
     const src = mod().source;
-    $("source").hidden = !(hosted && src);
+    $("source").hidden = !(opensSource && src);
     $("source").onclick = () => openSource(src);
     $("source").title = src ? place(src) : "";
   }
@@ -438,7 +443,7 @@ button[hidden] { display: none; }
       ["Hover", "A block, port, wire, pin or label's details"], ["Double-click a module", "Open its diagram"],
       ["The path at the top left", "Back to a module above"], ["Drag", "Move around"], ["Wheel or pinch", "Zoom around the pointer"],
       ["+  −", "Zoom in, out"], ["F", "Show the whole module"],
-    ].concat(hosted ? [["Double-click a block", "Go to its source line"]] : []);
+    ].concat(opensSource ? [["Double-click a block", "Go to its source line"]] : []);
     help.innerHTML = `<h3>Keyboard and mouse</h3><div class="keys">${rows.map(([k, t]) => `<kbd>${esc(k)}</kbd><span>${esc(t)}</span>`).join("")}</div>`;
     placeAt(help, e.currentTarget);
   });
@@ -602,7 +607,7 @@ button[hidden] { display: none; }
     const fixed = Object.entries(info.fixed || {});
     if (fixed.length) html += `<h2>Fixed inputs</h2><dl class="kv">${fixed.map(([p, v]) => `<dt>${esc(p)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
     if (info.kind === "module") html += `<p class="hint2">Double-click to open it.</p>`;
-    else if (hosted && info.source) html += `<p class="hint2">Double-click to go to its source.</p>`;
+    else if (opensSource && info.source) html += `<p class="hint2">Double-click to go to its source.</p>`;
     return html;
   }
 
@@ -621,7 +626,7 @@ button[hidden] { display: none; }
     const info = blockAt(e.clientX, e.clientY);
     if (!info) return;
     if (info.kind === "module" && DATA.modules[info.module]) go([...path, info.module]);
-    else if (info.kind !== "module" && hosted) openSource(info.source);
+    else if (info.kind !== "module" && opensSource) openSource(info.source);
   });
 
   // Open the module the address names, such as #main/notegen; else, in a

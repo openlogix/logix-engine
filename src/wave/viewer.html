@@ -406,6 +406,12 @@ const DATA = /*__DATA__*/null;
 const host = () => (window.logixHost && window.logixHost.version >= 1 ? window.logixHost : null);
 const inFrame = window.parent !== window;
 const hosted = !!host() || inFrame;
+// Hosts that open a source file at a line, such as Logix IDE's editor,
+// list openSource in their features; an iframe's parent is asked by
+// message. Logix Viewer has no editor and doesn't list it: there a
+// signal's place shows only in its hover box, and double-clicking does
+// nothing (the user's decision, 2026-11-23: a note repeated the hover).
+const opensSource = () => inFrame || !!(host() && Array.isArray(host().features) && host().features.includes('openSource'));
 function openSource(file, line) {
   if (!file) return;
   if (host()) host().openSource(file, line);
@@ -872,7 +878,7 @@ function busOf(i) { while (i > 0 && isBit(i)) i--; return i; }
 function renderRows() {
   bitsInPlace();
   document.documentElement.style.setProperty('--row-h', S.rowH + 'px');
-  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${isSel(i) ? 'sel' : ''} ${r.v.bitOf ? 'bit' : ''}" draggable="${!r.v.bitOf}" data-i="${i}" style="--c:var(--s${r.color});${r.analog ? `height:${rowHeight(r)}px` : ''}" title="${esc(r.v.path)}">${r.v.width > 1 && !r.v.bitOf ? `<button class="fold bits" data-bits="${i}" aria-expanded="${!!r.expanded}" title="${r.expanded ? 'Hide' : 'Show'} each bit (${r.v.width})"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.expanded ? 'M3.5 6 8 10.5 12.5 6' : 'M6 3.5 10.5 8 6 12.5'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="dot"></span><span class="nm">${rowLabel(r.v)}${clockBadge(r.v.path)}</span></div>`; }).join('');
+  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${isSel(i) ? 'sel' : ''} ${r.v.bitOf ? 'bit' : ''}" draggable="${!r.v.bitOf}" data-i="${i}" style="--c:var(--s${r.color});${r.analog ? `height:${rowHeight(r)}px` : ''}" title="${esc(r.v.path)}${S.decl[r.v.path] ? `\n${esc(placeOf(S.decl[r.v.path]))}` : ''}">${r.v.width > 1 && !r.v.bitOf ? `<button class="fold bits" data-bits="${i}" aria-expanded="${!!r.expanded}" title="${r.expanded ? 'Hide' : 'Show'} each bit (${r.v.width})"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.expanded ? 'M3.5 6 8 10.5 12.5 6' : 'M6 3.5 10.5 8 6 12.5'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="dot"></span><span class="nm">${rowLabel(r.v)}${clockBadge(r.v.path)}</span></div>`; }).join('');
   $('#empty').hidden = S.rows.length > 0;
   renderValues(); renderTree(); renderTimeBase(); draw();
 }
@@ -1178,7 +1184,8 @@ waves.addEventListener('pointermove', (e) => {
   let text = fmt(v, r.v.width, r.radix);
   if (r.v.width > 1 && r.radix !== 'hex' && !isX(v)) text += `  (0x${fmt(v, r.v.width, 'hex')})`;
   const tip = $('#tip');
-  tip.innerHTML = `<code>${esc(r.v.path)}</code> = <b><code>${esc(text)}</code></b><div class="t">${S.hoverSnap ? 'Edge at ' : ''}${counting() ? fmtAt(Math.round(S.hoverT)) + ', ' : ''}${fmtTime(Math.round(S.hoverT))}${S.hoverSnap ? ' (Alt: anywhere)' : ''}</div>`;
+  const d = S.decl[r.v.path];
+  tip.innerHTML = `<code>${esc(r.v.path)}</code> = <b><code>${esc(text)}</code></b>${d ? `<div class="t">${esc(placeOf(d))}</div>` : ''}<div class="t">${S.hoverSnap ? 'Edge at ' : ''}${counting() ? fmtAt(Math.round(S.hoverT)) + ', ' : ''}${fmtTime(Math.round(S.hoverT))}${S.hoverSnap ? ' (Alt: anywhere)' : ''}</div>`;
   tip.hidden = false;
   const tw = tip.offsetWidth;
   tip.style.left = Math.min(e.clientX + 14, window.innerWidth - tw - 8) + 'px';
@@ -1273,11 +1280,13 @@ $('#names').addEventListener('click', (e) => {
   // report, 2026-11-23).
   if (e.detail === 2) showDeclaration(i);
 });
-// A double-clicked signal's declaration, in hosts that can (R27). Only the
-// testbench's own signals have a known place: for others, say so rather
-// than do nothing.
+// Where a testbench signal is declared, as its hover boxes say it.
+function placeOf(d) { return `Declared in ${d.file}, line ${d.line}`; }
+// A double-clicked signal's declaration, in hosts that open sources (R27).
+// Only the testbench's own signals have a known place: for others, say so
+// rather than do nothing.
 function showDeclaration(i) {
-  const r = S.rows[i]; if (!r || !r.v || !hosted) return;
+  const r = S.rows[i]; if (!r || !r.v || !opensSource()) return;
   const d = S.decl[r.v.path];
   if (d) openSource(d.file, d.line);
   // A waveform opened without its testbench knows no places at all: say

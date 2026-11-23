@@ -12,13 +12,13 @@ export const PAGES = path.resolve(__dirname, "../../target/tmp/pages");
  * Logix IDE and Logix Viewer offer it: it records every call in
  * window.__calls, as [method, ...arguments].
  */
-export function hostScript() {
+export function hostScript(features = ["saveAs", "writeDeclared", "openSource", "openUrl"]) {
   const w = window as unknown as { __calls: unknown[][]; logixHost: unknown };
   w.__calls = [];
   const record = (m: string) => (...args: unknown[]) => { w.__calls.push([m, ...args]); };
   w.logixHost = {
     version: 1,
-    features: ["saveAs", "writeDeclared", "openSource", "openUrl"],
+    features,
     saveAs: record("saveAs"),
     writeDeclared: record("writeDeclared"),
     openSource: record("openSource"),
@@ -30,14 +30,17 @@ export function hostScript() {
 export const hostCalls = (page: Page) =>
   page.evaluate(() => (window as unknown as { __calls: unknown[][] }).__calls);
 
-/** Opens a page (its name in PAGES, without .html), with a host, and collects its errors. */
-export async function open(page: Page, name: string) {
+/** Logix Viewer's features: no editor, so no openSource. */
+export const VIEWER_FEATURES = ["saveAs", "writeDeclared", "openUrl"];
+
+/** Opens a page (its name in PAGES, without .html), with a host (by default one with every feature, as Logix IDE), and collects its errors. */
+export async function open(page: Page, name: string, features?: string[]) {
   const file = path.join(PAGES, name.endsWith(".html") ? name : `${name}.html`);
   if (!fs.existsSync(file)) throw new Error(`${file} is missing: run cargo test first`);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
-  await page.addInitScript(hostScript);
+  await page.addInitScript(hostScript, features);
   await page.goto("file://" + file + "?theme=light");
   await expect(page.locator("#names")).toBeVisible();
   return { errors };
@@ -48,7 +51,7 @@ export function rows(page: Page): Promise<string[]> {
   return page.evaluate(() =>
     [...document.querySelectorAll("#names .nrow")].map((n) =>
       (n as HTMLElement).title
-        ? (n as HTMLElement).title.split(".").pop()!
+        ? (n as HTMLElement).title.split("\n")[0].split(".").pop()!
         : n.classList.contains("group")
           ? "G:" + (n.querySelector(".nm")?.textContent ?? "").trim()
           : "blank",
