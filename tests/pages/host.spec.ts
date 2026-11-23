@@ -75,5 +75,10 @@ test("the diagram page opens a block's source with openSource, and saves images 
   expect(svg as string).not.toContain("var(");
   expect(svg as string).not.toContain("<style");
   expect(svg as string).toMatch(/<rect[^>]*class="body"[^>]*fill="rgb\(/);
+  // As big as on screen: it fills the drawing's box in one direction
+  // (apps showed it small at its units' size, 2026-11-23).
+  const box = (await page.locator("svg.logix-diagram").boundingBox())!;
+  const [w, h] = [/ width="(\d+)"/, / height="(\d+)"/].map((r) => Number((svg as string).match(r)![1]));
+  expect(Math.abs(w - box.width) <= 2 || Math.abs(h - box.height) <= 2).toBe(true);
   expect(errors).toEqual([]);
 });

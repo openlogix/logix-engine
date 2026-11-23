@@ -326,13 +326,17 @@ button[hidden] { display: none; }
     lit.forEach(([e, c]) => e.setAttribute("class", c));
     copy.querySelectorAll("style, .hit").forEach((e) => e.remove());
     copy.removeAttribute("class");
-    const w = Math.ceil(vb.w), h = Math.ceil(vb.h);
+    // As big as it shows on screen, never smaller than its own units: at
+    // its units' size, apps showed it small (text 10 pixels high; the
+    // user's report, 2026-11-23).
+    const k = Math.max(1, Math.min(svg.clientWidth / vb.w, svg.clientHeight / vb.h) || 1);
+    const w = Math.ceil(vb.w * k), h = Math.ceil(vb.h * k);
     copy.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-    copy.setAttribute("viewBox", `${vb.x} ${vb.y} ${w} ${h}`);
+    copy.setAttribute("viewBox", `${vb.x} ${vb.y} ${w / k} ${h / k}`);
     copy.setAttribute("width", w); copy.setAttribute("height", h);
     copy.removeAttribute("preserveAspectRatio");
     const sheet = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    sheet.setAttribute("x", vb.x); sheet.setAttribute("y", vb.y); sheet.setAttribute("width", w); sheet.setAttribute("height", h);
+    sheet.setAttribute("x", vb.x); sheet.setAttribute("y", vb.y); sheet.setAttribute("width", w / k); sheet.setAttribute("height", h / k);
     sheet.setAttribute("fill", background(canvas)); sheet.setAttribute("stroke", "none");
     copy.insertBefore(sheet, copy.firstChild);
     return { text: new XMLSerializer().serializeToString(copy), w, h };
