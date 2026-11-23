@@ -13,11 +13,78 @@
     }
   ],
   "resources": {
-    "sys_clk": {"type": "clock", "pin": "35", "mhz": 12},
+    "sys_clk": {
+      "type": "clock",
+      "pin": "35",
+      "mhz": 12,
+      "source": {
+        "kind": "maker",
+        "ref": "The maker's pin diagram, https://soanpapdi.org/downloads/Soan-Papdi-Pin-Diagram.pdf, and its pin file in Icestudio (FPGAwars/icestudio, app/resources/boards/Soan-Papdi/pinout.pcf, by the board's makers, December 2025)."
+      }
+    },
     "leds": {
       "type": "leds",
       "pins": ["31", "32", "34", "36", "37", "44", "45", "46"],
-      "active": "high"
+      "active": "high",
+      "source": {
+        "kind": "maker",
+        "ref": "The maker's pin diagram and Icestudio pin file (pins), and https://soanpapdi.org/docs/hardware-overview/ (D7-D0, active high)."
+      }
+    },
+    "status_leds": {
+      "type": "leds",
+      "pins": ["39", "40", "41", "47"],
+      "active": "low",
+      "source": {
+        "kind": "maker",
+        "ref": "The maker's pin diagram and Icestudio pin file (S0-S3 on 39, 40, 41, 47), and https://soanpapdi.org/docs/hardware-overview/ (four white status LEDs S3-S0, active low)."
+      },
+      "ai_hints": [
+        "S0 to S2 are wired to the FPGA's RGB LED driver pads (RGB0 to RGB2).",
+        "Drive S0 to S2 through SB_RGBA_DRV, the iCE40 UltraPlus's RGB LED driver cell (sink only)."
+      ]
+    },
+    "switches_a": {
+      "type": "switches",
+      "pins": ["6", "4", "3", "48"],
+      "active": "high",
+      "source": {
+        "kind": "maker",
+        "ref": "The maker's pin diagram and Icestudio pin file (pins), and https://soanpapdi.org/docs/icetudio-examples/02-switch-led/ (a slide switch that is on reads 1)."
+      }
+    },
+    "switches_b": {
+      "type": "switches",
+      "pins": ["12", "11", "10", "9"],
+      "active": "high",
+      "source": {
+        "kind": "maker",
+        "ref": "The maker's pin diagram and Icestudio pin file (pins), and https://soanpapdi.org/docs/icetudio-examples/02-switch-led/ (a slide switch that is on reads 1)."
+      }
+    },
+    "prog_button": {
+      "type": "buttons",
+      "pins": ["2"],
+      "source": {
+        "kind": "maker",
+        "ref": "The maker's pin diagram (PROG on pin 2); its active level isn't given."
+      }
+    },
+    "io_header_1": {
+      "type": "header",
+      "pins": ["28", "27", "26", "25", "23", null, null, null],
+      "source": {
+        "kind": "maker",
+        "ref": "The maker's pin diagram and Icestudio pin file: IO0-IO4, then 3V3, GND, GND."
+      }
+    },
+    "io_header_2": {
+      "type": "header",
+      "pins": ["13", "21", "20", "19", "18", null, null, null],
+      "source": {
+        "kind": "maker",
+        "ref": "The maker's pin diagram and Icestudio pin file: IO5-IO9, then 3V3, GND, GND."
+      }
     }
   }
 }

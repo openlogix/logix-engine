@@ -402,8 +402,8 @@ mod tests {
             words("rgb_led"),
             (
                 "RGB LED".into(),
-                "R 40, G 41, B 39".into(),
-                "Active low".into()
+                "R 40, G 39, B 41".into(),
+                "Active low. Boards from newer batches swap green and blue from the schematic, as listed here; older ones follow the schematic (blue 39, green 41). If blinky lights blue instead of green, yours is an older one.".into()
             )
         );
         assert_eq!(words("switches").0, "Switches");

@@ -24,12 +24,18 @@
     "rgb_led": {
       "type": "rgb_led",
       "red": "40",
-      "green": "41",
-      "blue": "39",
+      "green": "39",
+      "blue": "41",
       "active": "low",
-      "source": {"kind": "schematic", "ref": "github.com/wuxx/icesugar schematic/iCESugar-v1.5.pdf"},
+      "source": {
+        "kind": "hardware",
+        "ref": "Pin test on a real iCESugar v1.5, 2026-11-22; github.com/wuxx/icesugar/issues/65"
+      },
+      "user_notes": "Boards from newer batches swap green and blue from the schematic, as listed here; older ones follow the schematic (blue 39, green 41). If blinky lights blue instead of green, yours is an older one.",
       "ai_hints": [
-        "Wired to the FPGA's RGB LED driver pads: red RGB1, green RGB2, blue RGB0.",
+        "Wired to the FPGA's RGB LED driver pads: red RGB1, green RGB0, blue RGB2.",
+        "Newer batches' LED swaps green and blue from the schematic (blue 39, green 41).",
+        "Older boards follow the schematic; the maker plans to return to it (wuxx/icesugar#65).",
         "Drive it through SB_RGBA_DRV, the iCE40 UltraPlus's RGB LED driver cell (sink only)."
       ]
     },
@@ -38,7 +44,7 @@
       "pins": ["18", "19", "20", "21"],
       "active": "low",
       "source": {"kind": "schematic", "ref": "github.com/wuxx/icesugar schematic/iCESugar-v1.5.pdf"},
-      "user_notes": "A 4-way DIP switch with pull-ups, on the same pins as PMOD4."
+      "user_notes": "A 4-way DIP switch with pull-ups, S1 to S4 on pins 18 to 21, the same pins as PMOD4."
     },
     "uart": {
       "type": "uart",
@@ -65,9 +71,18 @@
     },
     "pmod4": {
       "type": "header",
-      "pins": ["21", "20", "19", "18", null, null],
-      "source": {"kind": "maker", "ref": "github.com/wuxx/icesugar src/common/io.pcf"},
-      "user_notes": "A 6-pin PMOD: 4 signals, then GND and 3.3 V. Shared with the DIP switches: turn them off to use it."
+      "pins": [null, null, "18", "19", "20", "21"],
+      "source": {
+        "kind": "hardware",
+        "ref": "Pin test on a real iCESugar v1.5, 2026-11-22; MuseLab's iCESugar v1.5 pinout"
+      },
+      "user_notes": "A 2x6 header. One row: 3.3 V, GND, pins 18 to 21. The other: 3.3 V, GND, DIP switches S1 to S4.",
+      "requires": [
+        {
+          "type": "setup",
+          "text": "Remove PMOD4's 4 jumpers: as shipped, they connect pins 18 to 21 to DIP switches S1 to S4."
+        }
+      ]
     },
     "unclassified": {
       "type": "unclassified",

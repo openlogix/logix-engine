@@ -94,7 +94,7 @@
         },
         "user_notes": {
           "type": "string",
-          "description": "Warnings and missing information for users, such as a jumper a clock needs."
+          "description": "Warnings and missing information for users, such as a step the board needs before programming."
         },
         "ai_hints": {
           "$ref": "#/$defs/AiHints"
@@ -139,7 +139,7 @@
         },
         "user_notes": {
           "type": "string",
-          "description": "Warnings and missing information for users, such as a jumper a clock needs."
+          "description": "Warnings and missing information for users, such as a step the board needs before programming."
         },
         "ai_hints": {
           "$ref": "#/$defs/AiHints"
@@ -185,7 +185,7 @@
         },
         "user_notes": {
           "type": "string",
-          "description": "Warnings and missing information for users, such as a jumper a clock needs."
+          "description": "Warnings and missing information for users, such as a step the board needs before programming."
         },
         "ai_hints": {
           "$ref": "#/$defs/AiHints"
@@ -251,7 +251,7 @@
         },
         "user_notes": {
           "type": "string",
-          "description": "Warnings and missing information for users, such as a jumper a clock needs."
+          "description": "Warnings and missing information for users, such as a step the board needs before programming."
         },
         "ai_hints": {
           "$ref": "#/$defs/AiHints"
@@ -296,7 +296,7 @@
         },
         "user_notes": {
           "type": "string",
-          "description": "Warnings and missing information for users, such as a jumper a clock needs."
+          "description": "Warnings and missing information for users, such as a step the board needs before programming."
         },
         "ai_hints": {
           "$ref": "#/$defs/AiHints"
@@ -340,7 +340,7 @@
         },
         "user_notes": {
           "type": "string",
-          "description": "Warnings and missing information for users, such as a jumper a clock needs."
+          "description": "Warnings and missing information for users, such as a step the board needs before programming."
         },
         "ai_hints": {
           "$ref": "#/$defs/AiHints"
@@ -388,7 +388,7 @@
         },
         "user_notes": {
           "type": "string",
-          "description": "Warnings and missing information for users, such as a jumper a clock needs."
+          "description": "Warnings and missing information for users, such as a step the board needs before programming."
         },
         "ai_hints": {
           "$ref": "#/$defs/AiHints"
@@ -427,7 +427,7 @@
         },
         "user_notes": {
           "type": "string",
-          "description": "Warnings and missing information for users, such as a jumper a clock needs."
+          "description": "Warnings and missing information for users, such as a step the board needs before programming."
         },
         "ai_hints": {
           "$ref": "#/$defs/AiHints"
@@ -471,7 +471,7 @@
         },
         "user_notes": {
           "type": "string",
-          "description": "Warnings and missing information for users, such as a jumper a clock needs."
+          "description": "Warnings and missing information for users, such as a step the board needs before programming."
         },
         "ai_hints": {
           "$ref": "#/$defs/AiHints"
@@ -508,7 +508,7 @@
         },
         "user_notes": {
           "type": "string",
-          "description": "Warnings and missing information for users, such as a jumper a clock needs."
+          "description": "Warnings and missing information for users, such as a step the board needs before programming."
         },
         "ai_hints": {
           "$ref": "#/$defs/AiHints"
