@@ -441,22 +441,37 @@
     },
     "Header": {
       "type": "object",
-      "description": "Any other header: every position in order, null for power and ground.",
+      "description": "Any other header: what each position is wired to, by its ID, and optionally how the positions are arranged. Headers aren't design ports.",
       "properties": {
         "type": {
           "const": "header"
         },
-        "pins": {
+        "positions": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/PositionId"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/Position"
+          },
+          "minProperties": 1
+        },
+        "grid": {
           "type": "array",
+          "description": "The positions as arranged, as rows of IDs: seen from the component side with the board edge nearest the header at the bottom, rows from that edge inward, left to right; null for a gap.",
           "items": {
-            "oneOf": [
-              {
-                "$ref": "#/$defs/Pin"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/PositionId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "minItems": 1
           },
           "minItems": 1
         },
@@ -479,7 +494,7 @@
       },
       "required": [
         "type",
-        "pins"
+        "positions"
       ],
       "additionalProperties": false
     },
@@ -786,6 +801,83 @@
       "description": "A board, the same in its catalog file and in a custom boards file.",
       "$ref": "#/$defs/BoardFields",
       "unevaluatedProperties": false
+    },
+    "PositionId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "description": "A header position's ID as the board or its schematic marks it, such as 1, 1a or A10."
+    },
+    "Position": {
+      "description": "What a header position is wired to: exactly one of these.",
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "An FPGA pin.",
+          "properties": {
+            "pin": {
+              "$ref": "#/$defs/Pin"
+            }
+          },
+          "required": [
+            "pin"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "description": "A supply or ground: GND, VIN or a voltage such as 3.3V.",
+          "properties": {
+            "power": {
+              "type": "string",
+              "pattern": "^(GND|VIN|[0-9]+(\\.[0-9]+)?V)$"
+            }
+          },
+          "required": [
+            "power"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "description": "Anything else on the board, named as its schematic names it.",
+          "properties": {
+            "net": {
+              "type": "string",
+              "pattern": "^\\S(.*\\S)?$"
+            }
+          },
+          "required": [
+            "net"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "description": "Wired to nothing.",
+          "properties": {
+            "unconnected": {
+              "const": true
+            }
+          },
+          "required": [
+            "unconnected"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "description": "Not known yet.",
+          "properties": {
+            "unknown": {
+              "const": true
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "additionalProperties": false
+        }
+      ]
     }
   }
 }

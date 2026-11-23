@@ -72,18 +72,36 @@
     },
     "io_header_1": {
       "type": "header",
-      "pins": ["28", "27", "26", "25", "23", null, null, null],
+      "positions": {
+        "1": {"pin": "28"},
+        "2": {"pin": "27"},
+        "3": {"pin": "26"},
+        "4": {"pin": "25"},
+        "5": {"pin": "23"},
+        "6": {"power": "3.3V"},
+        "7": {"power": "GND"},
+        "8": {"power": "GND"}
+      },
       "source": {
         "kind": "maker",
-        "ref": "The maker's pin diagram and Icestudio pin file: IO0-IO4, then 3V3, GND, GND."
+        "ref": "The maker's pin diagram and Icestudio pin file: IO0-IO4, then 3V3, GND, GND. The position numbers are ours, in that order."
       }
     },
     "io_header_2": {
       "type": "header",
-      "pins": ["13", "21", "20", "19", "18", null, null, null],
+      "positions": {
+        "1": {"pin": "13"},
+        "2": {"pin": "21"},
+        "3": {"pin": "20"},
+        "4": {"pin": "19"},
+        "5": {"pin": "18"},
+        "6": {"power": "3.3V"},
+        "7": {"power": "GND"},
+        "8": {"power": "GND"}
+      },
       "source": {
         "kind": "maker",
-        "ref": "The maker's pin diagram and Icestudio pin file: IO5-IO9, then 3V3, GND, GND."
+        "ref": "The maker's pin diagram and Icestudio pin file: IO5-IO9, then 3V3, GND, GND. The position numbers are ours, in that order."
       }
     }
   }

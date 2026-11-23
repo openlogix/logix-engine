@@ -71,16 +71,30 @@
     },
     "pmod4": {
       "type": "header",
-      "pins": [null, null, "18", "19", "20", "21"],
-      "source": {
-        "kind": "hardware",
-        "ref": "Pin test on a real iCESugar v1.5, 2026-11-22; MuseLab's iCESugar v1.5 pinout"
+      "positions": {
+        "1": {"power": "3.3V"},
+        "2": {"power": "GND"},
+        "3": {"net": "S1"},
+        "4": {"net": "S2"},
+        "5": {"net": "S3"},
+        "6": {"net": "S4"},
+        "7": {"pin": "21"},
+        "8": {"pin": "20"},
+        "9": {"pin": "19"},
+        "10": {"pin": "18"},
+        "11": {"power": "GND"},
+        "12": {"power": "3.3V"}
       },
-      "user_notes": "A 2x6 header. One row: 3.3 V, GND, pins 18 to 21. The other: 3.3 V, GND, DIP switches S1 to S4.",
+      "grid": [["1", "2", "3", "4", "5", "6"], ["12", "11", "10", "9", "8", "7"]],
+      "source": {
+        "kind": "schematic",
+        "ref": "github.com/wuxx/icesugar schematic/iCESugar-v1.5.pdf; MuseLab's iCESugar v1.5 pinout (the grid)"
+      },
+      "user_notes": "Positions 3 to 6 are DIP switches S1 to S4, with 4.7k pull-ups; 7 to 10 are FPGA pins 21 to 18, with none.",
       "requires": [
         {
           "type": "setup",
-          "text": "Remove PMOD4's 4 jumpers: as shipped, they connect pins 18 to 21 to DIP switches S1 to S4."
+          "text": "Remove PMOD4's 4 jumpers: as shipped, they connect positions 7 to 10 (pins 21 to 18) to the DIP switches."
         }
       ]
     },

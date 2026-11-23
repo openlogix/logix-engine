@@ -1584,6 +1584,14 @@ fn the_wrong_fpga_error_suggests_the_most_likely_boards() {
 /// core generates from their databases (logix-core.json `fpgas`).
 #[tokio::test]
 async fn the_pinned_catalog_fits_the_pinned_core() {
+    // Until the next promotion: prod pins catalog 2026-11-19, written before
+    // headers listed positions (logix-catalog#10), which this engine can't
+    // read. This engine must be promoted together with a catalog that lists
+    // positions; then remove this skip (the user's decision, 2026-11-23).
+    if std::env::var("LOGIX_ENGINE_CHANNEL").as_deref() == Ok("prod") {
+        eprintln!("Skipped on prod until the promotion: its catalog predates header positions.");
+        return;
+    }
     use logix_engine::catalog;
     use logix_engine::packages::CATALOG;
     let state = engine().await;

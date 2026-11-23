@@ -346,13 +346,80 @@ resource_type!(
     }
 );
 
+/// What a header position is wired to: exactly one of these, written as an
+/// object with one key, such as `{"pin": "21"}` or `{"power": "GND"}`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Position {
+    /// An FPGA pin.
+    Pin(String),
+    /// A supply or ground: GND, VIN or a voltage such as 3.3V.
+    Power(String),
+    /// Anything else on the board, named as its schematic names it.
+    Net(String),
+    /// Wired to nothing: always true.
+    Unconnected(bool),
+    /// Not known yet: always true.
+    Unknown(bool),
+}
+
+impl Position {
+    /// The position for people: its pin, supply or net, "–" when wired to
+    /// nothing and "?" when unknown.
+    fn text(&self) -> &str {
+        match self {
+            Position::Pin(s) | Position::Power(s) | Position::Net(s) => s,
+            Position::Unconnected(_) => "–",
+            Position::Unknown(_) => "?",
+        }
+    }
+}
+
 resource_type!(
-    /// Any other header: every position in order, null for power and ground.
+    /// Any other header: what each position is wired to, by the position's
+    /// ID as the board or its schematic marks it, and optionally how the
+    /// positions are arranged. Not a design port.
     Header {
         #[schemars(length(min = 1))]
-        pins: Vec<Option<String>>,
+        positions: IndexMap<String, Position>,
+        /// The positions as arranged, as rows of IDs: seen from the
+        /// component side with the board edge nearest the header at the
+        /// bottom, rows from that edge inward, left to right; null for a
+        /// gap. Omitted when the IDs make it clear.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        grid: Option<Vec<Vec<Option<String>>>>,
     }
 );
+
+/// Compares position IDs in natural order: digit runs as numbers, so 2
+/// comes before 10 and 1a before 1b.
+fn natural_order(a: &str, b: &str) -> std::cmp::Ordering {
+    fn chunks(s: &str) -> Vec<(bool, &str)> {
+        let mut out = Vec::new();
+        let mut start = 0;
+        let bytes = s.as_bytes();
+        for i in 1..=bytes.len() {
+            if i == bytes.len() || bytes[i].is_ascii_digit() != bytes[start].is_ascii_digit() {
+                out.push((bytes[start].is_ascii_digit(), &s[start..i]));
+                start = i;
+            }
+        }
+        out
+    }
+    let (ca, cb) = (chunks(a), chunks(b));
+    for ((da, a), (db, b)) in ca.iter().zip(&cb) {
+        let o = if *da && *db {
+            let (a, b) = (a.trim_start_matches('0'), b.trim_start_matches('0'));
+            a.len().cmp(&b.len()).then(a.cmp(b))
+        } else {
+            a.cmp(b)
+        };
+        if o.is_ne() {
+            return o;
+        }
+    }
+    ca.len().cmp(&cb.len()).then(a.cmp(b))
+}
 
 /// What a board wires to FPGA pins, by type. The variants' order is the
 /// order of a board's resources (`in_type_order`).
@@ -375,7 +442,7 @@ pub enum Resource {
     Uart(Uart),
     /// A PMOD header: its 8 signal pins.
     Pmod(Pins),
-    /// Another header: every position, null for power and ground.
+    /// Another header: its positions by ID.
     Header(Header),
     /// Every wired pin no other resource describes; a board with one lists
     /// all its wired pins.
@@ -425,12 +492,9 @@ impl Requirement {
     }
 }
 
-/// A pin list for people: "39, 40, 41", an unwired header pin as "–".
-fn pin_list<'a>(pins: impl IntoIterator<Item = Option<&'a str>>) -> String {
-    pins.into_iter()
-        .map(|p| p.unwrap_or("–"))
-        .collect::<Vec<_>>()
-        .join(", ")
+/// A pin list for people: "39, 40, 41".
+fn pin_list(pins: &[String]) -> String {
+    pins.join(", ")
 }
 
 /// Pins labeled by kind, such as "R 39, G 40, B 41", leaving out the ones
@@ -463,7 +527,7 @@ impl Resource {
     fn type_and_pins(&self) -> (String, String) {
         let one_or_many =
             |pins: usize, one: &str, many: &str| if pins > 1 { many } else { one }.to_string();
-        let list = |pins: &[String]| pin_list(pins.iter().map(|p| Some(p.as_str())));
+        let list = pin_list;
         match self {
             Resource::Clock(c) => ("Clock".into(), c.pin.clone()),
             Resource::Leds(p) => (one_or_many(p.pins.len(), "LED", "LEDs"), list(&p.pins)),
@@ -501,10 +565,16 @@ impl Resource {
                 ]),
             ),
             Resource::Pmod(p) => ("PMOD".into(), list(&p.pins)),
-            Resource::Header(h) => (
-                "Header".into(),
-                pin_list(h.pins.iter().map(|p| p.as_deref())),
-            ),
+            Resource::Header(h) => {
+                let mut ids: Vec<&String> = h.positions.keys().collect();
+                ids.sort_by(|a, b| natural_order(a, b));
+                let text = ids
+                    .iter()
+                    .map(|id| format!("{id}: {}", h.positions[id.as_str()].text()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                ("Header".into(), text)
+            }
             Resource::Unclassified(p) => ("Other pins".into(), list(&p.pins)),
         }
     }
@@ -631,10 +701,12 @@ impl Resource {
             }
             Resource::Pmod(p) | Resource::Unclassified(p) => list("pins", &p.pins),
             Resource::Header(h) => h
-                .pins
+                .positions
                 .iter()
-                .enumerate()
-                .filter_map(|(i, p)| p.as_deref().map(|p| (format!("pins/{i}"), p)))
+                .filter_map(|(id, p)| match p {
+                    Position::Pin(p) => Some((format!("positions/{id}/pin"), p.as_str())),
+                    _ => None,
+                })
                 .collect(),
         }
     }
@@ -760,6 +832,11 @@ pub fn problems(resources: &Resources, family: Option<Family>) -> Vec<(String, S
             Resource::Unclassified(p) if p.pins.is_empty() => {
                 add("pins", "At least one pin.".into());
             }
+            Resource::Header(h) => {
+                for (field, text) in header_problems(h) {
+                    add(&field, text);
+                }
+            }
             _ => {}
         }
         if let Some(text) = io_standard_problem(r.io_standard(), family) {
@@ -853,6 +930,93 @@ fn requirement_problems(
 }
 
 /// A pin name: not empty, without spaces, quotes or semicolons.
+/// A header's problems the types can't catch, as (field, message): IDs,
+/// supplies, nets, the always-true forms and the grid.
+fn header_problems(h: &Header) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    if h.positions.is_empty() {
+        out.push(("positions".into(), "At least one position.".into()));
+    }
+    for (id, p) in &h.positions {
+        let at = format!("positions/{id}");
+        if id.is_empty()
+            || !id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            out.push((
+                at.clone(),
+                format!("{id:?} isn't a position ID: use letters, digits, - and _."),
+            ));
+        }
+        match p {
+            Position::Power(v) if !is_power(v) => out.push((
+                format!("{at}/power"),
+                format!("{v:?} isn't GND, VIN or a voltage such as 3.3V."),
+            )),
+            Position::Net(n) if n.trim().is_empty() || n.trim() != n => out.push((
+                format!("{at}/net"),
+                "A net is named, with no spaces around it.".into(),
+            )),
+            Position::Unconnected(false) => {
+                out.push((format!("{at}/unconnected"), "Only true.".into()))
+            }
+            Position::Unknown(false) => out.push((format!("{at}/unknown"), "Only true.".into())),
+            _ => {}
+        }
+    }
+    if let Some(grid) = &h.grid {
+        let ids: Vec<&str> = grid
+            .iter()
+            .flatten()
+            .flatten()
+            .map(String::as_str)
+            .collect();
+        let mut seen = std::collections::BTreeSet::new();
+        for id in &ids {
+            if !seen.insert(*id) {
+                out.push((
+                    "grid".into(),
+                    format!("Position {id} is in the grid twice."),
+                ));
+            } else if !h.positions.contains_key(*id) {
+                out.push(("grid".into(), format!("Position {id} isn't in positions.")));
+            }
+        }
+        for id in h.positions.keys() {
+            if !seen.contains(id.as_str()) {
+                out.push(("grid".into(), format!("Position {id} isn't in the grid.")));
+            }
+        }
+        if grid.is_empty()
+            || grid
+                .iter()
+                .any(|row| row.len() != grid[0].len() || row.is_empty())
+        {
+            out.push((
+                "grid".into(),
+                "Its rows are of one length, at least one position each.".into(),
+            ));
+        }
+    }
+    out
+}
+
+/// A supply's name: GND, VIN or a voltage such as 3.3V or 5V.
+fn is_power(v: &str) -> bool {
+    if v == "GND" || v == "VIN" {
+        return true;
+    }
+    let Some(n) = v.strip_suffix('V') else {
+        return false;
+    };
+    let (whole, frac) = n.split_once('.').unwrap_or((n, "0"));
+    !whole.is_empty()
+        && !frac.is_empty()
+        && whole.chars().all(|c| c.is_ascii_digit())
+        && frac.chars().all(|c| c.is_ascii_digit())
+}
+
 fn is_pin(p: &str) -> bool {
     !p.is_empty() && !p.chars().any(|c| c.is_whitespace() || c == '"' || c == ';')
 }
@@ -908,7 +1072,8 @@ mod tests {
                   "io_standard": "LVCMOS33", "source": {"kind": "schematic", "ref": "sheet 5"}},
             "uart": {"type": "uart", "tx": "9", "rx": "6"},
             "p": {"type": "pmod", "pins": ["1", "2", "3", "4", "5", "6", "7", "8"]},
-            "h": {"type": "header", "pins": ["1", null]},
+            "h": {"type": "header", "positions": {"1": {"pin": "12"}, "2": {"power": "GND"}, "3": {"net": "S1"},
+                  "4": {"unconnected": true}, "5": {"unknown": true}}, "grid": [["1", "2", "3"], ["5", "4", null]]},
             "osc": {"type": "clock", "pin": "20", "mhz": 12.5, "requires": [
                 {"type": "setup", "text": "Short jumper R16.", "source": {"kind": "maker"}},
                 {"type": "drive", "name": "osc_en", "pins": ["21"], "level": "high", "why": "Turns the oscillator on."}
@@ -1033,5 +1198,68 @@ mod tests {
             "p": {"type": "pmod", "pins": ["1", "2", "3", "4", "5", "6", "7", "8"]}
         }));
         assert!(problems(&shared, Some(Family::Ice40)).is_empty());
+    }
+
+    #[test]
+    fn header_positions_and_grid_are_checked() {
+        let r = res(serde_json::json!({
+            "h": {"type": "header", "positions": {
+                "1": {"pin": "12"}, "2": {"pin": "12"}, "3": {"power": "3V3"}, "4": {"net": " S1"},
+                "5": {"unconnected": false}, "6 a": {"unknown": true}},
+                "grid": [["1", "2", "3"], ["4", "5", "9", "1"]]}
+        }));
+        let found: Vec<(String, String)> = problems(&r, None)
+            .into_iter()
+            .map(|(_, f, m)| (f, m))
+            .collect();
+        for want in [
+            ("positions/2/pin", "Pin 12 is in this resource twice."),
+            (
+                "positions/3/power",
+                "\"3V3\" isn't GND, VIN or a voltage such as 3.3V.",
+            ),
+            (
+                "positions/4/net",
+                "A net is named, with no spaces around it.",
+            ),
+            ("positions/5/unconnected", "Only true."),
+            (
+                "positions/6 a",
+                "\"6 a\" isn't a position ID: use letters, digits, - and _.",
+            ),
+            ("grid", "Position 1 is in the grid twice."),
+            ("grid", "Position 9 isn't in positions."),
+            ("grid", "Position 6 a isn't in the grid."),
+            (
+                "grid",
+                "Its rows are of one length, at least one position each.",
+            ),
+        ] {
+            assert!(
+                found.contains(&(want.0.into(), want.1.into())),
+                "{want:?} in {found:?}"
+            );
+        }
+        // Two keys, or a null, aren't a position.
+        for bad in [
+            serde_json::json!({"h": {"type": "header", "positions": {"1": {"pin": "1", "power": "GND"}}}}),
+            serde_json::json!({"h": {"type": "header", "positions": {"1": null}}}),
+            serde_json::json!({"h": {"type": "header", "pins": ["1"]}}),
+        ] {
+            assert!(
+                serde_json::from_value::<Resources>(bad.clone()).is_err(),
+                "{bad}"
+            );
+        }
+        assert!(
+            is_power("5V")
+                && is_power("1.8V")
+                && is_power("GND")
+                && !is_power("V")
+                && !is_power("3.V")
+        );
+        let mut ids = vec!["10", "2", "1b", "1a", "A10", "A2"];
+        ids.sort_by(|a, b| natural_order(a, b));
+        assert_eq!(ids, ["1a", "1b", "2", "10", "A2", "A10"]);
     }
 }
