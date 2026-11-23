@@ -15,7 +15,7 @@ svg.logix-diagram .cat-fpga>.body{fill:var(--logix-diagram-fpga-fill,#fbe7da);st
 svg.logix-diagram .cat-port>.body{fill:var(--logix-diagram-pin-fill,#eef1f4);stroke:var(--logix-diagram-wire,#23303c)}
 svg.logix-diagram .cat-const>.body{fill:var(--logix-diagram-pin-fill,#eef1f4);stroke:var(--logix-diagram-fixed,#7b8794)}
 svg.logix-diagram .cat-const text{fill:var(--logix-diagram-fixed,#7b8794)}
-svg.logix-diagram .wire.clock,svg.logix-diagram .wire.global{stroke:var(--logix-diagram-clock,#2463b5);stroke-width:2}
+svg.logix-diagram .wire.clock,svg.logix-diagram .wire.global{stroke:var(--logix-diagram-clock,#2463b5)}
 svg.logix-diagram .junction.clock,svg.logix-diagram .junction.global{fill:var(--logix-diagram-clock,#2463b5)}
 svg.logix-diagram .wire.fixed{stroke:var(--logix-diagram-fixed,#7b8794)}
 svg.logix-diagram text.lbltext{font-size:9px}

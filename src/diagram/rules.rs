@@ -318,7 +318,6 @@ fn glyph(ty: &str) -> Option<&'static str> {
         "$bmux" => "MUX",
         "$tribuf" => "Z",
         _ if ty.starts_with("$dlatch") || ty.starts_with("$adlatch") => "LAT",
-        _ if category(ty) == "reg" => "REG",
         _ => return None,
     })
 }
@@ -1006,7 +1005,7 @@ mod tests {
             "a_very_long_regis…"
         );
         assert_eq!(glyph("$memwr_v2"), Some("WR"));
-        assert_eq!(glyph("$sdffe"), Some("REG"));
+        assert_eq!(glyph("$sdffe"), None);
         assert_eq!(glyph("$add"), None);
     }
 
