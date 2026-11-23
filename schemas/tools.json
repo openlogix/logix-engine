@@ -2152,22 +2152,34 @@
               ]
             },
             {
-              "description": "Another header: every position, null for power and ground.",
+              "description": "Another header: its positions by ID.",
               "type": "object",
               "properties": {
                 "type": {
                   "type": "string",
                   "const": "header"
                 },
-                "pins": {
-                  "type": "array",
+                "positions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/$defs/Position"
+                  }
+                },
+                "grid": {
+                  "description": "The positions as arranged, as rows of IDs: seen from the\ncomponent side with the board edge nearest the header at the\nbottom, rows from that edge inward, left to right; null for a\ngap. Omitted when the IDs make it clear.",
+                  "type": [
+                    "array",
+                    "null"
+                  ],
                   "items": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "minItems": 1
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
                 },
                 "io_standard": {
                   "description": "The pins' I/O standard, such as LVCMOS33, when known and\nthe FPGA family's pin files name one (not iCE40).",
@@ -2240,7 +2252,7 @@
               "additionalProperties": false,
               "required": [
                 "type",
-                "pins"
+                "positions"
               ]
             },
             {
@@ -2353,6 +2365,76 @@
             "red",
             "green",
             "blue"
+          ]
+        },
+        "Position": {
+          "description": "What a header position is wired to: exactly one of these, written as an\nobject with one key, such as `{\"pin\": \"21\"}` or `{\"power\": \"GND\"}`.",
+          "oneOf": [
+            {
+              "description": "An FPGA pin.",
+              "type": "object",
+              "properties": {
+                "pin": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "pin"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "description": "A supply or ground: GND, VIN or a voltage such as 3.3V.",
+              "type": "object",
+              "properties": {
+                "power": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "power"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "description": "Anything else on the board, named as its schematic names it.",
+              "type": "object",
+              "properties": {
+                "net": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "net"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "description": "Wired to nothing: always true.",
+              "type": "object",
+              "properties": {
+                "unconnected": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "unconnected"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "description": "Not known yet: always true.",
+              "type": "object",
+              "properties": {
+                "unknown": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "unknown"
+              ],
+              "additionalProperties": false
+            }
           ]
         },
         "CatalogFpga": {

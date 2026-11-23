@@ -472,8 +472,11 @@ mod tests {
             w("LED matrix", "1, 2; R 3, G 4, B 5", "Active low")
         );
         assert_eq!(
-            words(json!({"type": "header", "pins": ["1", null, "3"]})),
-            w("Header", "1, –, 3", "")
+            words(
+                json!({"type": "header", "positions": {"10": {"pin": "21"}, "2": {"power": "GND"},
+                "1": {"net": "S1"}, "3": {"unconnected": true}, "4": {"unknown": true}}})
+            ),
+            w("Header", "1: S1, 2: GND, 3: –, 4: ?, 10: 21", "")
         );
         assert_eq!(
             words(json!({"type": "unclassified", "pins": ["1"]})),
