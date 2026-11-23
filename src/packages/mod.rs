@@ -850,9 +850,47 @@ impl PackageManager {
                 spec.name,
                 manifest::shown_version(&spec.version)
             ));
-            self.download(spec, phases, cancel).await?;
+            if let Err(e) = self.download(spec, phases, cancel).await {
+                self.retry_rebuilt(spec, e, phases, cancel).await?;
+            }
         }
         Ok(())
+    }
+
+    /// After a failed download, reads the remote config again and, when it
+    /// names another file for the package, downloads that one. A dev
+    /// pre-release is rebuilt under the same tag (each push to a package
+    /// repo's `main` remakes the day's), so a config cached before the
+    /// rebuild names the old file's size and checksum, and the download
+    /// would fail until the cache was 24 hours old (logix-core's rebuild,
+    /// 2026-11-23). Otherwise returns the first error.
+    async fn retry_rebuilt(
+        &self,
+        spec: &PackageSpec,
+        first: ToolError,
+        phases: &Phases,
+        cancel: &CancellationToken,
+    ) -> Result<(), ToolError> {
+        if self.remote.is_none() || cancel.is_cancelled() {
+            return Err(first);
+        }
+        let before = self.file_for(spec).map(|f| f.sha256.clone());
+        if let Err(e) = self.refresh(true, true).await {
+            log::warn!("Can't read the remote config again after a failed download: {e:?}");
+            return Err(first);
+        }
+        let Ok(again) = self.spec(&spec.name) else {
+            return Err(first);
+        };
+        if self.file_for(&again).map(|f| f.sha256.clone()) == before {
+            return Err(first);
+        }
+        log::info!(
+            "The remote config names another file for {} {}: downloading it",
+            again.name,
+            again.version
+        );
+        self.download(&again, phases, cancel).await
     }
 }
 

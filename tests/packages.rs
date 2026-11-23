@@ -906,6 +906,48 @@ async fn a_new_config_switches_releases_and_deletes_the_old_ones() {
 }
 
 #[tokio::test]
+async fn a_rebuild_after_the_config_was_read_is_downloaded_on_the_first_try() {
+    // The config is read (and cached) before the release is rebuilt under
+    // the same tag, as logix-core's was on 2026-11-23: the cached checksum
+    // is the old file's, so the download fails, the engine reads the
+    // config again and downloads the rebuilt file.
+    let r = remote_setup();
+    let pm = r.pm(true, false);
+    let needed = pm.needing_download(&BOTH).await.unwrap();
+    let rebuilt = tgz(|b| add_file(b, "./rebuilt.txt", b"a rebuilt package", 0o644));
+    put_release(
+        &r.server,
+        "catalog",
+        "2026-01-02",
+        "catalog-20260102.tgz",
+        &rebuilt,
+    );
+    pm.ensure(&needed, true, &phases(), &CancellationToken::new())
+        .await
+        .unwrap();
+    let catalog = pm.spec("logix-catalog").unwrap();
+    assert_eq!(pm.status(&catalog), PackageStatus::Ready);
+    assert!(pm.package_dir(&catalog).join("rebuilt.txt").is_file());
+}
+
+#[tokio::test]
+async fn a_bad_download_the_config_still_names_is_an_error() {
+    // Reading the config again names the same file: the first error stands.
+    let r = remote_setup();
+    let pm = r.pm(true, false);
+    let needed = pm.needing_download(&BOTH).await.unwrap();
+    r.server.put(
+        "/test/catalog/releases/download/2026-01-02/catalog-20260102.tgz",
+        b"damaged",
+    );
+    let e = pm
+        .ensure(&needed, true, &phases(), &CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert!(format!("{e:?}").contains("logix-catalog"), "{e:?}");
+}
+
+#[tokio::test]
 async fn a_package_rebuilt_under_the_same_tag_is_downloaded_again() {
     let r = remote_setup();
     let pm = r.pm(true, false);
