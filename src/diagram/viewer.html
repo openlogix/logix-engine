@@ -119,6 +119,15 @@ button[hidden] { display: none; }
 <script>
 (function () {
   "use strict";
+  // The page as the engine wrote it, without its data, taken before the
+  // script changes anything: Export's web page is this page with the view
+  // built into its data, as the waveform page's (R48).
+  const PAGE = (() => {
+    // The data's line starts the line (this code has the same words in it).
+    const h = "<!doctype html>\n" + document.documentElement.outerHTML, mark = "\n  const DATA = ", k = h.indexOf(mark);
+    if (k < 0) return null;
+    return { head: h.slice(0, k + mark.length), tail: h.slice(h.indexOf("\n", k + 1)) };
+  })();
   const DATA = /*__DATA__*/null;
   const $ = (id) => document.getElementById(id);
   const canvas = $("canvas"), pop = $("pop");
@@ -129,7 +138,7 @@ button[hidden] { display: none; }
   const inFrame = window.parent !== window;
   const hosted = !!host() || inFrame;
   let path = [];
-  let vb = null, home = null;
+  let vb = null, home = null, startView = null;
 
   // Theme: ?theme=, a host's message, else the system's.
   const root = document.documentElement;
@@ -200,6 +209,8 @@ button[hidden] { display: none; }
     const pad = Math.max(b[2], b[3]) * 0.04;
     home = { x: b[0] - pad, y: b[1] - pad, w: b[2] + 2 * pad, h: b[3] + 2 * pad };
     vb = { ...home };
+    // A saved web page opens at the zoom it was saved with, once.
+    if (startView) { vb = { ...startView }; startView = null; }
     apply();
     // Wider hover targets for the wires.
     svg.querySelectorAll(".wire").forEach((el) => {
@@ -367,6 +378,18 @@ button[hidden] { display: none; }
         .then(() => toast("Copied a picture of the diagram: paste it into a message or a document."), failed);
     } catch (e) { failed(); }
   }
+  // The diagram as a web page to share: this page, with the whole design
+  // (every module), opening at the module and zoom shown. Anyone opens it
+  // in a browser and can zoom, pan and open modules; their changes stay in
+  // their copy (the user's request, 2026-11-23, as the waveform page's).
+  function savePage() {
+    if (!PAGE) return;
+    const name = baseName() + ".html";
+    const data = { ...DATA, view: { path: [...path], vb: vb ? { ...vb } : null } };
+    const json = JSON.stringify(data).replace(/<\//g, "<\\/");
+    save(name, "text/html", PAGE.head + json + ";" + PAGE.tail);
+    if (hosted) toast(`Exported ${name}: open it in any web browser.`);
+  }
   function saveImage(kind) {
     const name = baseName() + "." + kind;
     if (kind === "svg") { const s = shownSvg(); if (s) save(name, "image/svg+xml", s.text); return; }
@@ -394,6 +417,8 @@ button[hidden] { display: none; }
       "-",
       { label: "Save shown image (PNG)…", act: () => saveImage("png"), disabled: !canSave() },
       { label: "Save shown image (SVG)…", act: () => saveImage("svg"), disabled: !canSave() },
+      "-",
+      { label: "Web page of the design…", act: savePage, disabled: !canSave() || !PAGE },
     ];
     menu = document.createElement("div"); menu.className = "ctx"; menu.setAttribute("role", "menu");
     for (const it of items) {
@@ -599,10 +624,16 @@ button[hidden] { display: none; }
     else if (info.kind !== "module" && hosted) openSource(info.source);
   });
 
-  // Open the module the address names, such as #main/notegen.
+  // Open the module the address names, such as #main/notegen; else, in a
+  // saved web page, the module and zoom it was saved with.
   const start = decodeURIComponent(location.hash.slice(1)).split("/").filter(Boolean);
   if (start[0] === DATA.top) start.shift();
-  path = start.filter((k) => DATA.modules[k]);
+  const saved = DATA.view && Array.isArray(DATA.view.path) ? DATA.view : null;
+  if (!start.length && saved) {
+    path = saved.path.filter((k) => DATA.modules[k]);
+    const v = saved.vb;
+    if (v && [v.x, v.y, v.w, v.h].every(Number.isFinite) && v.w > 0 && v.h > 0) startView = v;
+  } else path = start.filter((k) => DATA.modules[k]);
   render();
 })();
 </script>
