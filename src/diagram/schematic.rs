@@ -543,7 +543,7 @@ impl Schematic {
                 r#"<svg xmlns="http://www.w3.org/2000/svg" class="logix-diagram" "#,
                 r#"viewBox="0 0 {w} {h}" width="{w}" height="{h}" data-module="{m}">"#,
                 "<style>{css}</style>",
-                r#"<g class="blocks">{blocks}</g><g class="wires">{wires}</g><g class="ports">{boxes}</g></svg>"#
+                r#"<g class="wires">{wires}</g><g class="blocks">{blocks}</g><g class="ports">{boxes}</g></svg>"#
             ),
             w = num(width),
             h = num(height),
