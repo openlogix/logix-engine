@@ -52,6 +52,18 @@ pub struct Call {
 }
 
 impl Call {
+    /// The same call with another progress sink, for a step of it with
+    /// phases of its own.
+    pub fn with_progress(&self, progress: Arc<dyn ProgressSink>) -> Call {
+        Call {
+            progress,
+            output: self.output.clone(),
+            cancel: self.cancel.clone(),
+            commands: self.commands.clone(),
+            display: self.display.clone(),
+        }
+    }
+
     /// A call with the given progress sink and no live output.
     pub fn new(progress: Arc<dyn ProgressSink>, cancel: CancellationToken) -> Self {
         Call {
@@ -62,6 +74,40 @@ impl Call {
             display: Default::default(),
         }
     }
+}
+
+/// The files a call read and checked, for its checked_files: the listed
+/// files, then the files they include (the engine's own include search),
+/// then `extra`, such as the constraint file. Named as the request names
+/// files: relative to the source folder `src`.
+pub fn checked_files(src: &std::path::Path, listed: &[String], extra: &[&str]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let includes = crate::build::find_includes(src, listed).unwrap_or_default();
+    for f in listed
+        .iter()
+        .cloned()
+        .chain(includes)
+        .chain(extra.iter().map(|e| e.to_string()))
+    {
+        if !out.contains(&f) {
+            out.push(f);
+        }
+    }
+    out
+}
+
+/// A design error with the files the call checked in data.checked_files,
+/// as a result has them, so a host replaces those files' old problems
+/// when a check fails too.
+pub fn with_checked<O>(result: Result<O, ToolError>, files: &[String]) -> Result<O, ToolError> {
+    result.map_err(|mut e| {
+        if e.category == crate::errors::Category::Design {
+            e.data
+                .get_or_insert_with(Default::default)
+                .insert("checked_files".into(), serde_json::json!(files));
+        }
+        e
+    })
 }
 
 /// A tool's name, description and types.
@@ -534,6 +580,41 @@ mod tests {
         for f in ["uint", "int8", "int16", "int32", "int64", "double", "float"] {
             assert!(!all.contains(&format!("\"format\":\"{f}")), "format {f}");
         }
+    }
+
+    #[test]
+    fn checked_files_are_the_listed_files_then_their_includes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = dunce::canonicalize(tmp.path()).unwrap();
+        std::fs::create_dir(src.join("rtl")).unwrap();
+        std::fs::write(src.join("main.v"), "`include \"defs.vh\"\n").unwrap();
+        std::fs::write(src.join("rtl/uart.v"), "`include \"uart.vh\"\n").unwrap();
+        std::fs::write(src.join("defs.vh"), "").unwrap();
+        std::fs::write(src.join("rtl/uart.vh"), "").unwrap();
+        let listed = ["main.v".to_string(), "rtl/uart.v".to_string()];
+        assert_eq!(
+            checked_files(&src, &listed, &["pinout.pcf", "main.v"]),
+            [
+                "main.v",
+                "rtl/uart.v",
+                "defs.vh",
+                "rtl/uart.vh",
+                "pinout.pcf"
+            ]
+        );
+        // A design error carries them; others don't.
+        let files = vec!["main.v".to_string()];
+        let e = with_checked::<()>(
+            Err(ToolError::new(crate::errors::Category::Design, "x")),
+            &files,
+        )
+        .unwrap_err();
+        assert_eq!(
+            e.data.unwrap()["checked_files"],
+            serde_json::json!(["main.v"])
+        );
+        let e = with_checked::<()>(Err(ToolError::request("x")), &files).unwrap_err();
+        assert!(e.data.is_none());
     }
 
     #[test]

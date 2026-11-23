@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use regex::Regex;
 use schemars::JsonSchema;
@@ -13,6 +13,7 @@ use crate::board;
 use crate::build::{self, BuildRequest};
 use crate::errors::{Diagnostic, ToolError};
 use crate::paths;
+use crate::progress::ProgressSink;
 use crate::state::EngineState;
 
 pub struct Build;
@@ -26,7 +27,9 @@ impl EngineTool for Build {
         though `include files are found next to the including file or in the source folder. A \
         build with no changes since the last one returns at once with up_to_date set. The first \
         build may download the toolchain package first, which takes a few minutes. Design \
-        problems come back as a design error with diagnostics at file and line. After a \
+        problems come back as a design error with diagnostics at file and line. Set lint to \
+        true to check the design with lint first, as an editor's Verify does: its problems \
+        join the build's in diagnostics, without repeats, and never stop the build. After a \
         successful build, program_board programs the bitstream into the board.";
     const READ_ONLY: bool = false;
     const OPEN_WORLD: bool = true;
@@ -94,6 +97,15 @@ pub struct BuildInput {
     /// logs. It doesn't change the result. Defaults to false.
     #[serde(default)]
     pub verbose: bool,
+    /// Check the design with lint (Verilator) first, as an editor's Verify
+    /// does: lint finds likely mistakes synthesis accepts and gives clearer
+    /// errors. Its problems never stop the build, which alone decides
+    /// success; they come first in diagnostics (and in a design error's
+    /// diagnostics), each with its tool, and a build problem on a line
+    /// lint already flagged with the same severity is left out. Defaults
+    /// to false.
+    #[serde(default)]
+    pub lint: bool,
 }
 
 /// The build result.
@@ -137,8 +149,19 @@ pub struct BuildOutput {
     /// logic cells, max clock 194.4 MHz." Empty when there's nothing to
     /// report.
     pub report_summary: String,
-    /// Warnings from the tools.
+    /// Warnings from the build's tools.
     pub warnings: Vec<Diagnostic>,
+    /// Every problem this call found, each with its tool: with lint, lint's
+    /// first, then the build's warnings, a build problem left out when lint
+    /// flagged the same line with the same severity; without lint, the
+    /// warnings.
+    pub diagnostics: Vec<Diagnostic>,
+    /// The files this call read and checked, named as the request names
+    /// files: the listed files, the files they include and the constraint file. A host
+    /// replaces these files' earlier problems with this result's; other
+    /// files keep theirs. A design error has the same list in
+    /// data.checked_files.
+    pub checked_files: Vec<String>,
     /// The programs this call ran, in order, each with the exact command and
     /// a shell line that runs it again without the engine, such as for a bug
     /// report to the tool's developers.
@@ -273,10 +296,56 @@ pub async fn run(
     input: BuildInput,
     call: &Call,
 ) -> Result<BuildOutput, ToolError> {
+    let lint_request = input.lint.then(|| super::lint::LintInput {
+        board: input.board.clone(),
+        board_variant: input.board_variant.clone(),
+        custom_boards_folder: input.custom_boards_folder.clone(),
+        display_paths: None,
+        top_module: Some(input.top_module.clone()),
+        source_folder: input.source_folder.clone(),
+        source_files: input.source_files.clone(),
+        testbench_files: Vec::new(),
+        defines: input.defines.clone(),
+        synthesize: true,
+        verbose: input.verbose,
+    });
     let request = check(input)?;
+    let checked = super::checked_files(
+        &request.source_folder,
+        &request.source_files,
+        &[&request.constraint_file],
+    );
     let arch = request.board.fpga.toolchain();
     let board_variant = request.board.variant.selector.clone();
-    let r = build::build(state, request, call).await?;
+    // Lint first, then the build, each with its own progress phases on one
+    // increasing scale.
+    let (linted, build_call) = match lint_request {
+        None => (Vec::new(), None),
+        Some(lint_input) => {
+            let stage = Arc::new(Stage::new(call.progress.clone(), 0.0));
+            let lint_call = call.with_progress(stage.clone());
+            let linted = match super::lint::check(lint_input) {
+                Ok(req) => match crate::sim::lint::lint(state, req, &lint_call).await {
+                    Ok(r) => r.diagnostics,
+                    Err(e) if e.category == crate::errors::Category::Cancelled => return Err(e),
+                    Err(e) => vec![lint_failed(&e)],
+                },
+                Err(e) => vec![lint_failed(&e)],
+            };
+            let after = Arc::new(Stage::new(call.progress.clone(), stage.end()));
+            (linted, Some(call.with_progress(after)))
+        }
+    };
+    let call = build_call.as_ref().unwrap_or(call);
+    let r = match super::with_checked(build::build(state, request, call).await, &checked) {
+        Ok(r) => r,
+        Err(mut e) => {
+            if e.category != crate::errors::Category::Cancelled {
+                e.diagnostics = merge_diagnostics(linted, std::mem::take(&mut e.diagnostics));
+            }
+            return Err(e);
+        }
+    };
     let summary = crate::build::summary::summarize(arch, &r.resources_usage);
     let clocks = crate::build::summary::summarize_clocks(arch, &r.timing);
     Ok(BuildOutput {
@@ -289,8 +358,73 @@ pub async fn run(
         bitstream: r.bitstream,
         board_variant,
         up_to_date: r.up_to_date,
+        diagnostics: merge_diagnostics(linted, r.warnings.clone()),
+        checked_files: checked,
         warnings: r.warnings,
     })
+}
+
+/// Lint's problems, then the build's, without the build problems lint
+/// already reported: one with lint's severity at the same file and line
+/// (or, without a file, the same text), as Verilator and yosys often flag
+/// the same mistake. Each list keeps all of its own.
+pub fn merge_diagnostics(lint: Vec<Diagnostic>, build: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    let repeated = |d: &Diagnostic| {
+        lint.iter().any(|l| {
+            l.severity == d.severity
+                && l.file == d.file
+                && l.line == d.line
+                && (d.file.is_some() || l.text == d.text)
+        })
+    };
+    let build: Vec<Diagnostic> = build.into_iter().filter(|d| !repeated(d)).collect();
+    lint.into_iter().chain(build).collect()
+}
+
+/// A warning for a lint run that failed, such as a tool failure: the build
+/// still runs.
+fn lint_failed(e: &ToolError) -> Diagnostic {
+    Diagnostic {
+        file: None,
+        line: None,
+        column: None,
+        severity: crate::errors::Severity::Warning,
+        text: format!("Lint couldn't check the design: {}", e.message),
+        tool: Some("verilator".into()),
+        time_ns: None,
+    }
+}
+
+/// One stage of a call that runs several operations, each with its own
+/// phases (lint, then build): its progress goes after the stages before it,
+/// on one increasing scale, as MCP requires.
+struct Stage {
+    inner: Arc<dyn ProgressSink>,
+    base: f64,
+    total: std::sync::Mutex<f64>,
+}
+
+impl Stage {
+    fn new(inner: Arc<dyn ProgressSink>, base: f64) -> Self {
+        Stage {
+            inner,
+            base,
+            total: std::sync::Mutex::new(0.0),
+        }
+    }
+
+    /// Where the next stage starts: after this one's whole scale.
+    fn end(&self) -> f64 {
+        self.base + *self.total.lock().unwrap()
+    }
+}
+
+impl ProgressSink for Stage {
+    fn report(&self, progress: f64, total: f64, message: Option<String>) {
+        *self.total.lock().unwrap() = total;
+        self.inner
+            .report(self.base + progress, self.base + total, message);
+    }
 }
 
 #[cfg(test)]
@@ -299,6 +433,79 @@ mod tests {
 
     fn board(id: &str) -> board::ResolvedBoard {
         board::resolve(id, &Default::default(), &Default::default()).unwrap()
+    }
+
+    #[test]
+    fn lint_and_build_problems_merge_without_repeats() {
+        use crate::errors::Severity;
+        let d =
+            |tool: &str, file: Option<&str>, line: Option<u32>, severity, text: &str| Diagnostic {
+                file: file.map(Into::into),
+                line,
+                column: None,
+                severity,
+                text: text.into(),
+                tool: Some(tool.into()),
+                time_ns: None,
+            };
+        let lint = vec![
+            d(
+                "verilator",
+                Some("main.v"),
+                Some(3),
+                Severity::Error,
+                "syntax error, unexpected assign",
+            ),
+            d(
+                "verilator",
+                Some("main.v"),
+                Some(3),
+                Severity::Warning,
+                "another on the line",
+            ),
+            d(
+                "verilator",
+                None,
+                None,
+                Severity::Warning,
+                "Lint couldn't check the design: x",
+            ),
+        ];
+        let build = vec![
+            // The same line and severity: lint said it already.
+            d(
+                "yosys",
+                Some("main.v"),
+                Some(3),
+                Severity::Error,
+                "syntax error, unexpected TOK_ASSIGN",
+            ),
+            // Another severity, another line or another text: kept.
+            d("yosys", Some("main.v"), Some(3), Severity::Info, "note"),
+            d("yosys", Some("main.v"), Some(4), Severity::Error, "x"),
+            d(
+                "nextpnr",
+                None,
+                None,
+                Severity::Warning,
+                "no clock constraint",
+            ),
+        ];
+        let merged = merge_diagnostics(lint.clone(), build.clone());
+        let texts: Vec<&str> = merged.iter().map(|d| d.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            [
+                "syntax error, unexpected assign",
+                "another on the line",
+                "Lint couldn't check the design: x",
+                "note",
+                "x",
+                "no clock constraint",
+            ]
+        );
+        // Without lint, the build's own, all of them.
+        assert_eq!(merge_diagnostics(Vec::new(), build.clone()), build);
     }
 
     #[test]

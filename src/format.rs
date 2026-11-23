@@ -23,6 +23,14 @@ pub const VERIBLE: &str = "verible";
 /// The formatter program in the package's bin folder.
 pub const FORMATTER: &str = "verible-verilog-format";
 
+/// Verilog and SystemVerilog design and testbench files, by extension
+/// without the dot: what lint, build, test, simulate and diagram take as
+/// source files (get_engine_info's hdl_extensions).
+pub const SOURCE_EXTENSIONS: &[&str] = &["v", "sv"];
+
+/// Their include files, by extension without the dot.
+pub const INCLUDE_EXTENSIONS: &[&str] = &["vh", "svh"];
+
 /// The file types the formatter takes, as formatting takes: Verilog,
 /// SystemVerilog and their include files.
 pub const EXTENSIONS: &[&str] = &[".v", ".sv", ".vh", ".svh"];

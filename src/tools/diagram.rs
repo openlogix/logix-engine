@@ -26,10 +26,10 @@ impl EngineTool for Diagram {
         self-contained page with every module (double-click a module to open it, drag to pan, scroll to zoom, hover \
         anything for its details; it needs no network or other software, so any web browser \
         shows it), and in its diagram/ folder (replaced by each call) each module's SVG and \
-        diagram.json, a model of every module's blocks, ports, signals and source lines. To \
-        show the user the diagram, set open to true, which opens the page in a window of its \
-        own (Logix Diagrams; if it can't, viewer_problem says why), or give them page_file's \
-        path. List the design files; the engine doesn't search for them. \
+        diagram.json, a model of every module's blocks, ports, signals and source lines. It \
+        then opens the page in a window of its own (Logix Diagrams) for the person at the \
+        screen; if it can't, viewer_problem says why. Set open to false to only write it, such \
+        as when no one is at the screen or the host shows the page itself (page_file). List the design files; the engine doesn't search for them. \
         Errors in the design, such as a syntax error or a top module that isn't in the \
         files, are design errors with diagnostics at file and line. The first call may \
         download the toolchain package first, which takes a few minutes.";
@@ -37,6 +37,10 @@ impl EngineTool for Diagram {
     const OPEN_WORLD: bool = true;
     type Input = DiagramInput;
     type Output = DiagramOutput;
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// What to draw.
@@ -81,9 +85,10 @@ pub struct DiagramInput {
     pub defines: BTreeMap<String, String>,
     /// Open the page in a window of its own (Logix Diagrams) when it's
     /// written, so the person at the screen sees the diagram at once; a
-    /// later call for the same page reloads that window. Defaults to false.
-    /// opened says whether it was.
-    #[serde(default)]
+    /// later call for the same page reloads that window. Defaults to true;
+    /// false only writes it, such as for a host that shows the page in a
+    /// window of its own. opened says whether it was.
+    #[serde(default = "default_true")]
     pub open: bool,
     /// How many levels of modules below top_module are drawn, such as 1
     /// for top_module and the modules it uses. Deeper modules are in the
@@ -156,6 +161,13 @@ pub struct DiagramOutput {
     /// Yosys warnings while reading the design, at file and line where
     /// known. Often empty.
     pub diagnostics: Vec<Diagnostic>,
+    /// The files this call read and checked, named as the request names
+    /// files: the listed files and the files they include. A host
+    /// replaces these files' earlier problems with this result's; other
+    /// files keep theirs. A design error has the same list in
+    /// data.checked_files.
+    pub checked_files: Vec<String>,
+
     /// The programs this call ran, in order, each with the exact command and
     /// a shell line that runs it again without the engine, such as for a bug
     /// report to the tool's developers.
@@ -218,7 +230,8 @@ pub async fn run(
     let req = check(input)?;
     let build_folder = req.build_folder.clone();
     let source_folder = req.source_folder.clone();
-    let r = diagram::diagram(state, req, call).await?;
+    let checked = super::checked_files(&req.source_folder, &req.source_files, &[]);
+    let r = super::with_checked(diagram::diagram(state, req, call).await, &checked)?;
     let viewer_problem = open.then(|| {
         let name = crate::viewer::app_name(&state.packages, crate::viewer::DIAGRAM);
         let project = source_folder
@@ -254,6 +267,7 @@ pub async fn run(
         opened: open && viewer_problem.as_ref().is_some_and(Option::is_none),
         viewer_problem: viewer_problem.flatten(),
         diagnostics: r.diagnostics,
+        checked_files: checked,
         commands: call.commands.take(),
     })
 }
@@ -308,6 +322,24 @@ mod tests {
         assert_eq!(req.source_files.len(), 2);
         assert!(req.open);
         assert_eq!(req.board.fpga.toolchain(), crate::catalog::Toolchain::Ice40);
+    }
+
+    #[test]
+    fn the_page_opens_unless_open_is_false() {
+        let (_tmp, src) = project();
+        assert!(check(input(&src, json!({}))).unwrap().open);
+        assert!(!check(input(&src, json!({"open": false}))).unwrap().open);
+        // simulate and open_waveform take the same field, with the same
+        // default.
+        let sim: crate::tools::simulate::SimulateInput = serde_json::from_value(json!({
+            "board": "icesugar-1-5", "source_folder": src, "source_files": ["main.v"],
+            "testbench_file": "main_tb.v", "build_folder": src.join("_build")
+        }))
+        .unwrap();
+        assert!(sim.open);
+        let wave: crate::tools::open_waveform::OpenWaveformInput =
+            serde_json::from_value(json!({"waveform_file": src.join("x.vcd")})).unwrap();
+        assert!(wave.open);
     }
 
     #[test]

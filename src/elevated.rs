@@ -143,6 +143,7 @@ pub fn report(response: &Response, output: &dyn crate::progress::OutputSink) {
                 text,
                 redraw: false,
                 original: None,
+                location: None,
             });
         }
     }

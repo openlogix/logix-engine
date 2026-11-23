@@ -39,6 +39,26 @@ pub enum Ending {
     NoFinish,
 }
 
+impl Ending {
+    /// How the run ended, for people, when it didn't end itself or stop at
+    /// a failure: why the testbench was stopped, or that it never called
+    /// $finish, naming the testbench (`file`, as the request names it).
+    pub fn text(self, file: &str) -> Option<String> {
+        match self {
+            Ending::Timeout => Some(format!(
+                "{file} was stopped because it ran too long. Does it end with $finish?"
+            )),
+            Ending::SimTimeLimit => Some(format!(
+                "{file} was stopped at its simulation time limit. Does it end with $finish?"
+            )),
+            Ending::NoFinish => Some(format!(
+                "{file} ended without calling $finish, which usually means it stopped early by mistake."
+            )),
+            Ending::Finished | Ending::FirstFailure => None,
+        }
+    }
+}
+
 /// How to run a testbench.
 #[derive(Debug, Clone, Copy)]
 pub struct RunOptions {

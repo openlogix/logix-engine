@@ -374,6 +374,54 @@ async fn test_runs_every_testbench_and_reports_failures_as_results() {
     assert!(src.join("_build/tb/sub_tb.out").is_file());
 }
 
+/// Each result names the files it read and checked (the listed files,
+/// then their includes), and so does a design error, so a host replaces
+/// those files' old problems.
+#[tokio::test]
+async fn results_name_the_files_they_checked() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    let all = ["main.v", "rtl/counter.v", "main_tb.v", "rtl/width.vh"];
+    let out = lint::run(&state, lint_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    assert_eq!(out.checked_files, all);
+    let out = lint::run(
+        &state,
+        lint_input(&src, json!({"testbench_files": []})),
+        &call(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        out.checked_files,
+        ["main.v", "rtl/counter.v", "rtl/width.vh"]
+    );
+    let out = test::run(&state, test_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    assert_eq!(out.checked_files, all);
+    let out = simulate::run(&state, simulate_input(&src, json!({})), &call())
+        .await
+        .unwrap();
+    assert_eq!(out.checked_files, all);
+    // A design error.
+    std::fs::write(
+        src.join("rtl/counter.v"),
+        COUNTER.replace("cnt + 1'b1;", "cnt +;"),
+    )
+    .unwrap();
+    let err = test::run(&state, test_input(&src, json!({})), &call())
+        .await
+        .unwrap_err();
+    assert_eq!(err.category, Category::Design);
+    assert_eq!(err.data.unwrap()["checked_files"], json!(all));
+    let err = simulate::run(&state, simulate_input(&src, json!({})), &call())
+        .await
+        .unwrap_err();
+    assert_eq!(err.data.unwrap()["checked_files"], json!(all));
+}
+
 #[tokio::test]
 async fn test_compile_errors_are_design_errors() {
     let state = engine().await;
@@ -454,7 +502,7 @@ fn simulate_input(src: &Path, extra: Value) -> simulate::SimulateInput {
         "source_files": ["main.v", "rtl/counter.v"],
         "testbench_file": "main_tb.v",
         "build_folder": src.join("_build"),
-        "open_viewer": false,
+        "open": false,
     });
     serde_json::from_value(with(v, extra)).expect("a valid simulate input")
 }
@@ -478,9 +526,9 @@ async fn simulate_writes_the_waveform_and_the_viewer_page_and_no_gtkwave_layout(
     assert!(out.passed, "{out:#?}");
     assert_eq!(out.waveform_file, "main_tb.vcd");
     assert!(src.join("_build/main_tb.vcd").is_file());
-    assert_eq!(out.viewer_file, "main_tb.html");
+    assert_eq!(out.page_file, "main_tb.html");
     assert!(src.join("_build/main_tb.html").is_file());
-    assert!(!out.viewer_opened);
+    assert!(!out.opened);
     // GTKWave is gone (R32): no layout anywhere, and its options are refused.
     assert!(!src.join("main_tb.gtkw").exists());
     assert!(!src.join("_build/main_tb.gtkw").exists());
@@ -636,6 +684,7 @@ async fn test_stops_at_the_first_failure_unless_asked_not_to() {
     let tb = &out.testbenches[0];
     assert!(!tb.passed);
     assert_eq!(tb.ending, Ending::FirstFailure);
+    assert_eq!(tb.ending_text, None, "a failure says it already");
     assert!(!tb.output.contains("still running"), "{}", tb.output);
     assert_eq!(tb.diagnostics.len(), 1, "{:#?}", tb.diagnostics);
     assert_eq!(tb.diagnostics[0].text, "first failure");
@@ -649,6 +698,7 @@ async fn test_stops_at_the_first_failure_unless_asked_not_to() {
     let tb = &out.testbenches[0];
     assert!(!tb.passed);
     assert_eq!(tb.ending, Ending::Finished);
+    assert_eq!(tb.ending_text, None);
     assert!(tb.output.contains("still running"), "{}", tb.output);
     let times: Vec<_> = tb.diagnostics.iter().map(|d| d.time_ns).collect();
     assert_eq!(times, [Some(10.0), Some(15.0)]);
@@ -713,8 +763,8 @@ async fn simulate_writes_the_waveform_viewer_with_the_failures_and_the_saved_vie
     let out = simulate::run(&state, input(json!({})), &call())
         .await
         .unwrap();
-    assert_eq!(out.viewer_file, "main_tb.html");
-    assert!(!out.viewer_opened);
+    assert_eq!(out.page_file, "main_tb.html");
+    assert!(!out.opened);
     let data = page_data(&src.join("_build/main_tb.html"));
     // The testbench's own signals, in the order it declares them, and where.
     assert_eq!(data["order"], json!(["main_tb.clk", "main_tb.q"]));
@@ -758,7 +808,7 @@ async fn open_waveform_shows_any_waveform_at_a_place_a_client_chooses() {
         let v = json!({
             "waveform_file": vcd,
             "build_folder": src.join("_view_build"),
-            "open_viewer": false,
+            "open": false,
         });
         serde_json::from_value(with(v, extra)).unwrap()
     };
@@ -770,8 +820,8 @@ async fn open_waveform_shows_any_waveform_at_a_place_a_client_chooses() {
     assert_eq!(out.unknown_signals, ["main_tb.nope"]);
     assert!(out.signal_count >= 2, "{out:?}");
     assert!(out.end_ns >= 95.0, "{out:?}");
-    assert!(!out.viewer_opened);
-    let data = page_data(Path::new(&out.viewer_file));
+    assert!(!out.opened);
+    let data = page_data(Path::new(&out.page_file));
     assert_eq!(
         data["focus"]["signals"],
         json!(["main_tb.q", "main_tb.nope"])
@@ -849,6 +899,10 @@ async fn runs_that_dont_end_are_stopped_by_the_limits() {
     let out = test::run(&state, input, &call()).await.unwrap();
     let tb = &out.testbenches[0];
     assert_eq!(tb.ending, Ending::SimTimeLimit, "{tb:#?}");
+    assert_eq!(
+        tb.ending_text.as_deref(),
+        Some("main_tb.v was stopped at its simulation time limit. Does it end with $finish?")
+    );
     assert!(!tb.passed);
     assert!(
         tb.diagnostics.is_empty(),
@@ -862,6 +916,10 @@ async fn runs_that_dont_end_are_stopped_by_the_limits() {
     let input = test_input(&src, json!({"timeout_seconds": 1}));
     let out = test::run(&state, input, &call()).await.unwrap();
     assert_eq!(out.testbenches[0].ending, Ending::Timeout);
+    assert_eq!(
+        out.testbenches[0].ending_text.as_deref(),
+        Some("main_tb.v was stopped because it ran too long. Does it end with $finish?")
+    );
     assert!(!out.passed);
     assert!(start.elapsed() < std::time::Duration::from_secs(8));
 
@@ -871,6 +929,11 @@ async fn runs_that_dont_end_are_stopped_by_the_limits() {
     let input = simulate_input(&src, json!({"timeout_seconds": 1}));
     let out = simulate::run(&state, input, &call()).await.unwrap();
     assert_eq!(out.ending, Ending::Timeout);
+    assert!(
+        out.ending_text
+            .as_deref()
+            .is_some_and(|t| t.starts_with("main_tb.v was stopped because it ran too long."))
+    );
 
     for (extra, needle) in [
         (json!({"max_sim_time_ns": 0}), "max_sim_time_ns"),
@@ -898,6 +961,12 @@ async fn a_testbench_without_finish_fails_and_long_output_is_shortened() {
         .unwrap();
     let tb = &out.testbenches[0];
     assert_eq!(tb.ending, Ending::NoFinish);
+    assert_eq!(
+        tb.ending_text.as_deref(),
+        Some(
+            "main_tb.v ended without calling $finish, which usually means it stopped early by mistake."
+        )
+    );
     assert!(!tb.passed);
     assert!(tb.output.starts_with("line 0\n"));
     assert!(
@@ -1262,7 +1331,7 @@ async fn writes_the_waveform_pages_the_browser_tests_use() {
             "source_files": ["morse.v"],
             "testbench_file": "morse_tb.v",
             "build_folder": src.join("_build"),
-            "open_viewer": false,
+            "open": false,
         });
         if let Some(v) = view {
             std::fs::write(src.join("morse_tb.view"), v.to_string()).unwrap();
@@ -1273,7 +1342,7 @@ async fn writes_the_waveform_pages_the_browser_tests_use() {
             .unwrap();
         assert!(out.passed, "{name}: {out:#?}");
         std::fs::copy(
-            src.join("_build").join(&out.viewer_file),
+            src.join("_build").join(&out.page_file),
             out_dir.join(format!("{name}.html")),
         )
         .unwrap();

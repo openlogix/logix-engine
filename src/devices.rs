@@ -68,6 +68,20 @@ pub struct Device {
     /// so none is likely). Empty when no board is likely.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub likely_boards: Vec<String>,
+    /// The other boards worth naming, after likely_boards, best first: the
+    /// rest of boards, except that when the device has a strong match, only
+    /// the request's board (board, else the build's) when the device may be
+    /// it, since dozens of boards that share a USB chip would only be
+    /// noise. Empty when there are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub other_boards: Vec<String>,
+    /// The device's place in one list of devices and unreachable together,
+    /// 0 first: those that may be the request's board (board, else the
+    /// build's), then those that may be other boards, then the rest; within
+    /// each, devices before unreachable ones, each in its list's order. For
+    /// a host that shows both lists as one.
+    #[serde(default)]
+    pub rank: usize,
     /// How well the device matches the given build's board in the build's
     /// variant: strong, possible or weak, as in boards. Present only when
     /// list_devices was given a build_folder.
@@ -265,6 +279,18 @@ pub struct UnreachableDevice {
     /// be programmed and its name read." (action says it for AI agents).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub fix: String,
+    /// What the device may be and what to do, for people, in a sentence or
+    /// two: "This may be your Alhambra II: it has the same USB IDs. Add a
+    /// udev rule for it, so it can be programmed and its name read." when
+    /// it may be the request's board (board, else the build's), else that
+    /// it may be an FPGA board, naming the board when only one has its USB
+    /// IDs, or counting them. Ends with fix.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub note: String,
+    /// Its place in one list of devices and unreachable together, as for
+    /// devices.
+    #[serde(default)]
+    pub rank: usize,
     /// On Windows and Linux: what it needs for its board's programmer and
     /// what it has, as for devices.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -402,6 +428,8 @@ impl Device {
             device,
             boards: Vec::new(),
             likely_boards: Vec::new(),
+            other_boards: Vec::new(),
+            rank: 0,
             build_match: None,
             location,
             reachable,

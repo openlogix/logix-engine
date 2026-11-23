@@ -106,6 +106,8 @@ async fn formats_each_file_and_reports_syntax_errors() {
         ]
     );
     assert!(!out.passed);
+    // Every file it checked, formatted or not.
+    assert_eq!(out.checked_files, ["main.v", "rtl/tidy.v", "broken.v"]);
     assert_eq!(std::fs::read_to_string(src.join("main.v")).unwrap(), TIDY);
     assert_eq!(
         std::fs::read_to_string(src.join("rtl/tidy.v")).unwrap(),
@@ -177,4 +179,27 @@ async fn a_linked_file_is_formatted_through_the_link() {
             .is_symlink()
     );
     assert_eq!(std::fs::read_to_string(src.join("main.v")).unwrap(), TIDY);
+}
+
+/// get_engine_info gives Verible's language server, from the same core,
+/// for hosts that run it themselves (Logix IDE's live errors).
+#[tokio::test]
+async fn get_engine_info_gives_the_language_server_command() {
+    let (_tmp, src) = project();
+    // Formatting makes sure the core is there.
+    run(&src, json!({"source_files": ["main.v"]}), Arc::default()).await;
+    let state = engine();
+    state.packages.refresh(false, false).await.unwrap();
+    let info = logix_engine::tools::get_engine_info::run(&state, Default::default()).unwrap();
+    let ls = info.language_server.expect("the language server");
+    let command = Path::new(&ls.command);
+    assert!(command.is_absolute() && command.is_file(), "{}", ls.command);
+    assert!(
+        command
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("verible-verilog-ls")
+    );
+    assert_eq!(ls.args, ["--ruleset=none", "--lsp_enable_hover=true"]);
 }

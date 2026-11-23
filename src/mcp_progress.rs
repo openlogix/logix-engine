@@ -117,6 +117,9 @@ impl OutputSink for McpNotifier {
         if let Some(original) = line.original {
             note["original_text"] = json!(original);
         }
+        if let Some(location) = line.location {
+            note["location"] = json!(location);
+        }
         self.send(Note::Output(note));
     }
 

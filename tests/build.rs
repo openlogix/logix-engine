@@ -666,6 +666,129 @@ async fn warnings_are_reported() {
     assert_eq!(w.line, Some(2));
 }
 
+/// Verify as an editor does it: lint, then build, in one call. Lint's
+/// problems come first, the build's follow without the lines lint flagged,
+/// and lint never stops the build.
+#[tokio::test]
+async fn lint_first_joins_its_problems_without_repeats() {
+    let state = engine().await;
+    let (_tmp, src) = project();
+    std::fs::write(
+        src.join("main.v"),
+        "module main(input CLK, output LED0, output LED1);
+  assign LED0 = count[7];
+  reg [3:0] nibble = 0;
+  reg [7:0] count = 0;
+  always @(posedge CLK) begin count <= count + 1; nibble <= count; end
+  assign LED1 = nibble[0];
+endmodule
+",
+    )
+    .unwrap();
+    #[derive(Default)]
+    struct Progress(std::sync::Mutex<Vec<(f64, f64, Option<String>)>>);
+    impl ProgressSink for Progress {
+        fn report(&self, p: f64, t: f64, m: Option<String>) {
+            self.0.lock().unwrap().push((p, t, m));
+        }
+    }
+    let rec = Arc::new(Progress::default());
+    let c = Call::new(rec.clone(), CancellationToken::new());
+    let out = build::run(&state, request(&src, json!({"lint": true})), &c)
+        .await
+        .unwrap();
+    // Lint's width warning, with its tool.
+    let trunc = out
+        .diagnostics
+        .iter()
+        .find(|d| d.text.contains("WIDTH"))
+        .unwrap_or_else(|| panic!("no width warning in {:?}", out.diagnostics));
+    assert_eq!(trunc.tool.as_deref(), Some("verilator"));
+    assert_eq!(trunc.line, Some(5));
+    assert!(
+        out.warnings
+            .iter()
+            .all(|w| w.tool.as_deref() != Some("verilator"))
+    );
+    // No line twice with the same severity from two tools.
+    for (i, a) in out.diagnostics.iter().enumerate() {
+        for b in &out.diagnostics[i + 1..] {
+            assert!(
+                !(a.tool != b.tool
+                    && a.file == b.file
+                    && a.line == b.line
+                    && a.severity == b.severity),
+                "{a:?} and {b:?}"
+            );
+        }
+    }
+    // Lint ran first, in the same commands list.
+    assert_eq!(out.commands[0].tool, "verilator_bin");
+    assert!(out.commands.iter().any(|c| c.tool == "yosys"));
+    // Its phases, then the build's, on one increasing scale.
+    let got = rec.0.lock().unwrap().clone();
+    let messages: Vec<&str> = got.iter().filter_map(|(_, _, m)| m.as_deref()).collect();
+    assert_eq!(
+        messages,
+        [
+            "Linting",
+            "Synthesizing",
+            "Placing and routing",
+            "Packing bitstream"
+        ]
+    );
+    for w in got.windows(2) {
+        assert!(w[1].0 > w[0].0, "{got:?}");
+    }
+    let (last, total, _) = got.last().unwrap();
+    assert!(last < total);
+
+    // Without lint: diagnostics are the build's warnings. The files it
+    // checked: the sources, their includes and the pin file.
+    let out = build_it(&state, &src, json!({})).await.unwrap();
+    assert_eq!(out.diagnostics, out.warnings);
+    assert_eq!(out.checked_files, ["main.v", "pinout.pcf"]);
+    let (_tmp2, with_include) = project();
+    let out = build_it(&state, &with_include, json!({})).await.unwrap();
+    assert_eq!(out.checked_files, ["main.v", "defs.vh", "pinout.pcf"]);
+
+    // A syntax error: a design error whose diagnostics have lint's first,
+    // and the build's for the same line left out.
+    std::fs::write(
+        src.join("main.v"),
+        "module main(input CLK, output LED0, output LED1);\n  reg x\n  assign LED0 = 1;\nendmodule\n",
+    )
+    .unwrap();
+    let err = build_it(&state, &src, json!({"lint": true}))
+        .await
+        .unwrap_err();
+    assert_eq!(err.category, Category::Design, "{err:?}");
+    assert_eq!(
+        err.data.as_ref().unwrap()["checked_files"],
+        json!(["main.v", "pinout.pcf"])
+    );
+    assert_eq!(
+        err.diagnostics[0].tool.as_deref(),
+        Some("verilator"),
+        "{:?}",
+        err.diagnostics
+    );
+    let lint_lines: Vec<_> = err
+        .diagnostics
+        .iter()
+        .filter(|d| d.tool.as_deref() == Some("verilator"))
+        .map(|d| (d.file.clone(), d.line, d.severity))
+        .collect();
+    assert!(
+        err.diagnostics
+            .iter()
+            .filter(|d| d.tool.as_deref() != Some("verilator"))
+            .all(|d| !lint_lines.contains(&(d.file.clone(), d.line, d.severity))),
+        "{:?}",
+        err.diagnostics
+    );
+}
+
 #[tokio::test]
 async fn request_errors() {
     let state = engine().await;
@@ -893,6 +1016,8 @@ fn program_input(build_folder: &Path, extra: Value) -> program_board::ProgramBoa
 
 #[test]
 fn list_devices_names_the_boards_each_device_may_be() {
+    // The catalog, even when this test runs alone.
+    logix_engine::catalog::use_test_copy();
     let devices = vec![
         usb("Alhambra II", Some("A1"), 3),
         usb("Dual RS232-HS", None, 4),
@@ -944,6 +1069,29 @@ async fn list_devices_for_a_build_lists_only_the_devices_that_fit() {
     assert!(!out.devices[0].boards.is_empty(), "still all its boards");
     assert_eq!(out.unreachable.len(), 1);
     assert_eq!(out.unreachable[0].build_match, Some(MatchLevel::Weak));
+    // The build's board, connected: named in the status, and the device
+    // that can't be opened has a note that it may be it.
+    let status = out.status.as_ref().unwrap();
+    assert_eq!(status.code, list_devices::StatusCode::Connected);
+    assert_eq!(status.message, "The Alhambra II is connected.");
+    assert!(
+        out.unreachable[0]
+            .note
+            .starts_with("This may be your Alhambra II"),
+        "{}",
+        out.unreachable[0].note
+    );
+    // None fits: not connected, with what is connected.
+    let out =
+        list_devices::run_with(input(&folder), || Ok(vec![usb("Dual RS232-HS", None, 4)])).unwrap();
+    let status = out.status.unwrap();
+    assert_eq!(status.code, list_devices::StatusCode::NotConnected);
+    assert_eq!(
+        status.message,
+        "The Alhambra II isn't connected. Connect it by USB, then try again."
+    );
+    assert_eq!(status.hints[1], "  • Dual RS232-HS (0403:6010)");
+    assert_eq!(status.action.unwrap().code, ActionCode::ConnectBoard);
 }
 
 #[tokio::test]

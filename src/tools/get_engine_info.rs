@@ -2,6 +2,7 @@
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use super::EngineTool;
 use crate::errors::ToolError;
@@ -73,6 +74,21 @@ pub struct GetEngineInfoOutput {
     pub boards_schema: String,
     /// The board catalog the engine reads: its Logix Catalog version.
     pub catalog: CatalogInfo,
+    /// The file extensions of the HDL files the tools take, without the
+    /// dot, so a frontend knows which files are sources: source (design
+    /// and testbench files: v, sv) and include (files they include: vh,
+    /// svh). Pin files are per FPGA family: get_catalog's families give
+    /// each its constraint_extension and constraint_comment.
+    pub hdl_extensions: HdlExtensions,
+    /// Verible's Verilog language server, for a host that runs it itself
+    /// for live errors and other help while the user types: the command
+    /// (its absolute path), its arguments and the environment variables to
+    /// set for it, on top of the host's own (none today). Its arguments
+    /// check syntax only (Verible's style rules would flood beginners;
+    /// lint finds design problems) and turn hover info on. Omitted until
+    /// the FPGA tools (logix-core) are downloaded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language_server: Option<LanguageServer>,
     /// The developer settings in effect: the environment variables the
     /// engine reads for development and diagnostics (LOGIX_ENGINE_CHANNEL,
     /// LOGIX_ENGINE_DEV_REMOTE_CONFIG, LOGIX_ENGINE_DEV_CATALOG_FOLDER), each
@@ -91,6 +107,66 @@ pub struct GetEngineInfoOutput {
     /// when any is set, then the version tree. Show it as is; its wording
     /// can change in any version, so programs read the fields above.
     pub report: String,
+}
+
+/// A program a host runs itself, with its arguments and environment.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LanguageServer {
+    /// The program, as an absolute path, such as
+    /// .../packages/logix-core/2026-11-22/verible/bin/verible-verilog-ls.
+    pub command: String,
+    /// Its arguments, in order: --ruleset=none --lsp_enable_hover=true.
+    pub args: Vec<String>,
+    /// Environment variables to set for it, on top of the host's own.
+    /// Empty today.
+    pub env: BTreeMap<String, String>,
+}
+
+/// The language server's program in the verible component.
+const LANGUAGE_SERVER: &str = "verible-verilog-ls";
+
+/// Its arguments: syntax errors only, and hover info.
+const LANGUAGE_SERVER_ARGS: &[&str] = &["--ruleset=none", "--lsp_enable_hover=true"];
+
+/// Verible's language server, from a ready logix-core's verible
+/// component, when its program is there.
+pub fn language_server(packages: &[PackageInfo]) -> Option<LanguageServer> {
+    let bin = packages
+        .iter()
+        .find(|p| p.name == crate::packages::CORE && p.status == PackageStatus::Ready)?
+        .components
+        .iter()
+        .find(|c| c.name == crate::format::VERIBLE)?
+        .bin_folder
+        .clone();
+    let program = std::path::Path::new(&bin)
+        .join(format!("{LANGUAGE_SERVER}{}", std::env::consts::EXE_SUFFIX));
+    program.is_file().then(|| LanguageServer {
+        command: program.display().to_string(),
+        args: LANGUAGE_SERVER_ARGS.iter().map(|a| a.to_string()).collect(),
+        env: BTreeMap::new(),
+    })
+}
+
+/// HDL file extensions, without the dot.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HdlExtensions {
+    /// Design and testbench files: v (Verilog) and sv (SystemVerilog).
+    pub source: Vec<String>,
+    /// Files they include: vh and svh.
+    pub include: Vec<String>,
+}
+
+impl HdlExtensions {
+    pub fn get() -> Self {
+        let list = |l: &[&str]| l.iter().map(|e| e.to_string()).collect();
+        HdlExtensions {
+            source: list(crate::format::SOURCE_EXTENSIONS),
+            include: list(crate::format::INCLUDE_EXTENSIONS),
+        }
+    }
 }
 
 /// The engine's remote config: which config file it reads, from where, and
@@ -170,8 +246,8 @@ pub struct ComponentInfo {
     pub name: String,
     pub description: String,
     /// The folder with the component's programs, as an absolute path. For
-    /// hosts that run one of its programs directly, such as Verible's
-    /// language server verible-verilog-ls from the verible component.
+    /// hosts that run one of its programs directly (for Verible's language
+    /// server, use language_server, which has its arguments too).
     pub bin_folder: String,
 }
 
@@ -223,10 +299,13 @@ pub fn run(
                 local: false,
             },
         },
+        hdl_extensions: HdlExtensions::get(),
+        language_server: None,
         developer_settings: crate::versions::developer_settings(),
         versions: crate::versions::engine_entry(state),
         report: String::new(),
     };
+    out.language_server = language_server(&out.packages);
     out.report = report(&out);
     Ok(out)
 }
@@ -332,6 +411,50 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_language_server_comes_from_a_ready_core() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bin = tmp.path().join("verible/bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let program = bin.join(format!(
+            "verible-verilog-ls{}",
+            std::env::consts::EXE_SUFFIX
+        ));
+        let core = |status| PackageInfo {
+            name: crate::packages::CORE.into(),
+            version: "2026.11.22".into(),
+            status,
+            components: vec![ComponentInfo {
+                name: "verible".into(),
+                description: String::new(),
+                bin_folder: bin.display().to_string(),
+            }],
+        };
+        // Not there yet.
+        assert!(language_server(&[core(PackageStatus::Ready)]).is_none());
+        std::fs::write(&program, "").unwrap();
+        let ls = language_server(&[core(PackageStatus::Ready)]).unwrap();
+        assert_eq!(ls.command, program.display().to_string());
+        assert_eq!(ls.args, ["--ruleset=none", "--lsp_enable_hover=true"]);
+        assert!(ls.env.is_empty());
+        assert!(language_server(&[core(PackageStatus::Missing)]).is_none());
+        assert!(language_server(&[]).is_none());
+    }
+
+    #[test]
+    fn hdl_extensions_are_what_the_formatter_takes() {
+        let e = HdlExtensions::get();
+        assert_eq!(e.source, ["v", "sv"]);
+        assert_eq!(e.include, ["vh", "svh"]);
+        let all: Vec<String> = e
+            .source
+            .iter()
+            .chain(&e.include)
+            .map(|x| format!(".{x}"))
+            .collect();
+        assert_eq!(all, crate::format::EXTENSIONS);
+    }
+
+    #[test]
     fn the_report_lists_the_facts_then_the_versions() {
         use crate::versions::{DeveloperSetting, VersionEntry, VersionKind};
         let leaf = |name: &str, version: &str, notes: &[&str]| VersionEntry {
@@ -368,6 +491,8 @@ mod tests {
                 read_at: Some("2026-11-08T09:30:00Z".into()),
             },
             boards_schema: crate::catalog::BOARDS_SCHEMA.into(),
+            hdl_extensions: HdlExtensions::get(),
+            language_server: None,
             catalog: CatalogInfo {
                 version: "2026.11.08".into(),
                 local: false,

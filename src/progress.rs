@@ -66,6 +66,20 @@ pub struct ToolLine<'a> {
     pub redraw: bool,
     /// The line as printed, when a rule removed noise from it.
     pub original: Option<&'a str>,
+    /// The place in a file of the request the line names, such as
+    /// main.v:12, when the engine recognized one (src/display_paths.rs).
+    pub location: Option<&'a Location>,
+}
+
+/// A place in a file, as a live output line names it: `file` named as
+/// diagnostics name files (the request's display paths applied), `line`
+/// from 1 and `column` from 1 when the line gives one.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Location {
+    pub file: String,
+    pub line: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub column: Option<u32>,
 }
 
 /// Where live tool output goes, line by line.

@@ -502,6 +502,7 @@ async fn download_packages_tool_downloads_once_even_with_auto_download_off() {
         .await
         .unwrap();
     assert_eq!(out.downloaded, vec!["pkg"]);
+    assert_eq!(out.summary, ["Downloaded pkg 2026.01.02."]);
     assert_eq!(out.packages.len(), 1);
     assert_eq!(out.packages[0].status, PackageStatus::Ready);
     let reports = rec.0.lock().unwrap().clone();
@@ -517,6 +518,7 @@ async fn download_packages_tool_downloads_once_even_with_auto_download_off() {
         serde_json::from_value(serde_json::json!({"packages": ["pkg", "pkg"]})).unwrap();
     let out = download_packages::run(&state, input, &call).await.unwrap();
     assert!(out.downloaded.is_empty());
+    assert!(out.summary.is_empty(), "nothing to say");
     assert!(rec2.0.lock().unwrap().is_empty());
     assert_eq!(s.server.requests.load(Ordering::SeqCst), 1);
 }

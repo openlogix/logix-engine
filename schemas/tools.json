@@ -80,6 +80,21 @@
           "description": "The board catalog the engine reads: its Logix Catalog version.",
           "$ref": "#/$defs/CatalogInfo"
         },
+        "hdl_extensions": {
+          "description": "The file extensions of the HDL files the tools take, without the\ndot, so a frontend knows which files are sources: source (design\nand testbench files: v, sv) and include (files they include: vh,\nsvh). Pin files are per FPGA family: get_catalog's families give\neach its constraint_extension and constraint_comment.",
+          "$ref": "#/$defs/HdlExtensions"
+        },
+        "language_server": {
+          "description": "Verible's Verilog language server, for a host that runs it itself\nfor live errors and other help while the user types: the command\n(its absolute path), its arguments and the environment variables to\nset for it, on top of the host's own (none today). Its arguments\ncheck syntax only (Verible's style rules would flood beginners;\nlint finds design problems) and turn hover info on. Omitted until\nthe FPGA tools (logix-core) are downloaded.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LanguageServer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "developer_settings": {
           "description": "The developer settings in effect: the environment variables the\nengine reads for development and diagnostics (LOGIX_ENGINE_CHANNEL,\nLOGIX_ENGINE_DEV_REMOTE_CONFIG, LOGIX_ENGINE_DEV_CATALOG_FOLDER), each\nwith its value, when set. Omitted when none is, as for users.",
           "type": "array",
@@ -110,6 +125,7 @@
         "remote_config",
         "boards_schema",
         "catalog",
+        "hdl_extensions",
         "versions",
         "report"
       ],
@@ -177,7 +193,7 @@
               "type": "string"
             },
             "bin_folder": {
-              "description": "The folder with the component's programs, as an absolute path. For\nhosts that run one of its programs directly, such as Verible's\nlanguage server verible-verilog-ls from the verible component.",
+              "description": "The folder with the component's programs, as an absolute path. For\nhosts that run one of its programs directly (for Verible's language\nserver, use language_server, which has its arguments too).",
               "type": "string"
             }
           },
@@ -255,6 +271,61 @@
           "additionalProperties": false,
           "required": [
             "version"
+          ]
+        },
+        "HdlExtensions": {
+          "description": "HDL file extensions, without the dot.",
+          "type": "object",
+          "properties": {
+            "source": {
+              "description": "Design and testbench files: v (Verilog) and sv (SystemVerilog).",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "include": {
+              "description": "Files they include: vh and svh.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "include"
+          ]
+        },
+        "LanguageServer": {
+          "description": "A program a host runs itself, with its arguments and environment.",
+          "type": "object",
+          "properties": {
+            "command": {
+              "description": "The program, as an absolute path, such as\n.../packages/logix-core/2026-11-22/verible/bin/verible-verilog-ls.",
+              "type": "string"
+            },
+            "args": {
+              "description": "Its arguments, in order: --ruleset=none --lsp_enable_hover=true.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "env": {
+              "description": "Environment variables to set for it, on top of the host's own.\nEmpty today.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "command",
+            "args",
+            "env"
           ]
         },
         "DeveloperSetting": {
@@ -425,12 +496,20 @@
           "items": {
             "$ref": "#/$defs/PackageInfo"
           }
+        },
+        "summary": {
+          "description": "What this call did, for people, a sentence each, such as\n\"Downloaded logix-core 2026.11.22.\": one per package it downloaded,\nrepaired or downloaded again. Empty when there was nothing to do.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false,
       "required": [
         "downloaded",
-        "packages"
+        "packages",
+        "summary"
       ],
       "$defs": {
         "PackageInfo": {
@@ -496,7 +575,7 @@
               "type": "string"
             },
             "bin_folder": {
-              "description": "The folder with the component's programs, as an absolute path. For\nhosts that run one of its programs directly, such as Verible's\nlanguage server verible-verilog-ls from the verible component.",
+              "description": "The folder with the component's programs, as an absolute path. For\nhosts that run one of its programs directly (for Verible's language\nserver, use language_server, which has its arguments too).",
               "type": "string"
             }
           },
@@ -566,6 +645,13 @@
               "type": "null"
             }
           ]
+        },
+        "summary": {
+          "description": "What changed, for people, a sentence each: \"Updated logix-core to\n2026.11.22.\" for each package whose release changed, \"Downloaded\nlogix-catalog 2026.11.22.\" for one only downloaded or repaired, or\n\"Logix Engine's packages are up to date.\" when nothing changed.\nPackages are named by their package names. A newer engine isn't in\nit: see newer_engine.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false,
@@ -573,7 +659,8 @@
         "updates",
         "downloaded",
         "packages",
-        "remote_config"
+        "remote_config",
+        "summary"
       ],
       "$defs": {
         "UpdateInfo": {
@@ -665,7 +752,7 @@
               "type": "string"
             },
             "bin_folder": {
-              "description": "The folder with the component's programs, as an absolute path. For\nhosts that run one of its programs directly, such as Verible's\nlanguage server verible-verilog-ls from the verible component.",
+              "description": "The folder with the component's programs, as an absolute path. For\nhosts that run one of its programs directly (for Verible's language\nserver, use language_server, which has its arguments too).",
               "type": "string"
             }
           },
@@ -756,7 +843,7 @@
   },
   {
     "name": "get_catalog",
-    "description": "Returns board and FPGA definitions from the engine's read-only catalog. Use it to find a board's catalog ID, such as icesugar-1-5, to pass as the board of other tools, or to see a board's FPGA and how it is programmed. Each section is returned only when asked for: {\"boards\": {\"fetch\": true}} returns all boards, and {\"boards\": {\"fetch\": true, \"ids\": [\"icesugar-1-5\"]}} only the listed ones. Boards include those of the request's custom_boards_folder, marked custom, a custom board replacing the catalog board with its ID. The families section gives each FPGA family's name for people, the extension of its pin constraint files and the toolchain that builds it. Board descriptions are the boards' names for people.",
+    "description": "Returns board and FPGA definitions from the engine's read-only catalog. Use it to find a board's catalog ID, such as icesugar-1-5, to pass as the board of other tools, or to see a board's FPGA and how it is programmed. Each section is returned only when asked for: {\"boards\": {\"fetch\": true}} returns all boards, and {\"boards\": {\"fetch\": true, \"ids\": [\"icesugar-1-5\"]}} only the listed ones. Boards include those of the request's custom_boards_folder, marked custom, a custom board replacing the catalog board with its ID. The families section gives each FPGA family's name for people, the extension of its pin constraint files, their comment marker and the toolchain that builds it. Board descriptions are the boards' names for people; resources come with words for people (type_label, pins_text, notes_text), drive requirements with a text, and FPGAs with a label.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "GetCatalogInput",
@@ -899,10 +986,10 @@
           }
         },
         "fpgas": {
-          "description": "FPGA definitions, by catalog ID.",
+          "description": "FPGA definitions, by catalog ID, each with its label for people.",
           "type": "object",
           "additionalProperties": {
-            "$ref": "#/$defs/FpgaDefinition"
+            "$ref": "#/$defs/CatalogFpga"
           }
         },
         "families": {
@@ -1154,6 +1241,13 @@
                       "type": "null"
                     }
                   ]
+                },
+                "text": {
+                  "description": "What it asks, for people, such as \"Drive wifi_gpio0 (L2) high:\nKeeps the ESP32 from resetting the board.\" Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 }
               },
               "additionalProperties": false,
@@ -1306,6 +1400,27 @@
                     "null"
                   ]
                 },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "ai_hints": {
                   "description": "Hints for AI agents, and people, writing designs that use\nthis resource: only what its other fields can't express, such\nas an LED on the FPGA's RGB LED driver pins. Advice to weigh,\nnot instructions. Short lines, always last. Omitted when none.",
                   "type": [
@@ -1387,6 +1502,27 @@
                     "null"
                   ]
                 },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "ai_hints": {
                   "description": "Hints for AI agents, and people, writing designs that use\nthis resource: only what its other fields can't express, such\nas an LED on the FPGA's RGB LED driver pins. Advice to weigh,\nnot instructions. Short lines, always last. Omitted when none.",
                   "type": [
@@ -1463,6 +1599,27 @@
                 },
                 "user_notes": {
                   "description": "Warnings and missing information for users.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
                   "type": [
                     "string",
                     "null"
@@ -1554,6 +1711,27 @@
                     "null"
                   ]
                 },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "ai_hints": {
                   "description": "Hints for AI agents, and people, writing designs that use\nthis resource: only what its other fields can't express, such\nas an LED on the FPGA's RGB LED driver pins. Advice to weigh,\nnot instructions. Short lines, always last. Omitted when none.",
                   "type": [
@@ -1635,6 +1813,27 @@
                     "null"
                   ]
                 },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "ai_hints": {
                   "description": "Hints for AI agents, and people, writing designs that use\nthis resource: only what its other fields can't express, such\nas an LED on the FPGA's RGB LED driver pins. Advice to weigh,\nnot instructions. Short lines, always last. Omitted when none.",
                   "type": [
@@ -1710,6 +1909,27 @@
                 },
                 "user_notes": {
                   "description": "Warnings and missing information for users.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
                   "type": [
                     "string",
                     "null"
@@ -1803,6 +2023,27 @@
                     "null"
                   ]
                 },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "ai_hints": {
                   "description": "Hints for AI agents, and people, writing designs that use\nthis resource: only what its other fields can't express, such\nas an LED on the FPGA's RGB LED driver pins. Advice to weigh,\nnot instructions. Short lines, always last. Omitted when none.",
                   "type": [
@@ -1867,6 +2108,27 @@
                 },
                 "user_notes": {
                   "description": "Warnings and missing information for users.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
                   "type": [
                     "string",
                     "null"
@@ -1943,6 +2205,27 @@
                     "null"
                   ]
                 },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "ai_hints": {
                   "description": "Hints for AI agents, and people, writing designs that use\nthis resource: only what its other fields can't express, such\nas an LED on the FPGA's RGB LED driver pins. Advice to weigh,\nnot instructions. Short lines, always last. Omitted when none.",
                   "type": [
@@ -2011,6 +2294,27 @@
                     "null"
                   ]
                 },
+                "type_label": {
+                  "description": "The resource's type for people, such as \"Clock\", \"LEDs\" or\n\"RGB LED\" (plural when it has several pins). Only in results\n(get_catalog): in a board file it's a problem.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pins_text": {
+                  "description": "Its pins for people, labeled where a type has several kinds,\nsuch as \"R 39, G 40, B 41\" or \"TX 6, RX 7\". Only in results.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "notes_text": {
+                  "description": "Its notes for people, as one text: the clock's frequency,\nthe active level, the I/O standard, what it needs (\"Needs:\n…\") and user_notes, such as \"12 MHz. Active low\". Only in\nresults; omitted when there are none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "ai_hints": {
                   "description": "Hints for AI agents, and people, writing designs that use\nthis resource: only what its other fields can't express, such\nas an LED on the FPGA's RGB LED driver pins. Advice to weigh,\nnot instructions. Short lines, always last. Omitted when none.",
                   "type": [
@@ -2051,8 +2355,8 @@
             "blue"
           ]
         },
-        "FpgaDefinition": {
-          "description": "An FPGA: its family, part and toolchain parameters.",
+        "CatalogFpga": {
+          "description": "An FPGA as get_catalog returns it: its definition, and its name for\npeople.",
           "type": "object",
           "properties": {
             "family": {
@@ -2105,14 +2409,18 @@
                 "string",
                 "null"
               ]
+            },
+            "label": {
+              "description": "The FPGA for people: its family, part number and size, such as\n\"Lattice iCE40 ICE40HX4K-TQ144 (8k)\".",
+              "type": "string"
             }
           },
-          "additionalProperties": false,
           "required": [
             "family",
             "part_number",
             "size",
-            "nextpnr_device"
+            "nextpnr_device",
+            "label"
           ]
         },
         "Family": {
@@ -2176,6 +2484,10 @@
               "description": "The extension of the family's pin constraint files, without the\ndot, such as pcf: the build takes only this format for the family's\nboards.",
               "type": "string"
             },
+            "constraint_comment": {
+              "description": "What starts a comment line in the family's pin constraint files: #\nfor .pcf, .lpf and .xdc, // for .cst. The formats have no block\ncomment every tool accepts, so editors comment out lines with it.",
+              "type": "string"
+            },
             "order": {
               "description": "The family's place in the engine's order (0 first), for listing\nfamilies in a fixed order.",
               "type": "integer",
@@ -2191,6 +2503,7 @@
             "label",
             "short_label",
             "constraint_extension",
+            "constraint_comment",
             "order",
             "toolchain"
           ]
@@ -2520,6 +2833,13 @@
             "$ref": "#/$defs/Diagnostic"
           }
         },
+        "checked_files": {
+          "description": "The files this call read and checked, named as the request names\nfiles: the listed files, the files they include and the testbenches. A host\nreplaces these files' earlier problems with this result's; other\nfiles keep theirs. A design error has the same list in\ndata.checked_files.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "commands": {
           "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
           "type": "array",
@@ -2532,6 +2852,7 @@
       "required": [
         "passed",
         "diagnostics",
+        "checked_files",
         "commands"
       ],
       "$defs": {
@@ -2839,6 +3160,13 @@
             "$ref": "#/$defs/TestbenchResult"
           }
         },
+        "checked_files": {
+          "description": "The files this call read and checked, named as the request names\nfiles: the listed files, the files they include and the testbenches. A host\nreplaces these files' earlier problems with this result's; other\nfiles keep theirs. A design error has the same list in\ndata.checked_files.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "commands": {
           "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
           "type": "array",
@@ -2851,6 +3179,7 @@
       "required": [
         "passed",
         "testbenches",
+        "checked_files",
         "commands"
       ],
       "$defs": {
@@ -2887,6 +3216,13 @@
             "ending": {
               "description": "How the run ended: finished (the testbench ended itself),\nfirst_failure, sim_time_limit or timeout (the engine stopped it, and\nits output and waveform end there), or no_finish (it ran out of\nthings to simulate without calling $finish, a failure).",
               "$ref": "#/$defs/Ending"
+            },
+            "ending_text": {
+              "description": "For people, when the engine stopped it at a limit or it never called\n$finish (ending timeout, sim_time_limit or no_finish), such as\n\"main_tb.v was stopped because it ran too long. Does it end with\n$finish?\". Omitted otherwise.",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "failure_count": {
               "description": "How many failures the testbench reported. diagnostics lists the first\n100 of them, each with its time.",
@@ -3046,7 +3382,7 @@
   },
   {
     "name": "simulate",
-    "description": "Simulates one testbench with Icarus Verilog and opens its waveform in Open Logix's waveform viewer: compiles the design files with the testbench, runs it to write the waveform (.vcd) into the build folder, writes the viewer, a self-contained page with the waveform in it (viewer_file), and opens it in a window of its own (Logix Waveforms). The testbench must call $dumpvars and $finish, and must not call $dumpfile. The viewer shows the testbench's own signals, opens at the first failure, and saves the person's view as they change it, in view_file (<testbench>.view), unless save_view is false. If the window can't open, viewer_problem says why. Set open_viewer to false to only write the waveform and the page, such as when no one is at the screen or the host shows the page in a window of its own. A failing testbench runs to the end and is shown, with passed false. Compile errors are a design error with diagnostics at file and line. To just check whether testbenches pass, use test.",
+    "description": "Simulates one testbench with Icarus Verilog and opens its waveform in Open Logix's waveform viewer: compiles the design files with the testbench, runs it to write the waveform (.vcd) into the build folder, writes the viewer, a self-contained page with the waveform in it (page_file), and opens it in a window of its own (Logix Waveforms). The testbench must call $dumpvars and $finish, and must not call $dumpfile. The viewer shows the testbench's own signals, opens at the first failure, and saves the person's view as they change it, in view_file (<testbench>.view), unless save_view is false. If the window can't open, viewer_problem says why. Set open to false to only write the waveform and the page, such as when no one is at the screen or the host shows the page in a window of its own. A failing testbench runs to the end and is shown, with passed false. Compile errors are a design error with diagnostics at file and line. To just check whether testbenches pass, use test.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "SimulateInput",
@@ -3109,8 +3445,8 @@
           "description": "Where the compiled testbench and its waveform go, as an absolute path.\nOne of its last two folder names must contain \"build\", such as\n/home/user/proj/_build. It is created if needed.",
           "type": "string"
         },
-        "open_viewer": {
-          "description": "Open the waveform viewer's page (viewer_file) in a window of its own\n(Logix Waveforms), for the person at the screen. Defaults to true.\nFalse only writes the waveform and the page, such as for a host that\nshows the page in a window of its own.",
+        "open": {
+          "description": "Open the waveform viewer's page (page_file) in a window of its own\n(Logix Waveforms), for the person at the screen. Defaults to true.\nFalse only writes the waveform and the page, such as for a host that\nshows the page in a window of its own.",
           "type": "boolean",
           "default": true
         },
@@ -3263,24 +3599,38 @@
           "description": "How the run ended: finished (the testbench ended itself),\nsim_time_limit or timeout (the engine stopped it), or no_finish (it\nran out of things to simulate without calling $finish, a failure).",
           "$ref": "#/$defs/Ending"
         },
-        "waveform_file": {
-          "description": "The waveform (.vcd), relative to the build folder.",
-          "type": "string"
-        },
-        "viewer_opened": {
-          "description": "True if the waveform viewer's page opened in a window.",
-          "type": "boolean"
-        },
-        "viewer_problem": {
-          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library; only when open_viewer was true\nand it didn't open.",
+        "ending_text": {
+          "description": "For people, when the engine stopped it at a limit or it never called\n$finish (ending timeout, sim_time_limit or no_finish), as in test.\nOmitted otherwise.",
           "type": [
             "string",
             "null"
           ]
         },
-        "viewer_file": {
+        "waveform_file": {
+          "description": "The waveform (.vcd), relative to the build folder.",
+          "type": "string"
+        },
+        "opened": {
+          "description": "True if the waveform viewer's page opened in a window.",
+          "type": "boolean"
+        },
+        "viewer_problem": {
+          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library; only when open was true\nand it didn't open.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "page_file": {
           "description": "Open Logix's waveform viewer, a self-contained page with the\nwaveform in it, relative to the build folder, such as main_tb.html.",
           "type": "string"
+        },
+        "checked_files": {
+          "description": "The files this call read and checked, named as the request names\nfiles: the listed files, the files they include and the testbench. A host\nreplaces these files' earlier problems with this result's; other\nfiles keep theirs. A design error has the same list in\ndata.checked_files.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "commands": {
           "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
@@ -3298,8 +3648,9 @@
         "failure_count",
         "ending",
         "waveform_file",
-        "viewer_opened",
-        "viewer_file",
+        "opened",
+        "page_file",
+        "checked_files",
         "commands"
       ],
       "$defs": {
@@ -3512,7 +3863,7 @@
           ],
           "default": null
         },
-        "open_viewer": {
+        "open": {
           "description": "Open the page in a window of its own (Logix Waveforms) for the person\nat the screen. Defaults to true. False only writes it, such as for a\nhost that shows the page itself.",
           "type": "boolean",
           "default": true
@@ -3529,16 +3880,16 @@
       "description": "The viewer's page.",
       "type": "object",
       "properties": {
-        "viewer_file": {
+        "page_file": {
           "description": "The viewer's page, as an absolute path: self-contained, with the\nwaveform in it.",
           "type": "string"
         },
-        "viewer_opened": {
+        "opened": {
           "description": "True if the page opened in a window.",
           "type": "boolean"
         },
         "viewer_problem": {
-          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library; only when open_viewer was true\nand it didn't open.",
+          "description": "Why the page didn't open, in plain words for the person at the\nscreen, such as a missing library; only when open was true\nand it didn't open.",
           "type": [
             "string",
             "null"
@@ -3563,8 +3914,8 @@
       },
       "additionalProperties": false,
       "required": [
-        "viewer_file",
-        "viewer_opened",
+        "page_file",
+        "opened",
         "signal_count",
         "end_ns",
         "unknown_signals"
@@ -3696,6 +4047,13 @@
             "$ref": "#/$defs/Diagnostic"
           }
         },
+        "checked_files": {
+          "description": "The files this call read and checked, named as the request names\nfiles: the listed files, formatted or not. A host\nreplaces these files' earlier problems with this result's; other\nfiles keep theirs.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "commands": {
           "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
           "type": "array",
@@ -3709,6 +4067,7 @@
         "passed",
         "files",
         "diagnostics",
+        "checked_files",
         "commands"
       ],
       "$defs": {
@@ -3862,7 +4221,7 @@
   },
   {
     "name": "diagram",
-    "description": "Draws the design as schematic diagrams, one per module, as written: its other modules, the FPGA's own blocks and memories, and one block per signal the module's code drives (a register, or a block of logic), named after it, its inputs labeled with the signals it reads, with the wires between them; not the multiplexers and gates synthesis would make. The engine lays out and draws every module itself. Writes, in the build folder, diagram-<top_module>.html, one self-contained page with every module (double-click a module to open it, drag to pan, scroll to zoom, hover anything for its details; it needs no network or other software, so any web browser shows it), and in its diagram/ folder (replaced by each call) each module's SVG and diagram.json, a model of every module's blocks, ports, signals and source lines. To show the user the diagram, set open to true, which opens the page in a window of its own (Logix Diagrams; if it can't, viewer_problem says why), or give them page_file's path. List the design files; the engine doesn't search for them. Errors in the design, such as a syntax error or a top module that isn't in the files, are design errors with diagnostics at file and line. The first call may download the toolchain package first, which takes a few minutes.",
+    "description": "Draws the design as schematic diagrams, one per module, as written: its other modules, the FPGA's own blocks and memories, and one block per signal the module's code drives (a register, or a block of logic), named after it, its inputs labeled with the signals it reads, with the wires between them; not the multiplexers and gates synthesis would make. The engine lays out and draws every module itself. Writes, in the build folder, diagram-<top_module>.html, one self-contained page with every module (double-click a module to open it, drag to pan, scroll to zoom, hover anything for its details; it needs no network or other software, so any web browser shows it), and in its diagram/ folder (replaced by each call) each module's SVG and diagram.json, a model of every module's blocks, ports, signals and source lines. It then opens the page in a window of its own (Logix Diagrams) for the person at the screen; if it can't, viewer_problem says why. Set open to false to only write it, such as when no one is at the screen or the host shows the page itself (page_file). List the design files; the engine doesn't search for them. Errors in the design, such as a syntax error or a top module that isn't in the files, are design errors with diagnostics at file and line. The first call may download the toolchain package first, which takes a few minutes.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "DiagramInput",
@@ -3922,9 +4281,9 @@
           "default": {}
         },
         "open": {
-          "description": "Open the page in a window of its own (Logix Diagrams) when it's\nwritten, so the person at the screen sees the diagram at once; a\nlater call for the same page reloads that window. Defaults to false.\nopened says whether it was.",
+          "description": "Open the page in a window of its own (Logix Diagrams) when it's\nwritten, so the person at the screen sees the diagram at once; a\nlater call for the same page reloads that window. Defaults to true;\nfalse only writes it, such as for a host that shows the page in a\nwindow of its own. opened says whether it was.",
           "type": "boolean",
-          "default": false
+          "default": true
         },
         "levels": {
           "description": "How many levels of modules below top_module are drawn, such as 1\nfor top_module and the modules it uses. Deeper modules are in the\nmodel with a note, not drawn; a diagram with top_module set to one of\nthem shows it. Defaults to 3.",
@@ -4065,6 +4424,13 @@
             "$ref": "#/$defs/Diagnostic"
           }
         },
+        "checked_files": {
+          "description": "The files this call read and checked, named as the request names\nfiles: the listed files and the files they include. A host\nreplaces these files' earlier problems with this result's; other\nfiles keep theirs. A design error has the same list in\ndata.checked_files.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "commands": {
           "description": "The programs this call ran, in order, each with the exact command and\na shell line that runs it again without the engine, such as for a bug\nreport to the tool's developers.",
           "type": "array",
@@ -4080,6 +4446,7 @@
         "modules",
         "opened",
         "diagnostics",
+        "checked_files",
         "commands"
       ],
       "$defs": {
@@ -4290,7 +4657,7 @@
   },
   {
     "name": "build",
-    "description": "Builds an FPGA design into a bitstream: synthesizes the Verilog or SystemVerilog sources, places and routes them on the board's FPGA using the constraint file, which maps top-level ports to pins (.pcf for iCE40, .lpf for ECP5, .cst for Gowin, .xdc for Xilinx), and packs the bitstream into the build folder. Give the source files explicitly; the engine doesn't search for them, though `include files are found next to the including file or in the source folder. A build with no changes since the last one returns at once with up_to_date set. The first build may download the toolchain package first, which takes a few minutes. Design problems come back as a design error with diagnostics at file and line. After a successful build, program_board programs the bitstream into the board.",
+    "description": "Builds an FPGA design into a bitstream: synthesizes the Verilog or SystemVerilog sources, places and routes them on the board's FPGA using the constraint file, which maps top-level ports to pins (.pcf for iCE40, .lpf for ECP5, .cst for Gowin, .xdc for Xilinx), and packs the bitstream into the build folder. Give the source files explicitly; the engine doesn't search for them, though `include files are found next to the including file or in the source folder. A build with no changes since the last one returns at once with up_to_date set. The first build may download the toolchain package first, which takes a few minutes. Design problems come back as a design error with diagnostics at file and line. Set lint to true to check the design with lint first, as an editor's Verify does: its problems join the build's in diagnostics, without repeats, and never stop the build. After a successful build, program_board programs the bitstream into the board.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "BuildInput",
@@ -4367,6 +4734,11 @@
         },
         "verbose": {
           "description": "Let the tools print more detail, shown in the live output and the\nlogs. It doesn't change the result. Defaults to false.",
+          "type": "boolean",
+          "default": false
+        },
+        "lint": {
+          "description": "Check the design with lint (Verilator) first, as an editor's Verify\ndoes: lint finds likely mistakes synthesis accepts and gives clearer\nerrors. Its problems never stop the build, which alone decides\nsuccess; they come first in diagnostics (and in a design error's\ndiagnostics), each with its tool, and a build problem on a line\nlint already flagged with the same severity is left out. Defaults\nto false.",
           "type": "boolean",
           "default": false
         }
@@ -4494,10 +4866,24 @@
           "type": "string"
         },
         "warnings": {
-          "description": "Warnings from the tools.",
+          "description": "Warnings from the build's tools.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/Diagnostic"
+          }
+        },
+        "diagnostics": {
+          "description": "Every problem this call found, each with its tool: with lint, lint's\nfirst, then the build's warnings, a build problem left out when lint\nflagged the same line with the same severity; without lint, the\nwarnings.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Diagnostic"
+          }
+        },
+        "checked_files": {
+          "description": "The files this call read and checked, named as the request names\nfiles: the listed files, the files they include and the constraint file. A host\nreplaces these files' earlier problems with this result's; other\nfiles keep theirs. A design error has the same list in\ndata.checked_files.",
+          "type": "array",
+          "items": {
+            "type": "string"
           }
         },
         "commands": {
@@ -4519,6 +4905,8 @@
         "report",
         "report_summary",
         "warnings",
+        "diagnostics",
+        "checked_files",
         "commands"
       ],
       "$defs": {
@@ -4865,7 +5253,7 @@
   },
   {
     "name": "list_devices",
-    "description": "Lists the USB devices connected to this computer, with their USB IDs, names and serial numbers, and for each the boards it may be: catalog boards and the request's custom_boards_folder, best first, each with the variants it fits and how well it matches: strong (very likely this board), possible (a few other boards look the same) or weak (many boards fit). Show the level as it is: how the engine decides it is internal and changes without notice. program_board needs the id of one of these devices. Given a build_folder, it lists only the devices that fit that build's board and variant, best first, each with its build_match: program the only one, or ask the user when there are several. Devices that need a driver or permissions first are listed apart, under unreachable, with the fix. On Windows, a device whose board's programmer needs a driver has driver: the one it needs (WinUSB), on which USB interface, the one it has and whether it's ready; on Linux, every device that fits a board has driver: its udev rule's state. Each device has who, its name for people, and driver has texts for people: its state, and the question to ask before install_driver (add) or uninstall_driver (remove). Give board, the user's chosen board, to name devices by it and list its devices first.",
+    "description": "Lists the USB devices connected to this computer, with their USB IDs, names and serial numbers, and for each the boards it may be: catalog boards and the request's custom_boards_folder, best first, each with the variants it fits and how well it matches: strong (very likely this board), possible (a few other boards look the same) or weak (many boards fit). Show the level as it is: how the engine decides it is internal and changes without notice. program_board needs the id of one of these devices. Given a build_folder, it lists only the devices that fit that build's board and variant, best first, each with its build_match: program the only one, or ask the user when there are several. Devices that need a driver or permissions first are listed apart, under unreachable, with the fix. On Windows, a device whose board's programmer needs a driver has driver: the one it needs (WinUSB), on which USB interface, the one it has and whether it's ready; on Linux, every device that fits a board has driver: its udev rule's state. Each device has who, its name for people, and driver has texts for people: its state, and the question to ask before install_driver (add) or uninstall_driver (remove). Give board, the user's chosen board, to name devices by it, list its devices first and get status: whether it's connected, in words for people (with build_folder, the build's board). When custom_boards_folder has a problem, the devices are still listed, against the catalog's boards only, and custom_boards_problem has the error.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "ListDevicesInput",
@@ -4873,7 +5261,7 @@
       "type": "object",
       "properties": {
         "custom_boards_folder": {
-          "description": "The host's own boards: the absolute path of a folder of board files,\none board each in the catalog's format, named by board ID, such as\nboards/my-board.json (a project's boards folder). board can name one\nof them; one with a catalog board's ID replaces that board in this\nrequest. Problems in any file come back as a request error with a\ndiagnostic for each, at file, line and column. Send the same folder to\nevery tool. Omitted means none.",
+          "description": "The host's own boards: the absolute path of a folder of board files,\none board each in the catalog's format, named by board ID, such as\nboards/my-board.json (a project's boards folder). board can name one\nof them; one with a catalog board's ID replaces that board in this\nrequest. Problems in any file don't stop list_devices: the devices\nare matched against the catalog's boards only, and\ncustom_boards_problem has the error every other tool returns (with\nbuild_folder, they're a request error). Send the same folder to\nevery tool. Omitted means none.",
           "type": [
             "string",
             "null"
@@ -4973,6 +5361,28 @@
           "items": {
             "$ref": "#/$defs/UnreachableDevice"
           }
+        },
+        "status": {
+          "description": "Only with board or build_folder: whether that board is connected, for\npeople and hosts, so every frontend says it the same way. code is\nconnected (one device may be it), several (more than one: ask the\nuser which), unreachable (none can be opened, but one that can't has\nits USB IDs: action and the message say what makes it usable) or\nnot_connected (none); message says it in a sentence naming the\nboard, such as \"The Alhambra II isn't connected. Connect it by USB,\nthen try again.\"; hints are more lines to show under it, a line\neach (for not_connected: what is connected, and tips about the\ncable and power); action is the suggested action, as in errors,\nwhen there's something to do.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BoardStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "custom_boards_problem": {
+          "description": "When custom_boards_folder has a problem: the error every other board\ntool returns for it (a request error with a diagnostic for each\nproblem, at file, line and column). list_devices still lists the\ndevices then, matched against the catalog's boards only, so device\nscans keep working while the user fixes the folder. With\nbuild_folder, a problem is a request error, as in program_board.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolError"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false,
@@ -5061,6 +5471,19 @@
               "items": {
                 "type": "string"
               }
+            },
+            "other_boards": {
+              "description": "The other boards worth naming, after likely_boards, best first: the\nrest of boards, except that when the device has a strong match, only\nthe request's board (board, else the build's) when the device may be\nit, since dozens of boards that share a USB chip would only be\nnoise. Empty when there are none.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rank": {
+              "description": "The device's place in one list of devices and unreachable together,\n0 first: those that may be the request's board (board, else the\nbuild's), then those that may be other boards, then the rest; within\neach, devices before unreachable ones, each in its list's order. For\na host that shows both lists as one.",
+              "type": "integer",
+              "default": 0,
+              "minimum": 0
             },
             "build_match": {
               "description": "How well the device matches the given build's board in the build's\nvariant: strong, possible or weak, as in boards. Present only when\nlist_devices was given a build_folder.",
@@ -5449,6 +5872,16 @@
               "description": "What to do, for people, such as \"Add a udev rule for it, so it can\nbe programmed and its name read.\" (action says it for AI agents).",
               "type": "string"
             },
+            "note": {
+              "description": "What the device may be and what to do, for people, in a sentence or\ntwo: \"This may be your Alhambra II: it has the same USB IDs. Add a\nudev rule for it, so it can be programmed and its name read.\" when\nit may be the request's board (board, else the build's), else that\nit may be an FPGA board, naming the board when only one has its USB\nIDs, or counting them. Ends with fix.",
+              "type": "string"
+            },
+            "rank": {
+              "description": "Its place in one list of devices and unreachable together, as for\ndevices.",
+              "type": "integer",
+              "default": 0,
+              "minimum": 0
+            },
             "driver": {
               "description": "On Windows and Linux: what it needs for its board's programmer and\nwhat it has, as for devices.",
               "anyOf": [
@@ -5535,6 +5968,216 @@
               "type": "string",
               "const": "confirm_same_ids"
             }
+          ]
+        },
+        "BoardStatus": {
+          "description": "Whether the request's board is connected (ListDevicesOutput.status).",
+          "type": "object",
+          "properties": {
+            "code": {
+              "description": "connected, several, unreachable or not_connected.",
+              "$ref": "#/$defs/StatusCode"
+            },
+            "message": {
+              "description": "The status in a sentence for people, naming the board.",
+              "type": "string"
+            },
+            "hints": {
+              "description": "More lines for people, shown under message a line each. Often\nempty.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "action": {
+              "description": "The suggested action, as in errors: connect_board when it isn't\nconnected, or the unreachable device's own action.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Action"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message"
+          ]
+        },
+        "StatusCode": {
+          "description": "BoardStatus.code.",
+          "oneOf": [
+            {
+              "description": "One connected device may be the board.",
+              "type": "string",
+              "const": "connected"
+            },
+            {
+              "description": "Several connected devices may be the board: ask the user which.",
+              "type": "string",
+              "const": "several"
+            },
+            {
+              "description": "None can be opened, but a device that can't be opened has the\nboard's USB IDs: it needs a driver or permissions first.",
+              "type": "string",
+              "const": "unreachable"
+            },
+            {
+              "description": "No connected device may be the board.",
+              "type": "string",
+              "const": "not_connected"
+            }
+          ]
+        },
+        "ToolError": {
+          "description": "Why a tool could not do its job.",
+          "type": "object",
+          "properties": {
+            "category": {
+              "$ref": "#/$defs/Category"
+            },
+            "message": {
+              "description": "Short message for end users.",
+              "type": "string"
+            },
+            "details": {
+              "description": "Troubleshooting details, such as tool output. May span several lines.",
+              "type": "string",
+              "default": ""
+            },
+            "diagnostics": {
+              "description": "Problems with file and line, mainly for design errors.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Diagnostic"
+              },
+              "default": []
+            },
+            "action": {
+              "description": "A suggested action, when there is one.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Action"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "data": {
+              "description": "Extra data, such as candidate devices.",
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "category",
+            "message"
+          ]
+        },
+        "Category": {
+          "description": "Whose problem the error is.",
+          "oneOf": [
+            {
+              "description": "A problem in the user's design files, such as a syntax error.",
+              "type": "string",
+              "const": "design"
+            },
+            {
+              "description": "Something missing or wrong on the computer, such as a package that\nisn't downloaded or a board that isn't connected.",
+              "type": "string",
+              "const": "setup"
+            },
+            {
+              "description": "The host sent an invalid request, such as an unknown board or a\nmissing field. Fix the request and retry.",
+              "type": "string",
+              "const": "request"
+            },
+            {
+              "description": "A packaged tool crashed or misbehaved.",
+              "type": "string",
+              "const": "tool"
+            },
+            {
+              "description": "A bug in the engine itself.",
+              "type": "string",
+              "const": "engine"
+            },
+            {
+              "description": "The host cancelled the operation.",
+              "type": "string",
+              "const": "cancelled"
+            }
+          ]
+        },
+        "Diagnostic": {
+          "description": "A problem reported by a tool, at a file and line when known.",
+          "type": "object",
+          "properties": {
+            "file": {
+              "description": "File, relative to the source folder, when known.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "line": {
+              "description": "Line number, starting at 1, when known.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "column": {
+              "description": "Column number, starting at 1, when known.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "severity": {
+              "$ref": "#/$defs/Severity"
+            },
+            "text": {
+              "description": "The problem, in words.",
+              "type": "string"
+            },
+            "tool": {
+              "description": "Name of the tool that reported it, when known.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "time_ns": {
+              "description": "For a testbench failure, the simulation time it happened at, in\nnanoseconds, when known.",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "severity",
+            "text"
+          ]
+        },
+        "Severity": {
+          "description": "How serious a diagnostic is.",
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "info"
           ]
         }
       }
@@ -5755,6 +6398,19 @@
               "items": {
                 "type": "string"
               }
+            },
+            "other_boards": {
+              "description": "The other boards worth naming, after likely_boards, best first: the\nrest of boards, except that when the device has a strong match, only\nthe request's board (board, else the build's) when the device may be\nit, since dozens of boards that share a USB chip would only be\nnoise. Empty when there are none.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rank": {
+              "description": "The device's place in one list of devices and unreachable together,\n0 first: those that may be the request's board (board, else the\nbuild's), then those that may be other boards, then the rest; within\neach, devices before unreachable ones, each in its list's order. For\na host that shows both lists as one.",
+              "type": "integer",
+              "default": 0,
+              "minimum": 0
             },
             "build_match": {
               "description": "How well the device matches the given build's board in the build's\nvariant: strong, possible or weak, as in boards. Present only when\nlist_devices was given a build_folder.",

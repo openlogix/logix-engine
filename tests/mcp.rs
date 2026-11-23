@@ -608,6 +608,9 @@ async fn build_streams_tool_output_when_asked() {
     assert_eq!(warning["kind"], "output");
     assert_eq!(warning["level"], "warning");
     assert_eq!(warning["redraw"], false, "yosys doesn't redraw its lines");
+    // The place it names, as diagnostics name files.
+    assert_eq!(warning["location"]["file"], "main.v", "{warning:?}");
+    assert!(warning["location"]["line"].as_u64().unwrap() > 0);
     // Each tool's block starts with its command line.
     let commands: Vec<&Value> = lines.iter().filter(|l| l["kind"] == "command").collect();
     let tools: Vec<&str> = commands
@@ -615,6 +618,7 @@ async fn build_streams_tool_output_when_asked() {
         .map(|c| c["tool"].as_str().unwrap())
         .collect();
     assert_eq!(tools, ["yosys", "nextpnr-ice40", "icepack"]);
+    assert!(commands.iter().all(|c| c.get("location").is_none()));
     assert!(
         commands[0]["text"]
             .as_str()

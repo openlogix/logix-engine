@@ -80,6 +80,8 @@ fn input(src: &Path, extra: Value) -> diagram::DiagramInput {
         "source_folder": src,
         "source_files": ["main.v"],
         "build_folder": src.join("_build"),
+        // Tests never open windows.
+        "open": false,
     });
     for (k, val) in extra.as_object().unwrap() {
         v[k] = val.clone();
@@ -107,6 +109,7 @@ async fn diagram_draws_the_design() {
     assert_eq!(out.page_file, "diagram-main.html");
     assert_eq!(out.model_file, "diagram/diagram.json");
     assert!(!out.opened);
+    assert_eq!(out.checked_files, ["main.v"]);
     assert_eq!(out.modules.len(), 1);
     let m = &out.modules[0];
     assert!(m.top && m.key == "main" && m.note.is_none(), "{m:?}");
@@ -466,6 +469,7 @@ async fn diagram_source_places_follow_display_paths() {
         "source_folder": src,
         "source_files": ["main.v"],
         "build_folder": src.join("_build"),
+        "open": false,
         "display_paths": {"folders": [{"path": src, "as": "PROJECT"}]},
     });
     let result = logix_engine::tools::call(&state, "diagram", args.as_object().cloned(), &call())

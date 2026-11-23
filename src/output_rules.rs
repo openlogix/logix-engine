@@ -285,6 +285,7 @@ impl<'a> ToolOutput<'a> {
                     text: &shown,
                     redraw,
                     original: (shown != text).then_some(text),
+                    location: None,
                 });
                 for note in notes {
                     if self.noted.lock().unwrap().insert(note) {

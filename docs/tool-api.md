@@ -126,7 +126,7 @@ Every tool that reports files (`lint`, `test`, `simulate`, `format`, `diagram`, 
 - **Which entry.** File entries come first, then folder entries; within each list, the first that matches wins. A folder matches by whole path parts: `/a/b` matches `/a/b/x.v`, never `/a/bc/x.v`.
 - **Real locations.** Paths are compared by where they really are, not by how they're spelled: through symbolic links (such as `/tmp` and `/private/tmp` on macOS), and as the same file on disk, so a case-insensitive volume's spellings match. A file that doesn't exist is compared by its path's parts.
 - **Where.** Diagnostics (`file`, and paths in `text`), error `message` and `details`, testbench `output`, the live tool output (`text` and `original_text`) and the source places in `diagram`'s model and page. In text, the engine finds paths it knows, as the request or a tool spelled them, and names them by the same rules.
-- **Never.** Command lines (`commands`, and `command` lines in the live output), which must stay rerunnable, and fields that are paths, such as `bitstream`, `page_file`, `waveform_file` and `viewer_file`.
+- **Never.** Command lines (`commands`, and `command` lines in the live output), which must stay rerunnable, and fields that are paths, such as `bitstream`, `page_file` and `waveform_file`.
 - **No match.** A path that matches no entry, or any path when the request has no `display_paths`, is shown as the request gave it: source files relative to the source folder, custom board file as its absolute path. A path the request never gave, such as a toolchain file a tool mentions, is shown as the tool printed it.
 - **A path in an entry that isn't absolute** is a request error.
 
@@ -158,6 +158,7 @@ The `board` field is a board ID: a catalog ID, such as `"icestick"`, or the ID o
   ```
 - **Replacing catalog boards.** A custom board with a catalog board's ID replaces that catalog board for the request: for building, matching devices and listing.
 - **Problems at file, line and column.** The engine reads the folder the request names, and nothing else. Every tool checks every file in it, so a problem in any is a request error in every tool, whichever board the request selects. Its `diagnostics` give each problem at file, line and column, as for source files: invalid JSON (with the parser's message), a field of the wrong type, a misspelled or missing field, a file name that isn't a board ID, an unknown FPGA ID, a `$schema` other than the board schema, a requirement's or resource's problems (a name that isn't a port name or is taken by another resource or drive, a pin twice in one resource, a PMOD without its 8 pins, a clock without a frequency, an I/O standard the FPGA family doesn't use), and in variants an invalid connection or memory value in the selector, a selector another variant has, a programmer, argument template, USB ID, release or regular expression. A definition problem points at the value, or for a missing field at the object it belongs in. Problems come all at once, by file name, then in file order: each board and each variant is checked on its own, so a problem in one never hides problems in another. Invalid JSON is the exception: it is one problem, the parser's, since nothing after it can be read. At most 10 problems are listed; when there are more, a last `info` diagnostic without a line says how many more. Diagnostics name each file by the folder as the request gave it, plus the file name, or as `display_paths` names it. Hosts can show them as markers in their editor.
+- **One exception: `list_devices`.** Without a `build_folder`, it lists the devices anyway, matched against the catalog's boards only, and returns the error in `custom_boards_problem`, so a host's device scans (a "connected" label, a Serial Monitor) keep working while the user fixes the file.
 - **Send the same folder to every tool.** The engine keeps nothing between requests. A build's board is kept in its build record. `program_board` looks up the build's board again in its request and refuses the upload only when the bitstream no longer fits it (see What counts as the same board below); changes to other boards never matter.
 
 Tools that take a board also take an optional `board_variant`: some or all of the selector of one of the board's variants, such as `{"connection": "usb", "memory": "ram"}` or `{"memory": "ram"}`; the board's first variant with those values is used. The build record keeps the chosen board and variant for `program_board`.
@@ -235,8 +236,9 @@ A host that wants to show the tools' output as it happens, such as in a console,
 | `text` | text | The line as the tool printed it, without terminal codes and without any noise the engine removed (see Presentation), with paths named as `display_paths` says. A progress bar redrawn with carriage returns gives one line per redraw |
 | `original_text` | text | In `output` lines whose noise the engine removed: the line as the tool printed it. Omitted when `text` is the line as printed |
 | `redraw` | boolean | In `output` lines: true when the tool prints over this line (a carriage return ended it, as progress bars do), so a console may replace it with the tool's next line, as a terminal does. False otherwise |
+| `location` | object | Optional, in `output` lines: the place in one of the request's files that the line names, such as `main.v:12: ERROR: …` or `%Warning-WIDTH: rtl/uart.v:6:9: …`, so a console can make the line a link to it: `file` (named as diagnostics name files, `display_paths` applied, so a path with folders, such as `rtl/uart.v`, works), `line` (from 1) and `column` (from 1, when the line gives one). Only a file that is there, in the source folder or the custom boards folder, counts: a line about a toolchain file, such as an FPGA model, has none. The first place a line names |
 
-Lines that the engine reads into diagnostics still come in the tool result too. The live lines are for showing, not for parsing.
+Lines that the engine reads into diagnostics still come in the tool result too. The live lines are for showing, not for parsing: `location` says where a line points, so a host never reads paths out of the text.
 
 **Verbose.** Tools that run other tools take an optional boolean `verbose`. It asks those tools to print more detail, which shows in the live output and the logs, and never changes the result. Each tool maps it to what its tools offer: `build` runs yosys and nextpnr without `-q`, `lint` runs Verilator without `--quiet`, `test` and `simulate` run iverilog with `-v`, `format` adds Verible's `--verbose`, `diagram` runs yosys without `-q`, and `program_board` adds openFPGALoader's `--verbose`, or iceprog's or dfu-util's `-v` (icesprog has no such option). A build that is up to date runs nothing, so it prints nothing extra.
 
@@ -267,6 +269,10 @@ Example:
 ```
 
 Files the engine generated for a step, such as lint's Verilator config in the engine folder's `tmp/` or a testbench's `.limit.v` in the build folder, are named by absolute path and stay where they are, so the line works as long as they do.
+
+### Checked files
+
+Results of the tools that check files (`lint`, `test`, `simulate`, `format`, `diagram` and `build`) list in `checked_files` the files the call read and checked: the listed files, then the files they include, as the engine finds them, then, for `build`, the constraint file. A design error from one of them has the same list in `data.checked_files`. They're named as diagnostics name files (relative to the source folder, or as `display_paths` says), so a host that shows problems on files can replace exactly those files' earlier problems with the call's, and leave the others: a pin file's problems stay after `test`, which never reads it, and a testbench's after `build`.
 
 ### Progress
 
@@ -332,11 +338,12 @@ The Logix Engine adds the FPGA's primitive models, so designs that use primitive
 | --- | --- | --- |
 | `passed` | boolean | True when Verilator found no errors and no warnings |
 | `diagnostics` | list of diagnostics | The problems found, at file, line and column where known. A Verilator warning code, such as `WIDTHTRUNC`, ends the text in parentheses, since a `/* verilator lint_off WIDTHTRUNC */` comment names it. Problems in the primitive models keep their location in the text |
+| `checked_files` | list of relative paths | The files lint read and checked: the design files, the testbenches and the files they include (see Checked files) |
 | `commands` | list of commands | The programs this call ran, in order, so they can be run again without the Logix Engine. See Commands |
 
 **Errors:** setup errors with `download_packages`. Request errors, such as an unknown board, a missing file or an included file outside the source folder. Tool failures, when Verilator fails without reporting a problem. Engine errors and cancellation.
 
-**Includes.** The source file rules in Table 8 (build tool) apply. Verilator and Icarus Verilog don't look for an included file in the including file's folder as yosys does, so the engine passes the folder of every listed and included file as an include folder. An include is then found in the source folder first, then in those folders. Hosts don't deal with the toolchain's own files, such as the primitive models and black boxes for each FPGA family: the Logix Engine adds the right ones for the board's FPGA in lint, test, simulate and build, and doesn't expose toolchain files to hosts, except where a tool says so, such as `bin_folder` in get_engine_info for running Verible's language server. Source files and includes are only the user's own files.
+**Includes.** The source file rules in Table 8 (build tool) apply. Verilator and Icarus Verilog don't look for an included file in the including file's folder as yosys does, so the engine passes the folder of every listed and included file as an include folder. An include is then found in the source folder first, then in those folders. Hosts don't deal with the toolchain's own files, such as the primitive models and black boxes for each FPGA family: the Logix Engine adds the right ones for the board's FPGA in lint, test, simulate and build, and doesn't expose toolchain files to hosts, except where a tool says so, such as `language_server` in get_engine_info for running Verible's language server. Source files and includes are only the user's own files.
 
 **Example**
 
@@ -399,6 +406,7 @@ Testbenches run in the source folder, so they read data files, such as with `$re
 | --- | --- | --- |
 | `passed` | boolean | True when every testbench passed |
 | `testbenches` | list of testbench results | Each testbench's result, in the order given. See Table 27 |
+| `checked_files` | list of relative paths | The files it read and checked: the design files, the testbenches and the files they include (see Checked files) |
 | `commands` | list of commands | The programs this call ran, in order, so they can be run again without the engine. See Commands |
 
 **Table 27.** Testbench result fields
@@ -411,6 +419,7 @@ Testbenches run in the source folder, so they read data files, such as with `$re
 | `output` | multiline text | What the testbench printed, such as with `$display`. When it printed more than 5,000 lines, the first and last 2,500, with a line saying how many were left out between them |
 | `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder, when the testbench wrote one with `$dumpvars` |
 | `ending` | enum | How the run ended: `finished` (the testbench ended itself, with `$finish` or `$fatal`), `first_failure`, `sim_time_limit` or `timeout` (the engine stopped it; its output and waveform end there), or `no_finish` (it ran out of things to simulate without calling `$finish`, which usually means it stopped early by mistake) |
+| `ending_text` | text | Optional. For people, when the engine stopped the run at a limit or it never called `$finish` (`ending` `timeout`, `sim_time_limit` or `no_finish`), naming the testbench: "main_tb.v was stopped because it ran too long. Does it end with $finish?", "main_tb.v was stopped at its simulation time limit. Does it end with $finish?" or "main_tb.v ended without calling $finish, which usually means it stopped early by mistake." Omitted for the other endings, whose diagnostics say what happened |
 | `failure_count` | integer | How many failures the testbench reported. `diagnostics` lists the first 100, each with its time; a check that fails again at another time is another failure |
 
 **Errors:** design errors for compile errors and `$dumpfile`. Setup errors with `download_packages`. Request errors, such as an unknown board, a missing file or a build folder that breaks the keyword rules. Tool failures, engine errors and cancellation.
@@ -454,16 +463,16 @@ Output:
 
 ## simulate tool
 
-Simulates one testbench and opens its waveform in Open Logix's waveform viewer (below). It compiles and runs the testbench as the test tool does, with the same commands, testbench rules and build folder files, except that `LOGIX_SIM` is defined as `1` and the testbench always runs to the end, so the whole waveform is there to look at. Then it writes the viewer's page next to the waveform and, unless `open_viewer` is false, opens it in a window of its own, in Logix Waveforms (see Logix Viewer), and returns.
+Simulates one testbench and opens its waveform in Open Logix's waveform viewer (below). It compiles and runs the testbench as the test tool does, with the same commands, testbench rules and build folder files, except that `LOGIX_SIM` is defined as `1` and the testbench always runs to the end, so the whole waveform is there to look at. Then it writes the viewer's page next to the waveform and, unless `open` is false, opens it in a window of its own, in Logix Waveforms (see Logix Viewer), and returns.
 
 **A failing testbench** is still simulated and shown, since its waveform is how the user finds the problem. `passed` is false. A testbench that writes no waveform, because it doesn't call `$dumpvars`, is a design error.
 
-**Opening the viewer.** `open_viewer` set to false only writes the waveform and the waveform viewer's page, such as when no one is at the screen, or for a host that shows the page in a window of its own. When the window can't open, the simulation still succeeds, with `viewer_opened` false and `viewer_problem` saying why. Opening the viewer needs a local frontend: a network adapter turns it off or refuses it for remote frontends, which view waveforms on their own.
+**Opening the viewer.** `open` set to false only writes the waveform and the waveform viewer's page, such as when no one is at the screen, or for a host that shows the page in a window of its own. When the window can't open, the simulation still succeeds, with `opened` false and `viewer_problem` saying why. `simulate`, `open_waveform` and `diagram` share these names: `open` (default true), `page_file`, `opened` and `viewer_problem` (until 2026-11-22, `simulate` and `open_waveform` had `open_viewer`, `viewer_file` and `viewer_opened`, and `diagram` didn't open by default; changed before the first release, which allows it). Opening the viewer needs a local frontend: a network adapter turns it off or refuses it for remote frontends, which view waveforms on their own.
 
-**The waveform viewer.** Every simulation also writes Open Logix's own waveform viewer next to the waveform, `<testbench>.html` in the build folder (`viewer_file`; docs/requirements.md, Waveform viewer). It's one self-contained page with the waveform in it: it needs no network and nothing installed, opens in any web browser, and keeps working after the engine exits. It opens on the testbench's own signals in the order the testbench declares them, or on the view the user saved; a failing run opens at its first failure, with the check's message and its place in the testbench, and every failure is marked. A waveform larger than 50 MB is cut at a timestamp, and the page says so.
+**The waveform viewer.** Every simulation also writes Open Logix's own waveform viewer next to the waveform, `<testbench>.html` in the build folder (`page_file`; docs/requirements.md, Waveform viewer). It's one self-contained page with the waveform in it: it needs no network and nothing installed, opens in any web browser, and keeps working after the engine exits. It opens on the testbench's own signals in the order the testbench declares them, or on the view the user saved; a failing run opens at its first failure, with the check's message and its place in the testbench, and every failure is marked. A waveform larger than 50 MB is cut at a timestamp, and the page says so.
 
 - **Views.** The signals shown (a bus's single bits too, by paths such as `main_tb.q[3]`, under a bus row saved with `expanded`), their order, formats and colors, which rows are drawn as an analog line (`analog`), blank rows and groups (a named row over the signals below it, which may be collapsed), the zoom, the cursor and the marker, and the clock whose cycles the time scale may count, are a view, kept in `view_file`, such as `main_tb.view` next to the testbench, a JSON file (one that isn't a JSON object counts as no view). Without `view_file`, the view is `<testbench>.view` in the build folder, kept until the build folder is cleaned. The page saves it after every change through its host: Logix Viewer writes exactly that file, unless `save_view` is false; a host with its own window saves it as it likes; in a browser with no host, the view isn't saved.
-- **Hosts** with a window of their own show the page themselves, as they show the diagram's (with `open_viewer` false), and load it again after each simulation, with the view as it was. They offer the page contract, `window.logixHost` (see Logix Viewer; the one way for a host's own window, the user's decision, 2026-11-22): the page calls `writeDeclared("view", text)` after every change, the view's JSON as the `.view` file's text, for the host to save in `view_file`; `openSource(file, line)` when the user double-clicks a signal's name (its declaration in the testbench) or clicks a failure's place, with `file` relative to the source folder; and `saveAs(name, mime, data)` for Save as image (SVG, or PNG at twice the size: the view as it shows, from the settings menu or a right-click on the time ruler), the SVG's text or the PNG as base64, for the host to save where the user chooses. In an iframe, the page posts the same to its parent instead, `{type: "logix-wave:view", view}`, `{type: "logix-wave:open-source", file, line}` and `{type: "logix-wave:save-file", name, mime, data}`, and takes `{type: "logix-wave:theme", theme}`. Both take `?theme=light|dark`. In a browser with no host, an image downloads and the view isn't saved.
+- **Hosts** with a window of their own show the page themselves, as they show the diagram's (with `open` false), and load it again after each simulation, with the view as it was. They offer the page contract, `window.logixHost` (see Logix Viewer; the one way for a host's own window, the user's decision, 2026-11-22): the page calls `writeDeclared("view", text)` after every change, the view's JSON as the `.view` file's text, for the host to save in `view_file`; `openSource(file, line)` when the user double-clicks a signal's name (its declaration in the testbench) or clicks a failure's place, with `file` relative to the source folder; and `saveAs(name, mime, data)` for Save as image (SVG, or PNG at twice the size: the view as it shows, from the settings menu or a right-click on the time ruler), the SVG's text or the PNG as base64, for the host to save where the user chooses. In an iframe, the page posts the same to its parent instead, `{type: "logix-wave:view", view}`, `{type: "logix-wave:open-source", file, line}` and `{type: "logix-wave:save-file", name, mime, data}`, and takes `{type: "logix-wave:theme", theme}`. Both take `?theme=light|dark`. In a browser with no host, an image downloads and the view isn't saved.
 
 **Table 28.** simulate tool inputs
 
@@ -475,7 +484,7 @@ Simulates one testbench and opens its waveform in Open Logix's waveform viewer (
 | `display_paths` | display paths | No | How to name paths in what people read. Omitted means as the request gave them (see Display paths) |
 | `source_folder`, `source_files`, `build_folder` | See folder fields in Table 2 | Yes | The design files, without testbenches |
 | `testbench_file` | relative path | Yes | The testbench to simulate, relative to the source folder |
-| `open_viewer` | boolean | No | Open the waveform viewer's page (`viewer_file`) in a window of its own (Logix Waveforms), for the person at the screen. Defaults to true |
+| `open` | boolean | No | Open the waveform viewer's page (`page_file`) in a window of its own (Logix Waveforms), for the person at the screen. Defaults to true. False only writes it, such as for a host that shows the page itself |
 | `view_file` | relative path | No | The waveform viewer's view, relative to the source folder, ending in `.view`, such as `main_tb.view`. Its folder must exist; the file may not. When omitted, `<testbench>.view` in the build folder. While there's none, the viewer opens its default view |
 | `save_view` | boolean | No | Let Logix Waveforms save the person's view to `view_file` as they change it. Defaults to true. False opens the view and writes nothing |
 | `max_sim_time_ns` | integer | No | Stop the testbench when simulated time reaches this many nanoseconds. Defaults to no limit |
@@ -492,10 +501,12 @@ Simulates one testbench and opens its waveform in Open Logix's waveform viewer (
 | `output` | multiline text | What the testbench printed |
 | `failure_count` | integer | How many failures the testbench reported, as in the test tool |
 | `ending` | enum | How the run ended, as in the test tool. Never `first_failure` |
+| `ending_text` | text | Optional. How it ended, for people, as in the test tool |
 | `waveform_file` | relative path | The waveform (`.vcd`), relative to the build folder |
-| `viewer_opened` | boolean | True if the waveform viewer's page opened in a window |
-| `viewer_problem` | text | Optional. Why it didn't open, in plain words for the person at the screen, such as a missing library, with what fixes it. Only when `open_viewer` was true and it didn't open |
-| `viewer_file` | relative path | Open Logix's waveform viewer, a self-contained page with the waveform in it, relative to the build folder, such as `main_tb.html` |
+| `opened` | boolean | True if the waveform viewer's page opened in a window |
+| `viewer_problem` | text | Optional. Why it didn't open, in plain words for the person at the screen, such as a missing library, with what fixes it. Only when `open` was true and it didn't open |
+| `page_file` | relative path | Open Logix's waveform viewer, a self-contained page with the waveform in it, relative to the build folder, such as `main_tb.html` |
+| `checked_files` | list of relative paths | The files it read and checked: the design files, the testbench and the files they include (see Checked files) |
 | `commands` | list of commands | The programs this call ran, in order, so they can be run again without the engine. See Commands |
 
 **Errors:** design errors for compile errors, `$dumpfile` and a testbench without `$dumpvars`. Setup errors with `download_packages`, or when the page can't be written. Request errors, such as a missing file, a view file that isn't `.view`, or whose folder doesn't exist, or a build folder that breaks the keyword rules. Tool failures, engine errors and cancellation.
@@ -525,8 +536,8 @@ Output:
   "failure_count": 0,
   "ending": "finished",
   "waveform_file": "main_tb.vcd",
-  "viewer_opened": true,
-  "viewer_file": "main_tb.html"
+  "opened": true,
+  "page_file": "main_tb.html"
 }
 ```
 
@@ -617,6 +628,7 @@ Each file is formatted on its own, in order, with the request's `verible_options
 | `passed` | boolean | True when every file is formatted now, whether it was rewritten or already formatted |
 | `files` | list of objects | Each file, in the request's order, with its `file` as given and its `status`: `formatted` (rewritten), `unchanged` (already formatted) or `failed` (left unchanged; see `diagnostics`) |
 | `diagnostics` | list of diagnostics | Why files failed, such as syntax errors at file, line and column |
+| `checked_files` | list of relative paths | The files it checked, formatted or not: the request's `source_files` (see Checked files) |
 | `commands` | list of commands | The programs this call ran, one per file. See Commands |
 
 **Errors:** setup errors with `download_packages`, for the `verible` package. Request errors, such as a missing file, a file that isn't Verilog or SystemVerilog, a file outside the source folder or an option that isn't allowed. Tool failures, when Verible fails without reporting a problem, such as for an option it doesn't know. Engine errors and cancellation.
@@ -680,7 +692,7 @@ Each call writes its page, `diagram-<top_module>.html` in the build folder (one 
 | `levels` | number | No | How many levels of modules below `top_module` are drawn, such as 1 for it and the modules it uses. Defaults to 3 |
 | `source_folder`, `source_files`, `build_folder` | See folder fields in Table 2 | Yes | The design files, without testbenches or included files. Paths with a double quote (`"`) are refused, since yosys reads them from a script |
 | `defines` | map of text | No | Macro definitions, as in the build tool. `SYNTHESIZE` is always defined |
-| `open` | boolean | No | Open the page in a window of its own (Logix Diagrams) when it's written; a later call for the same page reloads that window. Defaults to false |
+| `open` | boolean | No | Open the page in a window of its own (Logix Diagrams) when it's written, for the person at the screen; a later call for the same page reloads that window. Defaults to true. False only writes it, such as when no one is at the screen or for a host that shows the page in a window of its own |
 | `verbose` | boolean | No | Run yosys without `-q`. Defaults to false |
 | `display_paths` | display paths | No | How to name paths in what people read, including the diagram's source places. Omitted means as the request gave them (see Display paths) |
 
@@ -694,11 +706,12 @@ Each call writes its page, `diagram-<top_module>.html` in the build folder (one 
 | `opened` | boolean | Whether the page opened in a window |
 | `viewer_problem` | text | Optional. Why it didn't open, in plain words, such as a missing library. Only when `open` was true and it didn't open |
 | `diagnostics` | list of diagnostics | Yosys warnings while reading the design, at file and line where known. Often empty |
+| `checked_files` | list of relative paths | The files it read: the design files and the files they include (see Checked files) |
 | `commands` | list of commands | The program this call ran: yosys. See Commands |
 
 **Errors:** design errors, with diagnostics, for errors in the design, such as a syntax error, or a `top_module` that isn't in the files. Setup errors with `download_packages`, for the toolchain package. Request errors, such as a missing file or an unknown board. Tool failures, when yosys fails without reporting a problem. Engine errors and cancellation.
 
-**Showing the diagram.** An AI agent shows the user the diagram with `open: true`, which opens it in Logix Diagrams (see Logix Viewer), or gives them `page_file`'s path to open; nothing needs to be generated or installed. A frontend shows the page in a web view, or embeds it in an iframe and talks to it with messages: `?theme=light` or `?theme=dark` in its address sets the theme (otherwise it follows the system), `#main/uart` opens a module, it posts `{"type": "logix-diagram:open-source", "file", "line"}` when the user double-clicks a block other than a module (to show its source; a double-click on a module opens it; `file` is named as in diagnostics, so check it's a project file before opening it) and `{"type": "logix-diagram:module", "path"}` when the module shown changes, and it takes `{"type": "logix-diagram:theme", "theme"}`. A host that shows the page in a window of its own offers the page contract, `window.logixHost` (see Logix Viewer), instead: a block's place goes to its `openSource(file, line)`, Export's images to `saveAs`. The page shows "Go to source" for the module and "Double-click to go to its source" on blocks only when it's hosted, either way.
+**Showing the diagram.** By default `diagram` opens the page in Logix Diagrams (see Logix Viewer) for the person at the screen; an AI agent can also give them `page_file`'s path to open; nothing needs to be generated or installed. A frontend shows the page in a web view, or embeds it in an iframe and talks to it with messages: `?theme=light` or `?theme=dark` in its address sets the theme (otherwise it follows the system), `#main/uart` opens a module, it posts `{"type": "logix-diagram:open-source", "file", "line"}` when the user double-clicks a block other than a module (to show its source; a double-click on a module opens it; `file` is named as in diagnostics, so check it's a project file before opening it) and `{"type": "logix-diagram:module", "path"}` when the module shown changes, and it takes `{"type": "logix-diagram:theme", "theme"}`. A host that shows the page in a window of its own offers the page contract, `window.logixHost` (see Logix Viewer), instead: a block's place goes to its `openSource(file, line)`, Export's images to `saveAs`. The page shows "Go to source" for the module and "Double-click to go to its source" on blocks only when it's hosted, either way.
 
 **Example**
 
@@ -710,8 +723,7 @@ Input:
   "top_module": "main",
   "source_folder": "/home/user/proj",
   "source_files": ["main.v", "uart.v"],
-  "build_folder": "/home/user/proj/_build",
-  "open": true
+  "build_folder": "/home/user/proj/_build"
 }
 ```
 
@@ -752,6 +764,7 @@ Xilinx builds use two of the core's tools, `oss-cad-suite` and `openxc7`. Two Xi
 | `source_folder`, `source_files`, `constraint_file`, `build_folder` | See folder fields in Table 2 | Yes | The constraint file is required |
 | `defines` | map of text | No | Verilog and SystemVerilog macro definitions, from name to value, such as `{ "USE_PLL": "", "WIDTH": "8" }`. Names follow Verilog identifier rules, and a bad name is a request error. An empty value defines the macro with no text, for use with `` `ifdef ``. The engine always passes each value explicitly, so every tool sees the same text, and passes them in name order, so the same request always gives the same tool commands. `SYNTHESIZE` is always defined |
 | `verbose` | boolean | No | Let yosys and nextpnr print more detail, shown in the live output and the logs. Defaults to false. See Verbose under Live tool output |
+| `lint` | boolean | No | Check the design with `lint` (Verilator) first, as an editor's Verify does, with the same board, files, top module and defines: it finds likely mistakes synthesis accepts and gives clearer errors. Its problems never stop the build, which alone decides success; they join the build's in `diagnostics` (see Lint first). Defaults to false |
 
 **Table 7.** build tool outputs
 
@@ -765,8 +778,12 @@ Xilinx builds use two of the core's tools, `oss-cad-suite` and `openxc7`. Two Xi
 | `clocks_summary` | list of objects | The design's clocks, by clock net: each with `name` (for showing to people: usually the design's clock signal, such as `CLK` for `CLK$SB_IO_IN_$glb_clk`), `net` (the clock net nextpnr reports) and `max_mhz` (the maximum frequency, rounded to 0.01 MHz). A clock that misses its target isn't an error: compare these with the design's needs |
 | `report` | multiline text | The build's report for people, the preferred way to show its resource use to people, a line each: the main resource always, the others in `resources_summary` when used, then each clock, such as "The design uses 27 of 7680 logic cells (1%)." and "Maximum clock speed: 194.4 MHz (sys_clk).", with each `display_percent`. A share that isn't valid is left out. Show it as is (a console, a CLI's output); its wording can change in any version, so programs read the fields above |
 | `report_summary` | text | The report in one line, for a status bar: the main resource's share and the slowest clock, such as "Uses 1% of logic cells, max clock 194.4 MHz." Empty when there's nothing to report |
-| `warnings` | list of diagnostics | Warnings from the tools. See diagnostic fields in Table 4 |
+| `warnings` | list of diagnostics | Warnings from the build's tools. See diagnostic fields in Table 4 |
+| `checked_files` | list of relative paths | The files the build read and checked: the design files, the files they include and the constraint file (see Checked files) |
+| `diagnostics` | list of diagnostics | Every problem the call found, each with its `tool`: with `lint`, lint's first, then the build's warnings without the ones lint already reported (see Lint first); without it, the same as `warnings` |
 | `commands` | list of commands | The programs this call ran, in order, so they can be run again without the Logix Engine. See Commands |
+
+**Lint first.** With `lint` true, `build` runs `lint` first, then builds, as one call: one list of `commands` (Verilator first), the live output of both, and progress on one increasing scale ("Linting", then the build's phases). Lint fails for warnings too, so its result never stops the build. When both tools flag the same mistake, the build's problem is left out: one with the same severity at the same file and line as one of lint's (or, without a file, the same text). Each tool's own problems are all kept. A lint run that fails, such as a tool failure, adds one warning, "Lint couldn't check the design: …", and the build goes on. A failed build's design error has the same merged list in its `diagnostics`.
 
 **Errors:** design errors, such as syntax errors or unknown pin names. Setup errors with `download_packages`. Request errors, such as an unknown board, a constraint file whose extension isn't the board's FPGA family's format, or a build folder that breaks the keyword rules. Tool failures, engine errors and cancellation. A clock that misses its intended frequency is not an error: the host compares the frequencies in `clocks_summary` with its own targets.
 
@@ -823,6 +840,9 @@ Output (`resources` shortened to the used ones):
   "report_summary": "Uses 1% of logic cells, max clock 89.8 MHz.",
   "warnings": [
     { "file": "uart.v", "line": 13, "severity": "warning", "text": "Identifier `\\rx_done' is implicitly declared.", "tool": "yosys" }
+  ],
+  "diagnostics": [
+    { "file": "uart.v", "line": 13, "severity": "warning", "text": "Identifier `\\rx_done' is implicitly declared.", "tool": "yosys" }
   ]
 }
 ```
@@ -876,7 +896,11 @@ Lists the connected USB devices, each with an `id` for `program_board` and the b
 
 Hosts show the level, in their own words, and compare levels (weak < possible < strong), such as to name the strongest matches and only count the weak ones. How the Logix Engine decides a level is internal: it changes between engine versions without notice, so hosts must never infer the cause of a match or rely on a level staying the same. Several boards can have the same level for one device, such as the two OrangeCrab sizes, and no level proves which board is connected: boards the catalog doesn't know can look the same.
 
-**For a build.** Upload is the common case: with `build_folder`, a host doesn't need the build's board ID or board variant. It programs the only device listed, or asks the user when there are several, and when none is listed it says the board isn't connected, mentioning any `unreachable` device as a possible cause.
+**For a build.** Upload is the common case: with `build_folder`, a host doesn't need the build's board ID or board variant. It programs the only device listed, or asks the user when there are several, and when none is listed it shows `status`, which says the board isn't connected, or that a device that may be it can't be opened yet, and what to do.
+
+**Status.** With `build_folder` or `board`, the result's `status` says whether that board is connected, in the engine's words, so every frontend says it the same way: `code` (`connected`: one device may be it; `several`: more than one, so ask the user which; `unreachable`: none can be opened, but one that can't has its USB IDs; `not_connected`: none), `message` (a sentence naming the board, such as "The Alhambra II isn't connected. Connect it by USB, then try again."), `hints` (lines to show under it, a line each: for `not_connected`, what is connected and tips about the cable and power) and `action` (as in errors: `connect_board`, or the unreachable device's own action). With `board` alone, any device that may be the board counts; with `build_folder`, the devices that fit the build.
+
+**One list.** A host that shows `devices` and `unreachable` together, as a Connected Devices dialog does, orders them by each entry's `rank`: those that may be the request's board (`board`, else the build's) first, then those that may be other boards, then the rest, devices before unreachable ones within each.
 
 **Unreachable devices.** A device the engine sees but can't open, because of missing permissions or a missing driver, can't be programmed and its names can't be read, so it isn't in `devices`. When its USB IDs fit a board, it is listed in `unreachable` with those boards (every board variant `weak`, since its names are unknown) and the action that makes it usable: `install_drivers` on Windows, `fix_device_permissions` elsewhere (on Linux, `install_driver` adds the udev rule that fixes it). Other devices the engine can't open are left out.
 
@@ -893,14 +917,16 @@ Hosts show the level, in their own words, and compare levels (weak < possible < 
 | `custom_boards_folder` | custom boards folder | No | The host's own boards (see Board specification), matched as well as the catalog's. Omitted means none |
 | `display_paths` | display paths | No | How to name paths in what people read. Omitted means as the request gave them (see Display paths) |
 | `build_folder` | build folder path | No | A successful build's folder. When given, only the devices that fit the build's board in its board variant are listed, in `devices` and `unreachable`, each with `build_match`, strongest first: the devices `program_board` can program that build into. The board comes from the build record, so it works for custom boards too |
-| `board` | board ID | No | The board the user has chosen, such as the one selected in a frontend's toolbar (a catalog board or one in `custom_boards_folder`). A device that may be it is named as it in `who` and in its `driver` texts, and, without `build_folder`, devices (and unreachable ones) are listed in this order: those that may be this board, then those that may be other boards, then the rest, in scan order within each. Omitted means none |
+| `board` | board ID | No | The board the user has chosen, such as the one selected in a frontend's toolbar (a catalog board or one in `custom_boards_folder`). A device that may be it is named as it in `who`, in its `driver` texts and in `note`, `status` says whether it's connected, and, without `build_folder`, devices (and unreachable ones) are listed in this order: those that may be this board, then those that may be other boards, then the rest, in scan order within each. Omitted means none |
 
 **Table 12.** list_devices tool outputs
 
 | Field | Type | Description |
 | --- | --- | --- |
 | `devices` | list of devices | The connected devices the engine can open. See device fields in Table 13 |
-| `unreachable` | list of objects | Optional. Devices that can't be opened and whose USB IDs fit a board: `id` (as in Table 13, for `install_driver`; `program_board` refuses it), `kind`, `label` (such as "USB device (0403:6010)", since its names can't be read), `who` (as in Table 13), `vid`, `pid`, `bus`, `device`, `boards` (as in Table 13), `action` (the fix for AI agents, see Table 5), `fix` (the same for people, such as "Add a udev rule for it, so it can be programmed and its name read."), `build_match` with `build_folder`, and on Windows and Linux `driver` as in Table 13 |
+| `unreachable` | list of objects | Optional. Devices that can't be opened and whose USB IDs fit a board: `id` (as in Table 13, for `install_driver`; `program_board` refuses it), `kind`, `label` (such as "USB device (0403:6010)", since its names can't be read), `who` (as in Table 13), `vid`, `pid`, `bus`, `device`, `boards` (as in Table 13), `action` (the fix for AI agents, see Table 5), `fix` (the same for people, such as "Add a udev rule for it, so it can be programmed and its name read."), `note` (what it may be and what to do, for people, ending with `fix`: "This may be your Alhambra II: it has the same USB IDs. …" when it may be the request's board, `board` or else the build's; otherwise "This may be an FPGA board, the Alhambra II: it has its USB IDs. …", or "This may be an FPGA board: 15 boards have its USB IDs. …"), `rank` (as in Table 13), `build_match` with `build_folder`, and on Windows and Linux `driver` as in Table 13 |
+| `status` | object | Only with `build_folder` or `board`: whether that board is connected (see Status above): `code` (`connected`, `several`, `unreachable` or `not_connected`), `message` (a sentence for people, naming the board), `hints` (more lines for people, a line each; often empty) and `action` (optional, as in errors: `connect_board` when it isn't connected, or the unreachable device's own action) |
+| `custom_boards_problem` | error | Optional. When `custom_boards_folder` has a problem (without `build_folder`): the error every other board tool returns for it, a request error with a diagnostic per problem, at file, line and column. The devices are matched against the catalog's boards only then. With `build_folder`, a problem is a request error, as for `program_board` |
 
 **Table 13.** Device fields
 
@@ -918,11 +944,13 @@ Hosts show the level, in their own words, and compare levels (weak < possible < 
 | `build_match` | enum | Only with `build_folder`. How well the device matches the build's board in the build's board variant: `strong`, `possible` or `weak`, as for `boards` (`weak` for an unreachable device) |
 | `boards` | list of objects | Optional, omitted when empty. The boards the device may be, best first, each with `board` (its ID), `custom` (true for a board from the custom boards folder, omitted otherwise) and `variants` (the board's variants this device fits, in the board's order, each with its `selector` and its own `match` level) |
 | `likely_boards` | list of board IDs | Optional, omitted when empty. The boards the device most likely is, best first: those at its strongest match level, unless that is `weak` (many boards fit, so none is likely). Use it to name what a device probably is; `boards` has every candidate |
+| `other_boards` | list of board IDs | Optional, omitted when empty. The other boards worth naming after `likely_boards`, best first: the rest of `boards`, except that when the device has a `strong` match, only the request's board (`board`, else the build's) when the device may be it, since dozens of boards that share a USB chip would only be noise |
+| `rank` | integer | The device's place in one list of `devices` and `unreachable` together, 0 first: those that may be the request's board (`board`, else the build's), then those that may be other boards, then the rest; devices before unreachable ones within each, each in its list's order (see One list) |
 | `driver` | object | Optional, on Windows and Linux. On Windows, for a device whose board's programmer needs a driver (see Drivers on Windows): the board variant is the build's with `build_folder`, else the first variant of its best match. `needed` (`winusb`), `interface` (the USB interface that needs it, such as 0, an FTDI chip's first channel; its other channels, such as a serial port, keep their driver), `current` (the driver Windows has on that interface now, by its service name in lowercase, such as `ftdibus`, `usbser` or `winusb`; omitted when it has none) and `ready` (whether the programmer can use it as it is: true with WinUSB, and with libusbK or libusb0, which older guides installed). On Linux, for every device that fits a board (see udev rules on Linux): `needed` (`udev-rule`), `current` (the file of Logix Engine's rule for its USB IDs, such as `70-logix-engine-0403-6010.rules`; omitted when there's none) and `ready` (whether the engine can open the device); no `interface` |. Texts for people, the same for every frontend and naming none (no frontend, menus or buttons): `label` (what it needs, in a sentence: "the WinUSB driver" or "a udev rule"), `state` (such as "Driver: needs WinUSB on USB interface 0 to program the board (it has FTDI's driver now)." or "Access: ready to program the board, with Logix Engine's udev rule (70-logix-engine-0403-6010.rules)."), `tag` (while not ready, short, for a list: "no driver yet" or "no udev rule yet"), `current_label` (Windows: `current` for people, such as "FTDI's driver"), `can_add` (whether `install_driver` has something to do: not ready), `can_remove` (whether `uninstall_driver` may: on Linux, Logix Engine's rule is there; on Windows, the device has a libusb driver), and when they're true `add` and `remove`: the question to ask the user first, with `title`, `lead` (naming the device by `who`), `steps`, an optional `note`, `confirm` (the agreeing button's label, such as "Install Driver"), `busy` (a status line while it runs, such as "Adding the board's udev rule…") and `cancelled` (the line when the user declines, such as "Cancelled: the driver wasn't installed."). A frontend shows them as they are and adds its own words around them (such as where to undo it)
 | `serial_ports` | list of objects | Optional, omitted when empty. The device's serial ports, for `open_serial`: `port` (such as `COM5` on Windows, `/dev/cu.usbserial-FTATANKC1` on macOS, `/dev/ttyUSB1` on Linux), `interface` (the USB interface it's on, such as 1 for an FTDI chip's second channel, when the system says), `role` (what it's for, by the device's board: `uart`, the board's serial port, the same as `serial_port`; `programmer`, the interface its programmer uses, such as an FTDI chip's first channel, not a serial port for the design; omitted when not known) and `description` (the port for people, such as "The Alhambra II's serial port", "The Alhambra II's programming port" or "A serial port of USB device (1a86:7523)"). Found by the device's USB IDs and serial number; empty when another connected device has its USB IDs and no serial number, since they can't be told apart. On Windows a port appears only while its interface has a serial driver (FTDI's or Windows' own): WinUSB on a programming interface leaves the other channels' ports alone |
 | `serial_port` | text | Optional. The serial port of the device's board's UART, the one a Serial Monitor opens: the port on the UART's `usb_interface` (the board's data; Logix Catalog's model) when the board gives it, else the device's only serial port. The board is the build's with `build_folder`, else `board` when the device may be it, else its only likely board. Omitted when it can't be told: then let the user choose from `serial_ports` |
 
-**Errors:** setup errors with `install_drivers` or `fix_device_permissions` when devices cannot be scanned. Request errors for an invalid custom board, or a build folder without a build record from a successful build. Engine errors.
+**Errors:** setup errors with `install_drivers` or `fix_device_permissions` when devices cannot be scanned. Request errors for a build folder without a build record from a successful build, or, with `build_folder`, an invalid custom board (without it, see `custom_boards_problem`). Engine errors.
 
 **Example**
 
@@ -1028,9 +1056,9 @@ Returns the board catalog (the `logix-catalog` release the engine's remote confi
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `boards` | map of board definitions | Board definitions by ID, the custom boards folder's with `custom: true`, without their variants' `usb` filters: which devices are a board is the engine's own matter, and `list_devices` gives each device the boards it may be. Each variant has a `label` for people, its connection and memory labels, such as "USB · Flash" or "FT232H adapter · RAM". Boards have their `resources` when known (see resource) |
-| `fpgas` | map of FPGA definitions | FPGA definitions by catalog ID |
-| `families` | map of objects | FPGA families by ID (`ice40`, `ecp5`, `gw1n`, `gw2a`, `gw5a`, `artix7`, `spartan7`, `zynq7000`, as FPGA definitions name them), each with `label` (its name for people, with its vendor, such as "Lattice iCE40" or "Gowin GW2A"), `short_label` (such as "iCE40"), `constraint_extension` (its pin constraint files' extension, without the dot, such as `pcf`: the build takes only this format for its boards), `order` (its place in the engine's order, 0 first) and `toolchain` (the toolchain that builds it: `ice40`, `ecp5`, `gowin` or `openxc7`; for logs and diagnostics, while people see the family), so frontends don't keep their own lists |
+| `boards` | map of board definitions | Board definitions by ID, the custom boards folder's with `custom: true`, without their variants' `usb` filters: which devices are a board is the engine's own matter, and `list_devices` gives each device the boards it may be. Each variant has a `label` for people, its connection and memory labels, such as "USB · Flash" or "FT232H adapter · RAM". Boards have their `resources` when known (see resource), and each resource, besides its catalog fields, has words for people: `type_label` (its type, such as "Clock", "LEDs" or "RGB LED", plural when it has several pins), `pins_text` (its pins, labeled where a type has several kinds, such as "R 40, G 41, B 39", "TX 6, RX 4", or an LED matrix's "1, 2; R 3, G 4, B 5"; an unwired header pin is "–") and `notes_text` (one text: the clock's frequency, the active level, the I/O standard, "Needs: …" for each requirement and its `user_notes`, such as "12 MHz. From the on-board iCELink's 12 MHz clock output."; omitted when there's nothing), before its `ai_hints`. Each `drive` requirement, the board's and its resources', has a `text` too, such as "Drive wifi_gpio0 (L2) high: GPIO0 of the board's ESP32 WiFi module: …" (a `setup`'s own `text` says it already). A frontend shows them as they are; in a board file they're a problem |
+| `fpgas` | map of FPGA definitions | FPGA definitions by catalog ID, each with a `label` for people: its family, part number and size, such as "Lattice iCE40 ICE40HX4K-TQ144 (8k)" |
+| `families` | map of objects | FPGA families by ID (`ice40`, `ecp5`, `gw1n`, `gw2a`, `gw5a`, `artix7`, `spartan7`, `zynq7000`, as FPGA definitions name them), each with `label` (its name for people, with its vendor, such as "Lattice iCE40" or "Gowin GW2A"), `short_label` (such as "iCE40"), `constraint_extension` (its pin constraint files' extension, without the dot, such as `pcf`: the build takes only this format for its boards), `constraint_comment` (what starts a comment line in those files: `#` for `.pcf`, `.lpf` and `.xdc`, `//` for `.cst`; the formats have no block comment every tool accepts, so an editor's Comment/Uncomment uses it), `order` (its place in the engine's order, 0 first) and `toolchain` (the toolchain that builds it: `ice40`, `ecp5`, `gowin` or `openxc7`; for logs and diagnostics, while people see the family), so frontends don't keep their own lists |
 
 **Errors:** request errors for unknown sections or IDs. Engine errors.
 
@@ -1071,10 +1099,14 @@ Output (`resources` shortened):
       "resources": {
         "sys_clk": { "type": "clock", "pin": "35", "mhz": 12,
           "source": { "kind": "schematic", "ref": "github.com/wuxx/icesugar schematic/iCESugar-v1.5.pdf" },
-          "user_notes": "From the on-board iCELink's 12 MHz clock output." },
+          "user_notes": "From the on-board iCELink's 12 MHz clock output.",
+          "type_label": "Clock", "pins_text": "35",
+          "notes_text": "12 MHz. From the on-board iCELink's 12 MHz clock output." },
         "switches": { "type": "switches", "pins": ["18", "19", "20", "21"], "active": "low",
           "source": { "kind": "schematic", "ref": "github.com/wuxx/icesugar schematic/iCESugar-v1.5.pdf" },
-          "user_notes": "A 4-way DIP switch with pull-ups, on the same pins as PMOD4." }
+          "user_notes": "A 4-way DIP switch with pull-ups, on the same pins as PMOD4.",
+          "type_label": "Switches", "pins_text": "18, 19, 20, 21",
+          "notes_text": "Active low. A 4-way DIP switch with pull-ups, on the same pins as PMOD4." }
       }
     }
   },
@@ -1178,9 +1210,11 @@ Returns the Logix Engine's version, platform and package status. A host calls it
 | `auto_download` | boolean | Whether automatic package download and repair is on. It is on by default, and the host turns it off with the `--no-auto-download` command-line argument when it launches the engine |
 | `command_line` | list of text | The command-line arguments the engine was launched with, as given, for diagnostics |
 | `log_file` | absolute path | The log file this engine process writes: in the host's session folder (`--log-folder`), or in its own session folder in the engine folder's `logs` when it's at the top. See Logs in [Command line](command-line.md) |
-| `packages` | list of packages | Every package the engine uses, from its remote config (empty until it has read one): `logix-catalog` (the board catalog) and `logix-core` (the FPGA tools). Each has a text `name`, a `version` (its release date as `yyyy.mm.dd`), a `status`: `ready`, `missing` or `broken`, and, for a ready `logix-core`, `components`: its tools, each with a `name` (`oss-cad-suite`, `openxc7`, `verible`, `elkjs`, and `wdi-simple` on Windows), a `description` and `bin_folder`, the absolute path of the folder with its programs, for hosts that run one directly, such as Verible's language server `verible-verilog-ls` from the `verible` component |
+| `packages` | list of packages | Every package the engine uses, from its remote config (empty until it has read one): `logix-catalog` (the board catalog) and `logix-core` (the FPGA tools). Each has a text `name`, a `version` (its release date as `yyyy.mm.dd`), a `status`: `ready`, `missing` or `broken`, and, for a ready `logix-core`, `components`: its tools, each with a `name` (`oss-cad-suite`, `openxc7`, `verible`, `elkjs`, and `wdi-simple` on Windows), a `description` and `bin_folder`, the absolute path of the folder with its programs, for hosts that run one directly (for Verible's language server, use `language_server`) |
 | `boards_schema` | text | The address of the board schema this engine reads, Logix Catalog's JSON Schema of a board file, in the catalog and in custom boards folders, such as `https://www.openlogix.org/schemas/logix-board-v1.json` (see Board specification) |
 | `remote_config` | object | The remote config: `config_version` (such as `001`), `source` (the version folder's URL, or a local folder), `is_override` (true only for `LOGIX_ENGINE_DEV_REMOTE_CONFIG`), `channel` (such as `prod` or `dev`), `channel_reason` (`listed`: `assign.jsonc` lists this release; `default`: it doesn't, so `dev`; `local build`: always `dev`; or `LOGIX_ENGINE_CHANNEL`), `config_file` (the file read, such as `dev-channel.jsonc`, or `prod-channel.jsonc` when the channel has none) and `read_at`, when the one in use was read (UTC, `yyyy-mm-ddThh:mm:ssZ`). The channel fields and `read_at` are omitted before the first read |
+| `language_server` | object | Optional. Verible's Verilog language server, for a host that runs it itself for live errors and help while the user types (an editor's language server protocol client): `command` (the program's absolute path, `verible-verilog-ls`), `args` (its arguments, in order: `--ruleset=none`, syntax errors only, since Verible's style rules would flood beginners and lint finds design problems, and `--lsp_enable_hover=true`) and `env` (environment variables to set for it on top of the host's own, a map; empty today). Run it with exactly these. Omitted until `logix-core` is downloaded; call `get_engine_info` again after `download_packages` or `check_updates`, since a new release moves it |
+| `hdl_extensions` | object | The extensions of the HDL files the tools take, without the dot, so a frontend knows which files are sources without a list of its own: `source` (design and testbench files: `v`, `sv`) and `include` (files they include: `vh`, `svh`). Pin files are per FPGA family: `get_catalog`'s `families` give each its `constraint_extension` and `constraint_comment` |
 | `catalog` | object | The board catalog: `version`, the date of the `logix-catalog` release in use, as `yyyy.mm.dd`, and `local`, true only when the engine reads a local catalog folder (`LOGIX_ENGINE_DEV_CATALOG_FOLDER`, a diagnostic setting), whose `version` is then `local` |
 | `developer_settings` | list | The developer settings in effect, the environment variables the engine reads for development and diagnostics (`LOGIX_ENGINE_CHANNEL`, `LOGIX_ENGINE_DEV_REMOTE_CONFIG`, `LOGIX_ENGINE_DEV_CATALOG_FOLDER`; see the command line's Diagnostic settings), each with a `name` and its `value`. Omitted when none is set, as for users |
 | `versions` | version entry | The version tree, for system info (see Show system info under Recipes): the Logix Engine, its packages under it, and under a downloaded `logix-core` the third-party releases it bundles (such as OSS CAD Suite), where it stops. Each entry has a `name` (a program by its product name, a package by its package name, a third-party release by its project's name), a `version` (`yyyy.mm.dd` for Open Logix releases, upstream's own for third-party ones, or such as `local folder` when a developer setting replaces it), a `kind` (`program`, `package` or `third_party`), and when they apply: `channel` (a program's), `overridden_by` (the developer setting that replaces it), `notes` (short lines for people: only what the name and version don't tell, such as a program's channel, commit and remote config, a third-party release's upstream, or a package not downloaded yet), `details` (label and value pairs for showing on demand, such as on hover: repo, release, file, checksum, which config named it, for the engine its engine folder and log file, and for a third-party release the programs Open Logix runs from it) and `children` (its own entries, in order) |
@@ -1209,6 +1243,12 @@ Output:
       { "name": "verible", "description": "CHIPS Alliance Verible: the Verilog formatter and language server", "bin_folder": "/Users/user/.myhost/engine/packages/logix-core/2026-11-10/verible/bin" }
     ] }
   ],
+  "language_server": {
+    "command": "/Users/user/.myhost/engine/packages/logix-core/2026-11-10/verible/bin/verible-verilog-ls",
+    "args": ["--ruleset=none", "--lsp_enable_hover=true"],
+    "env": {}
+  },
+  "hdl_extensions": { "source": ["v", "sv"], "include": ["vh", "svh"] },
   "remote_config": {
     "config_version": "001",
     "source": "https://raw.githubusercontent.com/openlogix/logix-engine/main/remote-config/logix-engine/001/",
@@ -1255,6 +1295,7 @@ Downloads or repairs the Logix Engine's packages, reading its remote config firs
 | --- | --- | --- |
 | `downloaded` | list of text | Names of the packages this call downloaded, repaired or downloaded again. Empty when they were all downloaded already and `force` was off |
 | `packages` | list of packages | Every package the engine uses, with its status afterwards, as in `get_engine_info` |
+| `summary` | list of text | What the call did, for people, a sentence each: "Downloaded logix-core 2026.11.10." for each package in `downloaded`, with its version now. Empty when there was nothing to do. Show it as is; programs read the fields above |
 
 **Errors:** request errors for unknown package names. Setup errors with `download_packages` when a download fails. Engine errors and cancellation.
 
@@ -1274,7 +1315,8 @@ Output:
   "packages": [
     { "name": "logix-catalog", "version": "2026.11.10", "status": "ready" },
     { "name": "logix-core", "version": "2026.11.10", "status": "ready", "components": [ ... ] }
-  ]
+  ],
+  "summary": ["Downloaded logix-core 2026.11.10."]
 }
 ```
 
@@ -1296,6 +1338,7 @@ Checks now for newer releases of the Logix Engine's packages: reads its remote c
 | `downloaded` | list of text | Names of the packages this call downloaded or repaired |
 | `packages` | list of packages | Every package the engine uses, with its status afterwards, as in `get_engine_info` |
 | `remote_config` | object | The remote config just read, as in `get_engine_info` |
+| `summary` | list of text | What changed, for people, a sentence each: "Updated logix-catalog to 2026.11.30." for each of `updates`, "Downloaded logix-core 2026.11.10." for a package only downloaded or repaired, or "Logix Engine's packages are up to date." when nothing changed. Packages are named by their package names. A newer engine isn't in it (see `newer_engine`). Show it as is; programs read the fields above |
 | `newer_engine` | object | Optional. A newer Logix Engine release on this engine's channel: `version` (`yyyy.mm.dd`) and `page` (its release page, with its install steps). The engine never updates itself, so a host or AI agent tells the user, with the page. From `latest` in the newest config version folder that has the engine's channel (Remote updates, in the website repo's `CLAUDE.md`, A newer version of the product); omitted when this engine is the newest, and when that can't be read |
 
 **Errors:** setup errors with `download_packages` when the remote config can't be read and there's none to use, or a download fails. Engine errors and cancellation.
@@ -1319,7 +1362,8 @@ Output:
     "channel_reason": "listed",
     "config_file": "prod-channel.jsonc",
     "read_at": "2026-12-01T09:30:00Z"
-  }
+  },
+  "summary": ["Updated logix-catalog to 2026.11.30."]
 }
 ```
 
@@ -1497,15 +1541,15 @@ A client can point the person at something: the signals to show, in order, a tim
 | `signals` | list of text | No | The signals to show, in order, as paths in the file, such as `main_tb.dut.count` |
 | `from_ns`, `to_ns` | number | No | The time range to show, in nanoseconds. Omitted means the whole run, or the view's |
 | `cursor_ns` | number | No | Where to put the cursor, in nanoseconds |
-| `open_viewer` | boolean | No | Open the page in a window of its own (Logix Waveforms). Defaults to true. False only writes it |
+| `open` | boolean | No | Open the page in a window of its own (Logix Waveforms). Defaults to true. False only writes it |
 
 **Table 52.** open_waveform tool outputs
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `viewer_file` | absolute path | The viewer's page |
-| `viewer_opened` | boolean | True if the page opened in a window |
-| `viewer_problem` | text | Optional. Why it didn't open, in plain words. Only when `open_viewer` was true and it didn't open |
+| `page_file` | absolute path | The viewer's page |
+| `opened` | boolean | True if the page opened in a window |
+| `viewer_problem` | text | Optional. Why it didn't open, in plain words. Only when `open` was true and it didn't open |
 | `signal_count` | integer | How many signals the file has |
 | `end_ns` | number | The run's length, in nanoseconds |
 | `unknown_signals` | list of text | Requested signals the file doesn't have, which the page leaves out |
@@ -1530,8 +1574,8 @@ Output:
 
 ```json
 {
-  "viewer_file": "/home/user/.logix/claude-code/engine-data/waveforms/main_tb.html",
-  "viewer_opened": true,
+  "page_file": "/home/user/.logix/claude-code/engine-data/waveforms/main_tb.html",
+  "opened": true,
   "signal_count": 6,
   "end_ns": 2000.0,
   "unknown_signals": []
@@ -1559,7 +1603,7 @@ Closes windows this engine opened in Logix Viewer (see below): one page's window
 
 ## Logix Viewer
 
-The engine shows its pages to the person at the screen in Logix Viewer, logix-core's `logix-viewer` program (docs/requirements.md, Logix Viewer), run as one app per kind of page, each with its own name and icon: **Logix Waveforms** (`simulate`, `open_waveform`) and **Logix Diagrams** (`diagram`). A host with a window of its own, such as Logix IDE, shows the pages itself instead (`open_viewer` or `open` false).
+The engine shows its pages to the person at the screen in Logix Viewer, logix-core's `logix-viewer` program (docs/requirements.md, Logix Viewer), run as one app per kind of page, each with its own name and icon: **Logix Waveforms** (`simulate`, `open_waveform`) and **Logix Diagrams** (`diagram`). A host with a window of its own, such as Logix IDE, shows the pages itself instead (`open` false).
 
 - **One app per kind, for every engine.** Each app runs once per user, however many engines run; the first engine that needs it starts it, and every engine talks to it over a local socket (`~/.logix/viewer/<kind>.sock`, or a named pipe on Windows), staying connected while it runs.
 - **A window per page.** Each page file shows in one window, titled with the app, the project and the page (`Logix Waveforms · blinky · main_tb`). Showing the same page again reloads that window in place, with the view kept, and brings it to the front. New windows open staggered down and to the right, at the size the person last gave one of the app's windows.
@@ -1610,20 +1654,21 @@ Logic that every frontend would need and that doesn't depend on a frontend's own
 
 1. Launch the Logix Engine with `--engine-folder`, and, to keep its logs with yours (the Open Logix log layout, Logs in [Command line](command-line.md)), with `--log-folder` (your session folder) and `--log-name` (your program's short name, a dot, then `engine`, such as `my-ide.engine`). Do the MCP handshake, then call `get_engine_info`. If you follow the layout, call `clean_logs` with your logs folder, keeping your session folder.
 2. Check that `engine_version` is one your frontend supports, by its own rule, such as a version range or a list of tested releases. If it isn't, call no other tools: tell the user which Logix Engine versions the frontend needs, then stop or fall back as the frontend decides.
-3. Call `download_packages` and show its progress. It reads the engine's remote config when that's due and downloads only what's missing, so it returns at once when everything is ready, and it's how a first start downloads the packages with the host's own progress screen. (Tools would download what they need on first use anyway.) Then show package status from its `packages`. To check for newer packages now, call `check_updates`.
+3. Call `download_packages` and show its progress. It reads the engine's remote config when that's due and downloads only what's missing, so it returns at once when everything is ready, and it's how a first start downloads the packages with the host's own progress screen. (Tools would download what they need on first use anyway.) Then show package status from its `packages`, and its `summary` lines, if any, in a console. To check for newer packages now, call `check_updates` and show its `summary`, a line each.
 
 ### Show whether the board is connected
 
 1. Call `list_devices` every few seconds while the status is on screen, and pause while a task uses the board. The Logix Engine has no device-change notification, so the frontend polls.
-2. Look for the selected board and board variant in each device's `boards`. Show "connected" when a device fits, and "not connected" when none does; Upload then checks. A frontend can use the `match` levels to order the boards a device may be, naming the strongest and counting the weak ones, but no USB match proves which board is plugged in.
-3. When no device fits but `unreachable` has one, show its `fix` instead, such as adding a udev rule, and offer `install_driver` when its `driver` isn't `ready` (below). A device seen but not usable is a common reason a board "isn't found".
-4. Device IDs stay the same while a device stays on its USB port, so a selection survives polling and replugging into the same port.
+2. Call it with `board`, the selected board, and show `status`: "connected" for `connected` and `several`, and "not connected" otherwise; Upload then checks. To check the selected board variant too, look for it in the device's `boards`. In a list of devices, name each device's `likely_boards`, then its `other_boards`, and order `devices` and `unreachable` together by `rank`. No USB match proves which board is plugged in.
+3. When `status` is `unreachable`, show its message and `action` instead, and each unreachable device's `note` (which ends with its `fix`, such as adding a udev rule); offer `install_driver` when its `driver` isn't `ready` (below). A device seen but not usable is a common reason a board "isn't found".
+4. When the project's custom boards folder has a problem, `custom_boards_problem` has it: show it as you show the folder's problems elsewhere. The devices are still listed, matched against the catalog only.
+5. Device IDs stay the same while a device stays on its USB port, so a selection survives polling and replugging into the same port.
 
 ### Upload: build, pick a device, program
 
 1. Call `build`. If it fails, show its diagnostics and stop; `program_board` never builds.
 2. Call `list_devices` with the build folder. It lists only devices that fit the build's board and board variant, so the frontend never needs the board ID here.
-3. One device: use it. Several: ask the user, with a `strong` `build_match` device pre-selected when there is exactly one. None: say the board isn't connected, and mention any `unreachable` device and its action.
+3. One device: use it. Several: ask the user, with a `strong` `build_match` device pre-selected when there is exactly one. None: show `status`'s `message`, then its `hints`, a line each, and offer its `action`.
 4. Call `program_board` with the build folder and the chosen device `id`.
 5. On `connect_board` or `disconnect_devices`, list the devices again and let the user retry. Never build or guess a device ID.
 
@@ -1632,26 +1677,29 @@ On Windows and Linux, a device whose `driver` isn't `ready` (in `devices` or `un
 ### Show progress and a console
 
 - Add a progress token to every long call. Show an overall bar from `progress / total`, the phase message as its label, and the phase's own percentage as `progress mod 100`. A phase without percentages shows a spinner.
-- For a console, add `"logix/output": true` to the call's `_meta` and append each `logix/output` line, styled by `kind` and `level`. Show a line with `redraw` true at once, and replace it in place with the same tool's next line, so a progress bar stays on one line and updates as in a terminal; any other line in between keeps it. Don't parse these lines; the result has the diagnostics.
+- For a console, add `"logix/output": true` to the call's `_meta` and append each `logix/output` line, styled by `kind` and `level`. A line with a `location` can be a link that opens its file at that line. Show a line with `redraw` true at once, and replace it in place with the same tool's next line, so a progress bar stays on one line and updates as in a terminal; any other line in between keeps it. Don't parse these lines; the result has the diagnostics.
 - A "copy command" action can use each `commands` entry's `shell` line, so users can rerun a step or report a tool bug without the engine.
 - Cancel with an MCP cancel notification for the call's request ID.
 
 ### Show problems in the editor
 
 - Every tool reports problems as diagnostics with `file` relative to the source folder, `line`, `column` and `severity`, so one routine can underline them for lint, test, build and format alike.
-- `lint` is fast and writes nothing, so it suits running on save. Build warnings come in `warnings`.
+- When a call ends, replace the problems of the files in its `checked_files` (or a design error's `data.checked_files`) with its diagnostics, and keep the other files' problems: each tool reads only some files, such as the pin file only in `build`.
+- For live errors while the user types, run Verible's language server yourself, as `get_engine_info`'s `language_server` gives it (command, arguments and environment), and speak the language server protocol with it.
+- `lint` is fast and writes nothing, so it suits running on save. For a Verify button that checks and builds, call `build` with `lint` true and show its `diagnostics` (or, when it fails, the error's): lint's and the build's problems in one list, without repeats.
 - Show a build's result with the engine's text: `report_summary` in a status bar ("Uses 1% of logic cells, max clock 194.4 MHz.") and `report` in a console, so every frontend words it the same way. For a full report, show `resources` as a table: the toolchain's name, its description, used, available and `display_percent` ("n/a" when it's `null`), the used ones by default, with a way to show the rest (on Xilinx FPGAs most are unused), and `clocks_summary` with each clock's name, maximum speed and net. Logix IDE's Board Utilization window does this (`ui/src/lib/BuildReport.svelte`).
 - Turn an error's `action` code into a button: `download_packages` calls the download_packages tool, and `connect_board`, `fix_device_permissions`, `install_drivers` and `disconnect_devices` show short instructions.
 
 ### Run and debug testbenches
 
-1. "Run tests" calls `test` with every testbench. Each stops at its first failure, so a failing run ends fast, and each result says where and when it failed.
+1. "Run tests" calls `test` with every testbench. Each stops at its first failure, so a failing run ends fast, and each result says where and when it failed. Show a result's `ending_text` too, when it has one: a run stopped at a limit, or one that never called `$finish`, fails without a failure of its own.
 2. "Debug" on a failing testbench calls `simulate` with a `view_file` next to the testbench, such as `main_tb.view`. The waveform viewer opens at the first failure.
 3. The viewer saves the user's view through the host, which writes it to `view_file`, so the next simulation opens with it.
 
 ### Pick a board
 
-- Fill a board picker from `get_catalog` with `boards.fetch`, `fpgas.fetch` and `families.fetch` true: group boards by their FPGA's `family`, with the family's `label` and `order`, and use its `constraint_extension` for the board's pin file.
+- Fill a board picker from `get_catalog` with `boards.fetch`, `fpgas.fetch` and `families.fetch` true: group boards by their FPGA's `family`, with the family's `label` and `order`, name each board's FPGA by its `label`, and use the family's `constraint_extension` for the board's pin file and `constraint_comment` to comment out its lines. `get_engine_info`'s `hdl_extensions` say which other files are sources.
+- To show a board's resources, as a table, use each resource's `type_label`, `pins_text` and `notes_text`, and each `drive` requirement's `text`, as they are: the engine words them, so new resource types and fields reach every frontend.
 - Show each board's `dimensions` labels and help as the board variant choices, each variant's `label` as the current choice, and its `tested` and `user_notes` where the user picks. Keep only the values the user chose, such as `{"memory": "ram"}`, and send them as `board_variant`: the engine uses the board's first variant with them, the same rule a host uses to show which variant that is.
 - A user's own boards are custom boards: keep them in a folder in the project, such as `boards/`, a file per board named by its ID, so they work on every platform and anyone who opens the project gets them. Send the folder's path as `custom_boards_folder` with every request, whatever board is selected, and list its boards with the catalog's by sending it to `get_catalog`. The frontend needn't edit, parse or copy them: users edit it with any editor (with a `"$schema"` line naming `boards_schema` from `get_engine_info`, editors that read JSON Schemas check and complete it), the Logix Engine reads it, and a frontend only notices changes on disk, shows the problems the engine reports at line and column, and marks its boards where the user picks so they aren't mistaken for catalog boards.
 - When the user changes a project's board, call `compare_boards` with the old and new boards and decide from its aspects what the change means for your project model: warn about each difference, or adapt the project, such as converting the pin file when `constraint_format` differs. `same_build` tells whether an existing build still fits.
@@ -1682,4 +1730,4 @@ These are not decided and none of them is in the API today. They are listed so A
 - **What clean_build may delete.** Today it deletes only folders the Logix Engine marked with `.logix-build`, so it leaves old build folders made by other tools alone until the engine builds in them. The alternative is to delete any folder that passes the build folder path checks. That cleans other tools' old folders too, but a wrong path such as `/home/user/builds/myproject` passes those checks, since one of its last two folder names contains "build". A middle way would be to also refuse folders that directly contain design files, such as `.v`, `.sv` or `.pcf` files.
 - **Extra tool arguments for build.** Other FPGA tools let users pass extra options to the synthesis and place-and-route tools, so the build tool likely needs something similar. One option is to define abstract build phases, such as synthesis, place and route, and bitstream, offer portable options such as a target frequency and a seed, and add extra arguments per phase as an explicit escape hatch, passed unchanged to whatever tool runs that phase. The build output would then report which tool and version ran each phase.
 - **Include folders for build.** Some projects keep header files in a separate folder. An optional `include_folders` input, a list of relative paths under `source_folder`, would let the host name extra places to look up included files.
-- **Separating simulation from viewing.** `simulate` writes the waveform and its viewer page, and opens the page in Logix Waveforms unless `open_viewer` is false; `open_waveform` opens any waveform file. Longer term, `simulate` could also return the top-level signals, so other viewers, such as Surfer or a waveform view inside an IDE, fit the same way. It only adds fields, so it breaks nothing.
+- **Separating simulation from viewing.** `simulate` writes the waveform and its viewer page, and opens the page in Logix Waveforms unless `open` is false; `open_waveform` opens any waveform file. Longer term, `simulate` could also return the top-level signals, so other viewers, such as Surfer or a waveform view inside an IDE, fit the same way. It only adds fields, so it breaks nothing.
