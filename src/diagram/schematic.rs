@@ -723,7 +723,27 @@ fn render_node(
                     if let Some((px, py)) = n.port_position(&p.key, input) {
                         let data =
                             format!(r#" data-block="{}" data-port="{}""#, esc(name), esc(&p.key));
-                        square(boxes, x + px, y + py, data);
+                        if input && p.key == "CLK" && n.category == Some("reg") {
+                            // A register's clock: the schematic triangle,
+                            // pointing in, in place of the square (which
+                            // hid the old symbol's triangle). It says
+                            // "register" with no REG label, which read as
+                            // Verilog's reg (the user's decision, 2026-11-23).
+                            let (cx, cy) = (x + px, y + py);
+                            write!(
+                                boxes,
+                                r#"<path d="M{},{} L{},{} L{},{} Z" class="portbox clock"{data}/>"#,
+                                num(cx - 2.5),
+                                num(cy - 4.0),
+                                num(cx + 3.5),
+                                num(cy),
+                                num(cx - 2.5),
+                                num(cy + 4.0)
+                            )
+                            .unwrap();
+                        } else {
+                            square(boxes, x + px, y + py, data);
+                        }
                     }
                 }
             }

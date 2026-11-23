@@ -11,7 +11,8 @@
 //!
 //! It rewrites yosys's netlist before the rules (`rules.rs`) draw it: the
 //! drawing code stays the same, and the rules know the two block types,
-//! `REG` and `LOGIC`.
+//! `REG` and `LOGIC`. A register block is drawn without a label, its clock
+//! input as a triangle (schematic.rs).
 
 use std::collections::{HashMap, HashSet};
 
