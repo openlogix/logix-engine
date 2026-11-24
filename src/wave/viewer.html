@@ -1992,6 +1992,7 @@ function rowMenu(i, t, x, y) {
   const common = [
     { label: 'Add a group above', act: () => addRowAt('group', i) },
     { label: 'Add a group below', act: () => addRowAt('group', after) },
+    '-',
     { label: 'Add a blank row above', act: () => addRowAt('blank', i) },
     { label: 'Add a blank row below', act: () => addRowAt('blank', after) },
   ];
