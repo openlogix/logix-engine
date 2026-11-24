@@ -1,8 +1,8 @@
-// A double-click does only what it's for (the user's macOS test,
-// 2026-11-23): on a wave or a signal's name it opens the declaration where
-// the host opens sources, and it never moves the cursor or the selection,
-// though its first click would; on the diagram it selects no text. And the
-// help lists never scroll sideways, at any window width.
+// A double-click (the user's macOS tests, 2026-11-23 and 24): on a wave or
+// a signal's name it opens the declaration where the host opens sources,
+// and otherwise it's a click, whose cursor and selection stay; on the
+// diagram it selects no text. And the help lists never scroll sideways, at
+// any window width.
 import { test, expect, type Page } from "@playwright/test";
 import { open, row, hostCalls, PAGES, VIEWER_FEATURES } from "./helpers";
 import * as fs from "node:fs";
@@ -23,37 +23,35 @@ async function onWave(page: Page, share: number) {
 }
 
 for (const [where, features] of [["Logix Viewer (no openSource)", VIEWER_FEATURES], ["a host that opens sources", undefined]] as const) {
-  test(`in ${where}, double-clicking a wave leaves the cursor and selection as they were`, async ({ page }) => {
+  test(`in ${where}, double-clicking a wave acts as a click there`, async ({ page }) => {
     await open(page, "plain", features as string[] | undefined);
     // A single click puts the cursor there and selects the row.
     const a = await onWave(page, 0.3);
     await page.mouse.click(a.x, a.y);
     await expect.poll(() => savedCursor(page)).not.toBeNull();
-    const cursor = await savedCursor(page), sel = await selected(page);
-    expect(sel.length).toBe(1);
-    // A double-click elsewhere, on another row: nothing moves.
-    const other = (await page.locator("#names .nrow:not(.bit)").nth(0).boundingBox())!;
+    const first = await savedCursor(page);
+    // A double-click elsewhere, on another row: the cursor goes there, and
+    // that row is selected, as a click would, and they stay.
+    await page.waitForTimeout(600);   // past the double-click interval
+    const other = page.locator("#names .nrow:not(.bit)").nth(0);
+    const o = (await other.boundingBox())!;
     const b = await onWave(page, 0.7);
-    await page.mouse.dblclick(b.x, other.y + other.height / 2);
-    await page.waitForTimeout(100);
-    expect(await savedCursor(page)).toBe(cursor);
-    expect(await selected(page)).toEqual(sel);
-    // Undo still goes back to before the single click, in one step.
-    await page.locator("#undoBtn").click();
-    await expect.poll(() => savedCursor(page)).toBeNull();
+    await page.mouse.dblclick(b.x, o.y + o.height / 2);
+    await expect.poll(() => savedCursor(page)).toBeGreaterThan(first);
+    await page.waitForTimeout(300);
+    expect(await savedCursor(page)).toBeGreaterThan(first);
+    expect(await selected(page)).toEqual([await other.getAttribute("data-i")]);
     const opened = (await hostCalls(page)).some((c) => c[0] === "openSource");
     expect(opened).toBe(features === undefined);
-    await expect(page.locator("#toast")).toBeHidden();
   });
 
-  test(`in ${where}, double-clicking a signal's name leaves the selection as it was`, async ({ page }) => {
+  test(`in ${where}, double-clicking a signal's name selects it, as a click`, async ({ page }) => {
     await open(page, "plain", features as string[] | undefined);
-    const first = page.locator("#names .nrow:not(.bit):not(.group)").first();
-    await first.click();
-    const sel = await selected(page);
+    await page.locator("#names .nrow:not(.bit):not(.group)").first().click();
+    await page.waitForTimeout(600);
     await row(page, "led_on").dblclick();
     await page.waitForTimeout(100);
-    expect(await selected(page)).toEqual(sel);
+    expect(await selected(page)).toEqual([await row(page, "led_on").getAttribute("data-i")]);
     expect((await hostCalls(page)).some((c) => c[0] === "openSource")).toBe(features === undefined);
   });
 }

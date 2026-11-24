@@ -75,7 +75,7 @@ test("a testbench signal's place is in its hover boxes", async ({ page }) => {
   expect(await row(page, "pattern").getAttribute("title")).toBe("morse_tb.dut.pattern");
 });
 
-test("in Logix Viewer, with no openSource, double-clicking a signal does nothing", async ({ page }) => {
+test("in Logix Viewer, with no openSource, double-clicking a signal opens nothing and shows no message", async ({ page }) => {
   await open(page, "plain", VIEWER_FEATURES);
   await row(page, "led_on").dblclick();
   await showSignal(page, "dut", "pattern");
