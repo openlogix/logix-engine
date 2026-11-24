@@ -1147,22 +1147,6 @@ function edge(dir) {
 
 /* ---------- Pointer on the waves ---------- */
 let drag = null;
-// A double-click is two clicks, and its first one moved the cursor and
-// selected a row, though a double-click does nothing in Logix Viewer (no
-// source to open; the user's macOS test, 2026-11-23). So each press
-// remembers the state before it (pressState), a first click keeps that
-// (beforeClick), and the second click of a double-click puts it back,
-// with the undo history as it was, on the waves and the names alike.
-let pressState = null, beforeClick = null, clickWasDrag = false;
-function clickState() {
-  return { cursor: S.cursor, marker: S.marker, sel: S.sel, anchor: S.anchor, start: S.start, end: S.end, past: H.past.slice(), cur: H.cur, future: H.future.slice() };
-}
-function undoFirstClick() {
-  const b = beforeClick; beforeClick = null; if (!b) return;
-  S.cursor = b.cursor; S.marker = b.marker; S.sel = b.sel; S.anchor = b.anchor; S.start = b.start; S.end = b.end;
-  H.past = b.past; H.cur = b.cur; H.future = b.future;
-  showSelection(); updUndo(); saveToHost();
-}
 function timeAtX(x) { return S.start + x / waves.clientWidth * (S.end - S.start); }
 // Snapping (R40): near a transition of the signal under the pointer (within
 // SNAP_PX pixels), the time is the transition's, exactly; elsewhere it's
@@ -1183,7 +1167,7 @@ function snapAt(x, y, alt) {
   if (counting()) { const k = idx(S.edges, t); for (const j of [k, k + 1]) if (j >= 0 && j < S.edges.length) near(S.edges[j]); }
   return best ? { t: best.t, snapped: true } : { t, snapped: false };
 }
-waves.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; pressState = clickState(); drag = { x: e.clientX, s: S.start, e: S.end, moved: false }; waves.setPointerCapture(e.pointerId); });
+waves.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; drag = { x: e.clientX, s: S.start, e: S.end, moved: false }; waves.setPointerCapture(e.pointerId); });
 // A pan always ends, even when something else took the button's release
 // (a menu, a window switch).
 const endPan = () => { drag = null; waves.style.cursor = ''; };
@@ -1213,7 +1197,6 @@ waves.addEventListener('pointermove', (e) => {
 });
 waves.addEventListener('pointerup', (e) => {
   waves.style.cursor = '';
-  clickWasDrag = !drag || drag.moved;
   if (drag && !drag.moved) {
     const rect = waves.getBoundingClientRect(), i = rowAtY(e.clientY - rect.top);
     const t = snapAt(e.clientX - rect.left, e.clientY - rect.top, e.altKey).t;
@@ -1223,15 +1206,13 @@ waves.addEventListener('pointerup', (e) => {
   drag = null;
 });
 // Double-click a signal's wave: its declaration too, as on its name (the
-// user's report, 2026-11-23: double-clicking the wave did nothing). The
-// double-click itself moves nothing: its first click's cursor (or marker)
-// and selection are undone.
+// user's report, 2026-11-23: double-clicking the wave did nothing), where
+// the host opens sources. Otherwise it's a click: its first click put the
+// cursor there and selected the row, and that stays (the user's macOS
+// test, 2026-11-24: putting them back, as #90 did, moved the cursor away
+// and back, which looked broken).
 waves.addEventListener('click', (e) => {
-  if (clickWasDrag) { beforeClick = null; return; }
-  if (e.detail === 1) { beforeClick = pressState; return; }
-  if (e.detail !== 2) return;
-  undoFirstClick();
-  if (e.shiftKey) return;
+  if (e.detail !== 2 || e.shiftKey) return;
   const rect = waves.getBoundingClientRect();
   showDeclaration(rowAtY(e.clientY - rect.top));
 });
@@ -1297,20 +1278,17 @@ $('#names').addEventListener('click', (e) => {
   const fold = e.target.closest('.fold.bits'); if (fold) { toggleBits(+fold.dataset.bits); return; }
   const rowEl = e.target.closest('.nrow'); if (!rowEl) return;
   const i = +rowEl.dataset.i;
-  // A double-click: the click's count, not the dblclick event, which
-  // WebKitGTK doesn't always send for a draggable row (Linux, the user's
-  // report, 2026-11-23). On a signal it opens the declaration, where the
-  // host opens sources, and leaves the selection as it was before it (a
-  // group's second click still folds it back).
-  if (e.detail === 2 && !(S.rows[i] && S.rows[i].kind === 'group')) { undoFirstClick(); showDeclaration(i); return; }
-  beforeClick = e.detail === 1 ? pressState : null;
+  // A double-click on a signal: its first click selected the row, and the
+  // second opens the declaration where the host opens sources (else it's
+  // a click). The click's count, not the dblclick event, which WebKitGTK
+  // doesn't always send for a draggable row (Linux, 2026-11-23).
+  if (e.detail === 2 && !(S.rows[i] && S.rows[i].kind === 'group')) { showDeclaration(i); return; }
   // Shift+click: the range from the selected row to this one (R46).
   if (e.shiftKey && S.sel >= 0) { if (S.anchor == null) S.anchor = S.sel; S.sel = i; showSelection(); return; }
   S.anchor = null; S.sel = i;
   if (S.rows[i] && S.rows[i].kind === 'group') toggleGroup(i);
   else showSelection();
 });
-$('#names').addEventListener('pointerdown', (e) => { if (e.button === 0) pressState = clickState(); });
 // Where a testbench signal is declared, as its hover boxes say it.
 function placeOf(d) { return `Declared in ${d.file}, line ${d.line}`; }
 // A double-clicked signal's declaration, in hosts that open sources (R27).
