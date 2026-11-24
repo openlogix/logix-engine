@@ -518,6 +518,41 @@ impl PackageManager {
         }
     }
 
+    /// The size in bytes of a package's download: the one its set gives, or
+    /// else the one the download server announces (an HTTP HEAD request).
+    /// None when neither says, or the server can't be reached in time.
+    pub async fn download_size(&self, spec: &PackageSpec) -> Option<u64> {
+        let file = self.file_for(spec)?;
+        if file.size.is_some() {
+            return file.size;
+        }
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(30))
+            .user_agent(format!("logix-engine/{}", crate::state::ENGINE_VERSION))
+            .build()
+            .ok()?;
+        let url = file.url(&self.download_base);
+        match client
+            .head(&url)
+            .send()
+            .await
+            .and_then(|r| r.error_for_status())
+        {
+            // The header itself: for a HEAD response, content_length() is the
+            // empty body's.
+            Ok(r) => r
+                .headers()
+                .get(reqwest::header::CONTENT_LENGTH)
+                .and_then(|v| v.to_str().ok()?.parse().ok())
+                .filter(|&n: &u64| n > 0),
+            Err(e) => {
+                log::warn!("Can't read the size of {url}: {e}");
+                None
+            }
+        }
+    }
+
     /// The packages, by name, that aren't downloaded and intact. Reads the
     /// remote config first when it's due (see `refresh`).
     pub async fn needing_download(&self, names: &[&str]) -> Result<Vec<PackageSpec>, ToolError> {

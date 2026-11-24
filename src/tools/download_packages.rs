@@ -17,11 +17,11 @@ impl EngineTool for DownloadPackages {
         the internet, into its engine folder. Packages that are already ready are left alone, \
         unless force is set to download them again, and the remote config is read first when \
         that's due, so newer releases come down too. Other tools download the packages they \
-        need on their own, inside their own call. AI agents: call this as a step of its own \
-        before the first other call in a session, telling the user it may take a minute or two, \
-        so the wait is visible in your plan, then show the user its summary lines, if any; it \
-        returns at once when everything is ready. Also \
-        call it to download ahead of time, such as before going offline, or when a tool returns a setup \
+        need on their own, inside their own call. AI agents: before the first other call in \
+        a session, call this with check_only, which is quick and downloads nothing; when its \
+        to_download is empty, go on without mentioning it; otherwise download as a step of its \
+        own in your plan, telling the user how much (its summary says), then show the \
+        download's summary lines. Also call it to download ahead of time, such as before going offline, or when a tool returns a setup \
         error with the download_packages action (for example when the engine was launched with \
         automatic download turned off). A download can take a few minutes; the tool reports \
         progress and can be cancelled.";
@@ -46,6 +46,26 @@ pub struct DownloadPackagesInput {
     /// other operations are running.
     #[serde(default)]
     pub force: bool,
+    /// Download nothing: only read the remote config when it's due and say
+    /// what a download would get, in to_download, with sizes. Quick: use it
+    /// to tell the user how much will download before downloading. Defaults
+    /// to false.
+    #[serde(default)]
+    pub check_only: bool,
+}
+
+/// A package a download gets.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PackageDownload {
+    /// The package's name, such as logix-core.
+    pub name: String,
+    /// The version it downloads.
+    pub version: String,
+    /// The download's size in bytes, when the release or its download
+    /// server says. Omitted when neither does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
 }
 
 /// What was downloaded, and every package's status afterwards.
@@ -55,12 +75,46 @@ pub struct DownloadPackagesOutput {
     /// Names of the packages this call downloaded, repaired or downloaded again.
     /// Empty when they were all downloaded already and force was off.
     pub downloaded: Vec<String>,
+    /// The packages that needed downloading when the call started, with their
+    /// sizes: with check_only, what a download would get; otherwise what this
+    /// call downloaded. Empty when everything is ready.
+    pub to_download: Vec<PackageDownload>,
     /// Every package the engine uses, with its status.
     pub packages: Vec<PackageInfo>,
     /// What this call did, for people, a sentence each, such as
     /// "Downloaded logix-core 2026.11.22.": one per package it downloaded,
-    /// repaired or downloaded again. Empty when there was nothing to do.
+    /// repaired or downloaded again. With check_only, what a download would
+    /// get, such as "To download: logix-core 2026.11.22 (412 MB)." and, for
+    /// more than one, a total. Empty when there was nothing to do.
     pub summary: Vec<String>,
+}
+
+/// A size for people, in MB (decimal, as download sizes are usually given),
+/// rounded up, so never "0 MB".
+pub fn shown_size(bytes: u64) -> String {
+    format!("{} MB", bytes.div_ceil(1_000_000).max(1))
+}
+
+/// The summary of a check: "To download: <name> <version> (<size>)." for
+/// each package, and a total when there's more than one with known sizes.
+pub fn to_download_lines(list: &[PackageDownload]) -> Vec<String> {
+    let mut lines: Vec<String> = list
+        .iter()
+        .map(|p| match p.size {
+            Some(n) => format!("To download: {} {} ({}).", p.name, p.version, shown_size(n)),
+            None => format!("To download: {} {}.", p.name, p.version),
+        })
+        .collect();
+    let sizes: Vec<u64> = list.iter().filter_map(|p| p.size).collect();
+    if list.len() > 1 && !sizes.is_empty() {
+        let total = shown_size(sizes.iter().sum());
+        lines.push(if sizes.len() == list.len() {
+            format!("In all: {total}.")
+        } else {
+            format!("In all: more than {total}.")
+        });
+    }
+    lines
 }
 
 /// "Downloaded <name> <version>." for each package downloaded, with the
@@ -110,6 +164,22 @@ pub async fn run(
     } else {
         state.packages.needing_download(&names).await?
     };
+    let mut to_download = Vec::new();
+    for spec in &needed {
+        to_download.push(PackageDownload {
+            name: spec.name.clone(),
+            version: crate::packages::manifest::shown_version(&spec.version),
+            size: state.packages.download_size(spec).await,
+        });
+    }
+    if input.check_only {
+        return Ok(DownloadPackagesOutput {
+            downloaded: vec![],
+            summary: to_download_lines(&to_download),
+            to_download,
+            packages: package_list(state),
+        });
+    }
     let phases = Phases::new(call.progress.clone(), needed.len());
     // The host asked, so this downloads even when automatic download is off.
     if input.force {
@@ -131,6 +201,7 @@ pub async fn run(
     Ok(DownloadPackagesOutput {
         summary: downloaded_lines(&downloaded, &packages),
         downloaded,
+        to_download,
         packages,
     })
 }
