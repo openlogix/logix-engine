@@ -59,10 +59,14 @@ body { background: var(--bg); color: var(--ink); font: 14px var(--font-ui); disp
 .ctx .it:hover, .ctx .it:focus { background: var(--accent-soft); outline: none; border: 0; }
 .ctx .it:disabled { opacity: .4; cursor: default; background: none; }
 .ctx .sep { height: 1px; background: var(--line); margin: 4px 6px; }
-.help { position: fixed; z-index: 60; width: 300px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.18); padding: 12px; }
+.help { position: fixed; z-index: 60; width: min(440px, calc(100vw - 16px)); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.18); padding: 12px; overflow-y: auto; overscroll-behavior: contain; }
 .help h3 { margin: 0 0 10px; font-size: 12px; font-weight: 600; }
-.keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 12px; align-items: start; }
-.keys kbd { font-family: var(--font-mono); font-size: 11px; background: var(--soft); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; white-space: nowrap; justify-self: start; }
+/* The key column is as wide as its labels, up to 45% of the box: a long
+   label wraps rather than squeezing the descriptions or scrolling the box
+   sideways (the user's macOS test, 2026-11-23, on the waveform page). */
+.keys { display: grid; grid-template-columns: fit-content(45%) minmax(0, 1fr); gap: 6px 12px; font-size: 12px; align-items: start; }
+.keys kbd { font-family: var(--font-mono); font-size: 11px; background: var(--soft); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; white-space: normal; overflow-wrap: anywhere; justify-self: start; max-width: 100%; }
+.keys span { overflow-wrap: anywhere; }
 .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 80; background: var(--ink); color: var(--bg); border-radius: 8px; padding: 8px 14px; font-size: 13px; }
 .crumbs { font: 500 13px var(--font-mono); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-width: 0; }
 .crumbs a { color: var(--accent); text-decoration: none; cursor: pointer; }
@@ -74,6 +78,9 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 button[hidden] { display: none; }
 .canvas { flex: 1; min-height: 0; margin: 0 max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px)); border: 1px solid var(--line); border-radius: 10px; background: var(--logix-diagram-sheet); position: relative; touch-action: none; overflow: hidden; }
 .canvas.dragging { cursor: grabbing; }
+/* No text selection in the drawing: a double-click on a block selected a
+   port's name (the user's macOS test, 2026-11-23; WebKit needs the prefix). */
+.canvas, .canvas svg, .canvas svg * { -webkit-user-select: none; user-select: none; }
 .canvas > svg { width: 100%; height: 100%; display: block; }
 .canvas svg [data-block] { cursor: default; }
 .canvas svg .cat-module, .canvas svg .cat-module * { cursor: pointer; }
@@ -446,6 +453,8 @@ button[hidden] { display: none; }
     ].concat(opensSource ? [["Double-click a block", "Go to its source line"]] : []);
     help.innerHTML = `<h3>Keyboard and mouse</h3><div class="keys">${rows.map(([k, t]) => `<kbd>${esc(k)}</kbd><span>${esc(t)}</span>`).join("")}</div>`;
     placeAt(help, e.currentTarget);
+    // In a short window, as tall as the room below the button, scrolling.
+    help.style.maxHeight = Math.max(80, window.innerHeight - help.getBoundingClientRect().top - 8) + "px";
   });
   document.addEventListener("pointerdown", (e) => {
     if ((menu && !menu.contains(e.target) && !e.target.closest("#exportBtn")) || (help && !help.contains(e.target) && !e.target.closest("#helpBtn"))) closeMenus();
@@ -622,6 +631,9 @@ button[hidden] { display: none; }
   // Opening a module, or going to a block's source, takes a double-click,
   // so a stray click while exploring changes nothing.
   function click() {}
+  // A second press never starts a text selection (WebKit selected a port's
+  // name on a double-click even with user-select off for some elements).
+  canvas.addEventListener("mousedown", (e) => { if (e.detail > 1) e.preventDefault(); });
   canvas.addEventListener("dblclick", (e) => {
     const info = blockAt(e.clientX, e.clientY);
     if (!info) return;
