@@ -1038,3 +1038,92 @@ async fn a_package_the_config_drops_is_deleted() {
         vec!["logix-catalog", "logix-core"]
     );
 }
+
+#[tokio::test]
+async fn check_only_says_what_would_download_and_downloads_nothing() {
+    let s = setup(good_package(), None, None);
+    let state = state_for(&s, true);
+    let size = good_package().len() as u64;
+    let rec = Arc::new(Messages::default());
+    let call = Call::new(rec.clone(), CancellationToken::new());
+    let input: download_packages::DownloadPackagesInput =
+        serde_json::from_value(serde_json::json!({"check_only": true})).unwrap();
+    let out = download_packages::run(&state, input, &call).await.unwrap();
+    let pkg = download_packages::PackageDownload {
+        name: "pkg".into(),
+        version: "2026.01.02".into(),
+        size: Some(size),
+    };
+    assert_eq!(out.to_download, std::slice::from_ref(&pkg));
+    assert!(out.downloaded.is_empty());
+    assert_eq!(out.summary, ["To download: pkg 2026.01.02 (1 MB)."]);
+    assert_eq!(out.packages[0].status, PackageStatus::Missing);
+    assert!(rec.0.lock().unwrap().is_empty(), "no progress");
+    assert_eq!(s.server.count(), 0, "the set gives the size: no request");
+
+    // A download says the same in to_download, then nothing is left.
+    let call = Call::new(Arc::new(NoProgress), CancellationToken::new());
+    let out = download_packages::run(&state, Default::default(), &call)
+        .await
+        .unwrap();
+    assert_eq!(out.to_download, [pkg]);
+    assert_eq!(out.downloaded, ["pkg"]);
+    let input: download_packages::DownloadPackagesInput =
+        serde_json::from_value(serde_json::json!({"check_only": true})).unwrap();
+    let out = download_packages::run(&state, input, &call).await.unwrap();
+    assert!(out.to_download.is_empty());
+    assert!(out.summary.is_empty());
+}
+
+#[tokio::test]
+async fn download_size_asks_the_server_when_the_set_gives_none() {
+    let data = good_package();
+    let (version, file) = ("2026-01-02", "pkg-test-20260102.tgz");
+    let json = serde_json::json!({
+        "packages": [{
+            "name": "pkg", "version": version,
+            "files": { PLATFORM: {
+                "owner": "test", "repo": "pkg", "tag": version, "file": file,
+                "sha256": sha256(&data),
+            }}
+        }]
+    });
+    let manifest = Manifest::parse(&json.to_string()).unwrap();
+    let server = serve(HashMap::new());
+    server.put(&url_path(version, file), &data);
+    let tmp = tempfile::tempdir().unwrap();
+    let pm = PackageManager::new(tmp.path(), Arc::new(manifest), PLATFORM, &server.base);
+    let spec = pm.manifest().get("pkg").unwrap().clone();
+    assert_eq!(pm.download_size(&spec).await, Some(data.len() as u64));
+
+    // A file the server doesn't have: no size, no error.
+    server.remove(&url_path(version, file));
+    assert_eq!(pm.download_size(&spec).await, None);
+}
+
+#[test]
+fn to_download_lines_give_a_total_for_more_than_one() {
+    use download_packages::{PackageDownload, to_download_lines};
+    let p = |name: &str, size| PackageDownload {
+        name: name.into(),
+        version: "2026.11.24".into(),
+        size,
+    };
+    assert_eq!(
+        to_download_lines(&[p("a", Some(412_300_000)), p("b", Some(1))]),
+        [
+            "To download: a 2026.11.24 (413 MB).",
+            "To download: b 2026.11.24 (1 MB).",
+            "In all: 413 MB."
+        ]
+    );
+    assert_eq!(
+        to_download_lines(&[p("a", Some(5_000_000)), p("b", None)]),
+        [
+            "To download: a 2026.11.24 (5 MB).",
+            "To download: b 2026.11.24.",
+            "In all: more than 5 MB."
+        ]
+    );
+    assert!(to_download_lines(&[]).is_empty());
+}

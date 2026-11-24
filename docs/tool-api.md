@@ -15,7 +15,7 @@ The Logix Engine is a program, `logix-engine`, that a host runs and talks to. It
 
 1. **Launch.** The host starts the Logix Engine as a child process, with command-line arguments such as `--engine-folder` (see Command line). For an AI agent, this launch command is part of the agent app's MCP server settings.
 2. **Channel.** The host writes requests to the engine's standard input and reads responses from its standard output. Each message is one JSON-RPC 2.0 document on a single line.
-3. **Handshake.** The host sends `initialize`, and the two sides agree on an MCP protocol version (the Logix Engine accepts 2026-07-28 and 2025-11-25). The engine's reply carries its name and version, the website URL, and short instructions for AI agents: what the engine does, that requests are self-contained, the error model, that getting the tools can take a minute or two and is a step of its own (call `download_packages` before the first other call in a session, telling the user, then show its `summary` lines), a short form of the Default project model, where to read about Open Logix frontends' own project models (`https://www.openlogix.org/llms.txt`, the site's guide for AI agents, or the home page if it isn't there; naming no product, so the engine needn't change when a frontend does), and links to this document and Command line on GitHub, so an agent can find the full reference.
+3. **Handshake.** The host sends `initialize`, and the two sides agree on an MCP protocol version (the Logix Engine accepts 2026-07-28 and 2025-11-25). The engine's reply carries its name and version, the website URL, and short instructions for AI agents: what the engine does, that requests are self-contained, the error model, that getting the tools can take minutes and is a step of its own (before the first other call in a session, call `download_packages` with `check_only`; when `to_download` isn't empty, download as a step of its own, telling the user how much, then show the download's `summary` lines), a short form of the Default project model, where to read about Open Logix frontends' own project models (`https://www.openlogix.org/llms.txt`, the site's guide for AI agents, or the home page if it isn't there; naming no product, so the engine needn't change when a frontend does), and links to this document and Command line on GitHub, so an agent can find the full reference.
 4. **Discovery.** The host calls `tools/list` and gets every tool's name, description, input schema and output schema. An AI agent reads these to decide what to call; an application can rely on this document instead.
 5. **Calls.** The host calls `tools/call` with a tool's name and its arguments as a JSON object. The response carries the tool's result as JSON in `structuredContent`, or an error object when `isError` is true.
 6. **Notifications.** While a tool runs, the engine can send one-way messages that need no reply: progress, and live tool output when the host asks for it. The host can also send a cancel notification to stop a call.
@@ -1280,7 +1280,7 @@ Output:
 
 ## download_packages tool
 
-Downloads or repairs the Logix Engine's packages, reading its remote config first when that's due. Packages that are already ready are left alone, unless `force` is set. Other tools download the packages they need on their own, inside their own call. A host calls this to download ahead of time, such as at start or before going offline (an AI agent calls it as a step of its own before its first other call in a session, as the server instructions say, so the user sees the wait as its own step in the agent's plan rather than inside a build), or to act on the `download_packages` action, such as when automatic download is off. It downloads whether or not automatic download is on, since the host asked. It reports progress, one phase per package, and can be cancelled.
+Downloads or repairs the Logix Engine's packages, reading its remote config first when that's due. Packages that are already ready are left alone, unless `force` is set. Other tools download the packages they need on their own, inside their own call. A host calls this to download ahead of time, such as at start or before going offline (an AI agent calls it with `check_only` before its first other call in a session and, when something needs downloading, downloads as a step of its own, as the server instructions say, so the user sees the wait and its size as its own step in the agent's plan rather than inside a build), or to act on the `download_packages` action, such as when automatic download is off. It downloads whether or not automatic download is on, since the host asked. It reports progress, one phase per package, and can be cancelled.
 
 **Table 18.** download_packages tool inputs
 
@@ -1288,14 +1288,16 @@ Downloads or repairs the Logix Engine's packages, reading its remote config firs
 | --- | --- | --- | --- |
 | `packages` | list of text | No | Names of the packages to download or repair, as `get_engine_info` lists them. Omitted means every package the engine uses |
 | `force` | boolean | No | Download the packages again even if they are ready, replacing the current copies. It fixes files that were damaged or deleted after the download, which the status check doesn't see. The current copy stays until the new one is complete. Defaults to false |
+| `check_only` | boolean | No | Download nothing: only read the remote config when it's due and say what a download would get, in `to_download`, with sizes. It's quick, so a host or agent can tell the user how much will download first. With `force`, it lists the packages a forced download would get. Defaults to false |
 
 **Table 19.** download_packages tool outputs
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `downloaded` | list of text | Names of the packages this call downloaded, repaired or downloaded again. Empty when they were all downloaded already and `force` was off |
+| `downloaded` | list of text | Names of the packages this call downloaded, repaired or downloaded again. Empty when they were all downloaded already and `force` was off, and with `check_only` |
+| `to_download` | list of objects | The packages that needed downloading when the call started: with `check_only`, what a download would get; otherwise what this call downloaded. Each has `name`, `version` and, when the release or its download server says, `size` in bytes (the engine asks the download server with an HTTP HEAD request when the remote config gives none; a server that doesn't answer leaves it out). Empty when everything is ready |
 | `packages` | list of packages | Every package the engine uses, with its status afterwards, as in `get_engine_info` |
-| `summary` | list of text | What the call did, for people, a sentence each: "Downloaded logix-core 2026.11.10." for each package in `downloaded`, with its version now. Empty when there was nothing to do. Show it as is; programs read the fields above |
+| `summary` | list of text | What the call did, for people, a sentence each: "Downloaded logix-core 2026.11.10." for each package in `downloaded`, with its version now. With `check_only`, what a download would get: "To download: logix-core 2026.11.10 (412 MB)." for each package in `to_download` (sizes in MB, rounded up), and for more than one, "In all: 420 MB." ("more than" when a size is unknown). Empty when there was nothing to do. Show it as is; programs read the fields above |
 
 **Errors:** request errors for unknown package names. Setup errors with `download_packages` when a download fails. Engine errors and cancellation.
 
@@ -1312,6 +1314,7 @@ Output:
 ```json
 {
   "downloaded": ["logix-core"],
+  "to_download": [{ "name": "logix-core", "version": "2026.11.10", "size": 412300000 }],
   "packages": [
     { "name": "logix-catalog", "version": "2026.11.10", "status": "ready" },
     { "name": "logix-core", "version": "2026.11.10", "status": "ready", "components": [ ... ] }
