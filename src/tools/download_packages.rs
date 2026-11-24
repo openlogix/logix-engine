@@ -15,8 +15,13 @@ impl EngineTool for DownloadPackages {
     const NAME: &'static str = "download_packages";
     const DESCRIPTION: &'static str = "Downloads or repairs the engine's toolchain packages from \
         the internet, into its engine folder. Packages that are already ready are left alone, \
-        unless force is set to download them again. Other tools download the packages they need on their own, so call this only \
-        to download ahead of time, such as before going offline, or when a tool returns a setup \
+        unless force is set to download them again, and the remote config is read first when \
+        that's due, so newer releases come down too. Other tools download the packages they \
+        need on their own, inside their own call. AI agents: call this as a step of its own \
+        before the first other call in a session, telling the user it may take a minute or two, \
+        so the wait is visible in your plan, then show the user its summary lines, if any; it \
+        returns at once when everything is ready. Also \
+        call it to download ahead of time, such as before going offline, or when a tool returns a setup \
         error with the download_packages action (for example when the engine was launched with \
         automatic download turned off). A download can take a few minutes; the tool reports \
         progress and can be cancelled.";
