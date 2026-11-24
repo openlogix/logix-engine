@@ -15,5 +15,9 @@
   // simulate's viewer, open_waveform), the serial tools (Logix IDE's Serial
   // Monitor), the new remote config files with latest, and check_updates'
   // newer_engine.
-  "prod": ["2026-11-12", "2026-11-15", "2026-11-17", "2026-11-21"]
+  // 2026-11-24: the public launch (Milestone 6): Logix Viewer's own windows
+  // for waveforms and diagrams, places in the hover boxes, the diagram's web
+  // viewer, download_packages' check_only for AI agents, and tool output on
+  // Windows.
+  "prod": ["2026-11-12", "2026-11-15", "2026-11-17", "2026-11-21", "2026-11-24"]
 }
