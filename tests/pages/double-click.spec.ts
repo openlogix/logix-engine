@@ -28,7 +28,8 @@ for (const [where, features] of [["Logix Viewer (no openSource)", VIEWER_FEATURE
     // A single click puts the cursor there and selects the row.
     const a = await onWave(page, 0.3);
     await page.mouse.click(a.x, a.y);
-    await expect.poll(() => savedCursor(page)).not.toBeNull();
+    // Saving is deferred: wait for a cursor (none saved yet is undefined).
+    await expect.poll(() => savedCursor(page)).toEqual(expect.any(Number));
     const first = await savedCursor(page);
     // A double-click elsewhere, on another row: the cursor goes there, and
     // that row is selected, as a click would, and they stay.
@@ -60,7 +61,7 @@ test("a single click on a wave still moves the cursor, and two clicks apart move
   await open(page, "plain", VIEWER_FEATURES);
   const a = await onWave(page, 0.3), b = await onWave(page, 0.7);
   await page.mouse.click(a.x, a.y);
-  await expect.poll(() => savedCursor(page)).not.toBeNull();
+  await expect.poll(() => savedCursor(page)).toEqual(expect.any(Number));
   const first = await savedCursor(page);
   await page.waitForTimeout(600);   // past the double-click interval
   await page.mouse.click(b.x, b.y);
