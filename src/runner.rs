@@ -179,7 +179,11 @@ pub async fn run_tool_with(
 
 /// Splits a tool's output into lines, ended by `\n`, `\r\n` or a bare
 /// `\r`, and tells which ones a bare `\r` ended (the tool prints over
-/// them). Empty lines are left out.
+/// them). Empty lines are left out. Carriage returns right before a `\n`
+/// make a newline, however many: a Windows program that prints `\r\n`
+/// to a pipe in text mode writes `\r\r\n`, as icesprog does, and those
+/// lines aren't redrawn (only "done" was left of icesprog's output, the
+/// user's Windows test, 2026-11-24).
 #[derive(Default)]
 struct LineSplitter {
     line: Vec<u8>,
@@ -192,6 +196,9 @@ impl LineSplitter {
     /// Takes the next byte; returns a line it ends, with its redraw flag.
     fn push(&mut self, b: u8) -> Option<(String, bool)> {
         if self.pending_cr {
+            if b == b'\r' {
+                return None;
+            }
             self.pending_cr = false;
             if b == b'\n' {
                 return self.take(false);
@@ -457,6 +464,19 @@ mod tests {
                 ("addr 0x000100   0%".into(), true),
                 ("                      ".into(), true),
                 ("done.".into(), false),
+            ]
+        );
+    }
+
+    #[test]
+    fn text_mode_line_ends_are_newlines() {
+        // icesprog's lines on Windows: its "\r\n" through a text-mode pipe.
+        assert_eq!(
+            split(b"flash offset: 0x00000000\r\r\nwrite 0x00000000\r\r\ndone\r\n"),
+            vec![
+                ("flash offset: 0x00000000".into(), false),
+                ("write 0x00000000".into(), false),
+                ("done".into(), false)
             ]
         );
     }
