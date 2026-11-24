@@ -61,3 +61,19 @@ test("a right-click outside the selection selects that row alone", async ({ page
   await expect(page.locator(".ctx .ttl")).toContainText("was_on");
   await expect(page.locator("#names .nrow.sel")).toHaveCount(1);
 });
+
+test("a line parts the two group items from the two blank row items", async ({ page }) => {
+  await open(page, "plain");
+  await row(page, "clk").click({ button: "right" });
+  // The menu's entries in order, a line as "-".
+  const entries = await page.locator(".ctx > .it, .ctx > .sep").evaluateAll((els) =>
+    els.map((e) => (e.classList.contains("sep") ? "-" : (e.textContent ?? "").trim())),
+  );
+  const at = entries.indexOf("Add a group below");
+  expect(entries.slice(at - 1, at + 3)).toEqual([
+    "Add a group above",
+    "Add a group below",
+    "-",
+    "Add a blank row above",
+  ]);
+});
