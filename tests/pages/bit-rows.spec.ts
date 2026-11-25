@@ -31,7 +31,7 @@ test("a bit's menu only reads it", async ({ page }) => {
   const its = await menuOf(page, page.locator("#names .nrow.bit").nth(2));
   expect(its.some((t) => /group|blank|Hide this signal|analog/.test(t))).toBe(false);
   expect(its.some((t) => /Copy the name/.test(t))).toBe(true);
-  await expect(page.getByRole("menuitemcheckbox", { name: /each bit/ })).toHaveAttribute("aria-checked", "true");
+  expect(its.some((t) => /each bit/.test(t))).toBe(false);
 });
 
 test("moving or deleting a bit alone does nothing", async ({ page }) => {
@@ -93,20 +93,67 @@ test("the bits take their bus's color", async ({ page }) => {
   expect(colors.every((c) => c.includes("--s4"))).toBe(true);
 });
 
-test("Show each bit and Show as analog are checkboxes that turn each other off", async ({ page }) => {
+// The formats, and Signed under them (R59; the user's design, 2026-11-25).
+const format = (page: Page, name: string) => page.locator(".ctx [data-format]", { hasText: new RegExp(`^${name}$`) });
+const signedBox = (page: Page) => page.getByRole("menuitemcheckbox", { name: "Signed" });
+const height = (page: Page, name: string) => row(page, name).evaluate((n) => n.getBoundingClientRect().height);
+
+test("a bus's menu has the formats and Signed, and no checkboxes for its bits or a line", async ({ page }) => {
+  await withBits(page);
+  const its = await menuOf(page, row(page, "pattern"));
+  expect(its.some((t) => /each bit|as analog/.test(t))).toBe(false);
+  expect(await page.locator(".ctx [data-format]").allTextContents()).toEqual(["Binary", "Hex", "ASCII", "Decimal", "Analog"]);
+  await expect(signedBox(page)).toHaveCount(1);
+});
+
+test("an analog bus stays analog while its bits show, always two rows tall", async ({ page }) => {
+  await withBits(page);
+  await row(page, "pattern").locator(".fold.bits").click(); // hide the bits
+  const flat = await height(page, "pattern");
+  await menuOf(page, row(page, "pattern"));
+  await format(page, "Analog").click();
+  expect(await height(page, "pattern")).toBeCloseTo(flat * 2, 0);
+  await row(page, "pattern").locator(".fold.bits").click(); // the bits again
+  expect(await afterBus(page)).toEqual(BITS);
+  expect(await height(page, "pattern")).toBeCloseTo(flat * 2, 0);
+  await menuOf(page, row(page, "pattern"));
+  await expect(format(page, "Analog")).toHaveClass(/on/);
+  await page.keyboard.press("Escape");
+  await row(page, "pattern").locator(".fold.bits").click(); // and hidden: still analog, the same height
+  expect(await height(page, "pattern")).toBeCloseTo(flat * 2, 0);
+});
+
+test("Signed applies to Decimal and Analog, and keeps its state under the other formats", async ({ page }) => {
   await withBits(page);
   await menuOf(page, row(page, "pattern"));
-  await page.getByRole("menuitemcheckbox", { name: /analog/ }).click();
-  expect((await rows(page)).some((n) => n.startsWith("pattern["))).toBe(false);
-  await expect(row(page, "pattern").locator(".fold.bits")).toHaveCount(1);
+  await format(page, "Decimal").click();
   await menuOf(page, row(page, "pattern"));
-  const eachBit = page.getByRole("menuitemcheckbox", { name: /each bit/ });
-  await expect(eachBit).toHaveAttribute("aria-checked", "false");
-  await expect(page.getByRole("menuitemcheckbox", { name: /analog/ })).toHaveAttribute("aria-checked", "true");
-  await eachBit.click();
-  expect(await afterBus(page)).toEqual(BITS);
+  await expect(signedBox(page)).toBeEnabled();
+  await signedBox(page).click();
   await menuOf(page, row(page, "pattern"));
-  await expect(page.getByRole("menuitemcheckbox", { name: /analog/ })).toHaveAttribute("aria-checked", "false");
+  await expect(signedBox(page)).toHaveAttribute("aria-checked", "true");
+  await format(page, "Hex").click();
+  await menuOf(page, row(page, "pattern"));
+  await expect(signedBox(page)).toBeDisabled();
+  await expect(signedBox(page)).toHaveAttribute("aria-checked", "true");
+  await format(page, "Analog").click();
+  await menuOf(page, row(page, "pattern"));
+  await expect(signedBox(page)).toBeEnabled();
+  await expect(signedBox(page)).toHaveAttribute("aria-checked", "true");
+});
+
+test("saved views keep the fields older viewers read", async ({ page }) => {
+  await withBits(page);
+  await menuOf(page, row(page, "pattern"));
+  await format(page, "Analog").click();
+  await menuOf(page, row(page, "pattern"));
+  await signedBox(page).click();
+  const saved = async () => {
+    const writes = (await hostCalls(page)).filter((c) => c[0] === "writeDeclared");
+    const v = writes.length ? JSON.parse(writes[writes.length - 1][2] as string) : null;
+    return v && v.rows.find((r: { signal?: string }) => r.signal?.endsWith(".pattern"));
+  };
+  await expect.poll(saved).toMatchObject({ show_as: "signed", analog: true, expanded: true });
 });
 
 test("a selection into the bits takes all of them; a bit alone is just the bit", async ({ page }) => {
