@@ -837,21 +837,18 @@ function analogNumber(val, w, radix) {
 }
 // The range the line spans: the values the run has.
 const RANGES = new Map();
-// Adaptive scale (R59; the user's request, 2026-11-25): an analog row's
-// range can fit the shown time range instead of the whole run. The window
-// it fits is taken once a zoom or pan has settled, so the line doesn't
-// jump while dragging; until then the last one stays.
-const SCALE = { start: null, end: null, timer: null };
+// Adaptive scale (R59; the user's requests, 2026-11-25): an analog row's
+// range fits the values shown, recomputed at every redraw, so it follows
+// a pan or a zoom as it happens. Only the rows' hover boxes, which print
+// the range, wait for the view to settle before they're written again.
+const TITLES = { start: null, end: null, timer: null };
+function titlesFollowView() {
+  if (TITLES.start === S.start && TITLES.end === S.end) return;
+  clearTimeout(TITLES.timer);
+  TITLES.timer = setTimeout(() => { TITLES.timer = null; renderRows(); }, 150);
+}
 // Adaptive ranges by signal, format and window, so drawing stays cheap.
 const ADAPTIVE = new Map();
-function scaleWindow() {
-  if (SCALE.start == null) { SCALE.start = S.start; SCALE.end = S.end; }
-  else if (SCALE.start !== S.start || SCALE.end !== S.end) {
-    clearTimeout(SCALE.timer);
-    SCALE.timer = setTimeout(() => { SCALE.start = S.start; SCALE.end = S.end; SCALE.timer = null; renderRows(); }, 150);
-  }
-  return SCALE;
-}
 // The range of the values shown between two times: the value at the start
 // and every change up to the end.
 function rangeBetween(r, d, from, to) {
@@ -879,17 +876,7 @@ function adaptiveRange(r, from, to) {
   const out = { lo, hi }; ADAPTIVE.set(key, out); return out;
 }
 function analogRange(r) {
-  if (r.adaptive) {
-    // The settled window's range, grown at once to take in what's shown
-    // now: a value coming into view while the view moves widens the scale
-    // right away, and the scale shrinks only once the view settles (the
-    // user's report, 2026-11-25: values beyond the old range overflowed
-    // the row for the time it took to settle).
-    const w = scaleWindow(), settled = adaptiveRange(r, w.start, w.end);
-    if (w.start === S.start && w.end === S.end) return settled;
-    const now = adaptiveRange(r, S.start, S.end);
-    return { lo: Math.min(settled.lo, now.lo), hi: Math.max(settled.hi, now.hi) };
-  }
+  if (r.adaptive) { titlesFollowView(); return adaptiveRange(r, S.start, S.end); }
   const key = r.v.id + '|' + r.radix;
   if (RANGES.has(key)) return RANGES.get(key);
   const d = S.wave.data.get(r.v.id); let lo = Infinity, hi = -Infinity;
@@ -969,6 +956,7 @@ const isBit = (i) => !!(S.rows[i] && S.rows[i].v && S.rows[i].v.bitOf);
 function busOf(i) { while (i > 0 && isBit(i)) i--; return i; }
 function renderRows() {
   bitsInPlace();
+  TITLES.start = S.start; TITLES.end = S.end;
   document.documentElement.style.setProperty('--row-h', S.rowH + 'px');
   $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${isSel(i) ? 'sel' : ''} ${r.v.bitOf ? 'bit' : ''}" draggable="${!r.v.bitOf}" data-i="${i}" style="--c:var(--s${r.color});${r.analog ? `height:${rowHeight(r)}px` : ''}" title="${esc(r.v.path)}${S.decl[r.v.path] ? `\n${esc(placeOf(S.decl[r.v.path]))}` : ''}${r.analog ? `\n${esc(scaleText(r))}` : ''}">${r.v.width > 1 && !r.v.bitOf ? `<button class="fold bits" data-bits="${i}" aria-expanded="${!!r.expanded}" title="${r.expanded ? 'Hide' : 'Show'} each bit (${r.v.width})"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.expanded ? 'M3.5 6 8 10.5 12.5 6' : 'M6 3.5 10.5 8 6 12.5'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="dot"></span><span class="nm">${rowLabel(r.v)}${clockBadge(r.v.path)}</span></div>`; }).join('');
   $('#empty').hidden = S.rows.length > 0;
