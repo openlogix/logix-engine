@@ -460,6 +460,9 @@ function formatItems(rows) {
     const applies = rows.some(signedApplies), on = rows.every((r) => !!r.signed);
     items.push({ label: 'Signed', checked: on, disabled: !applies, act: () => { for (const r of rows) setSigned(r, !on); renderRows(); commit(); } });
   }
+  // Adaptive scale: an analog line's range fits the shown time range.
+  const fit = rows.every((r) => !!r.adaptive);
+  items.push({ label: 'Adaptive scale', checked: fit, disabled: !rows.some((r) => r.analog), act: () => { for (const r of rows) r.adaptive = !fit; renderRows(); commit(); } });
   return items;
 }
 
@@ -834,7 +837,49 @@ function analogNumber(val, w, radix) {
 }
 // The range the line spans: the values the run has.
 const RANGES = new Map();
+// Adaptive scale (R59; the user's request, 2026-11-25): an analog row's
+// range can fit the shown time range instead of the whole run. The window
+// it fits is taken once a zoom or pan has settled, so the line doesn't
+// jump while dragging; until then the last one stays.
+const SCALE = { start: null, end: null, timer: null };
+// The last adaptive range of each row's signal and format, with its window.
+const ADAPTIVE = new Map();
+function scaleWindow() {
+  if (SCALE.start == null) { SCALE.start = S.start; SCALE.end = S.end; }
+  else if (SCALE.start !== S.start || SCALE.end !== S.end) {
+    clearTimeout(SCALE.timer);
+    SCALE.timer = setTimeout(() => { SCALE.start = S.start; SCALE.end = S.end; SCALE.timer = null; renderRows(); }, 300);
+  }
+  return SCALE;
+}
+// The range of the values shown between two times: the value at the start
+// and every change up to the end.
+function rangeBetween(r, d, from, to) {
+  let lo = Infinity, hi = -Infinity;
+  for (let a = Math.max(idx(d.t, from), 0); a < d.t.length && d.t[a] <= to; a++) {
+    const n = analogNumber(d.v[a], r.v.width, r.radix);
+    if (n == null || !isFinite(n)) continue;
+    if (n < lo) lo = n; if (n > hi) hi = n;
+  }
+  return { lo, hi };
+}
+// An analog row's scale for its name's hover box: the range in use, and
+// which (the run's, or the shown time range's).
+function scaleText(r) {
+  const { lo, hi } = analogRange(r), n = (x) => String(+x.toPrecision(6));
+  return `Analog scale: ${n(lo)} to ${n(hi)}${r.adaptive ? ' (shown range)' : ' (whole run)'}`;
+}
 function analogRange(r) {
+  if (r.adaptive) {
+    const w = scaleWindow(), key = r.v.id + '|' + r.radix + '|' + w.start + '|' + w.end;
+    const hit = ADAPTIVE.get(r.v.id + '|' + r.radix);
+    if (hit && hit.key === key) return hit.range;
+    let { lo, hi } = rangeBetween(r, S.wave.data.get(r.v.id), w.start, w.end);
+    if (lo === Infinity) { lo = 0; hi = 1; }
+    if (lo === hi) { lo -= 1; hi += 1; }
+    ADAPTIVE.set(r.v.id + '|' + r.radix, { key, range: { lo, hi } });
+    return { lo, hi };
+  }
   const key = r.v.id + '|' + r.radix;
   if (RANGES.has(key)) return RANGES.get(key);
   const d = S.wave.data.get(r.v.id); let lo = Infinity, hi = -Infinity;
@@ -915,7 +960,7 @@ function busOf(i) { while (i > 0 && isBit(i)) i--; return i; }
 function renderRows() {
   bitsInPlace();
   document.documentElement.style.setProperty('--row-h', S.rowH + 'px');
-  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${isSel(i) ? 'sel' : ''} ${r.v.bitOf ? 'bit' : ''}" draggable="${!r.v.bitOf}" data-i="${i}" style="--c:var(--s${r.color});${r.analog ? `height:${rowHeight(r)}px` : ''}" title="${esc(r.v.path)}${S.decl[r.v.path] ? `\n${esc(placeOf(S.decl[r.v.path]))}` : ''}">${r.v.width > 1 && !r.v.bitOf ? `<button class="fold bits" data-bits="${i}" aria-expanded="${!!r.expanded}" title="${r.expanded ? 'Hide' : 'Show'} each bit (${r.v.width})"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.expanded ? 'M3.5 6 8 10.5 12.5 6' : 'M6 3.5 10.5 8 6 12.5'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="dot"></span><span class="nm">${rowLabel(r.v)}${clockBadge(r.v.path)}</span></div>`; }).join('');
+  $('#names').innerHTML = visible().map((i) => { const r = S.rows[i]; return !r.v ? `<div class="nrow ${r.kind} ${isSel(i) ? 'sel' : ''}" draggable="true" data-i="${i}" style="--c:var(--muted)">${r.kind === 'group' ? `<button class="fold" data-i="${i}" aria-expanded="${!r.collapsed}" title="${r.collapsed ? 'Show' : 'Hide'} the ${groupSize(i)} signals of this group"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.collapsed ? 'M6 3.5 10.5 8 6 12.5' : 'M3.5 6 8 10.5 12.5 6'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="nm">${r.kind === 'group' ? esc(r.text) + (r.collapsed ? ` <span class="hidden-n">(${groupSize(i)})</span>` : '') : 'blank row'}</span></div>` : `<div class="nrow ${isSel(i) ? 'sel' : ''} ${r.v.bitOf ? 'bit' : ''}" draggable="${!r.v.bitOf}" data-i="${i}" style="--c:var(--s${r.color});${r.analog ? `height:${rowHeight(r)}px` : ''}" title="${esc(r.v.path)}${S.decl[r.v.path] ? `\n${esc(placeOf(S.decl[r.v.path]))}` : ''}${r.analog ? `\n${esc(scaleText(r))}` : ''}">${r.v.width > 1 && !r.v.bitOf ? `<button class="fold bits" data-bits="${i}" aria-expanded="${!!r.expanded}" title="${r.expanded ? 'Hide' : 'Show'} each bit (${r.v.width})"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${r.expanded ? 'M3.5 6 8 10.5 12.5 6' : 'M6 3.5 10.5 8 6 12.5'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}<span class="dot"></span><span class="nm">${rowLabel(r.v)}${clockBadge(r.v.path)}</span></div>`; }).join('');
   $('#empty').hidden = S.rows.length > 0;
   renderValues(); renderTree(); renderTimeBase(); draw();
 }
@@ -1577,7 +1622,7 @@ function defaultRows() {
 function serRow(r) {
   // 'signed' only remembers the checkbox while Binary, Hex or ASCII shows;
   // otherwise show_as says it ('signed'), as views always have.
-  if (r.v) return Object.assign({ signal: r.v.path, show_as: r.radix, color: r.color }, r.expanded ? { expanded: true } : {}, r.analog ? { analog: true } : {}, r.signed && r.radix !== 'signed' ? { signed: true } : {});
+  if (r.v) return Object.assign({ signal: r.v.path, show_as: r.radix, color: r.color }, r.expanded ? { expanded: true } : {}, r.analog ? { analog: true } : {}, r.signed && r.radix !== 'signed' ? { signed: true } : {}, r.adaptive ? { adaptive: true } : {});
   return r.kind === 'group' ? (r.collapsed ? { group: r.text, collapsed: true } : { group: r.text }) : { blank: true };
 }
 // A saved row, or null for one this run can't show: a signal that's gone
@@ -1594,7 +1639,7 @@ function deserRow(o) {
     // A line reads its values as decimal, signed or not: a view from before
     // Analog was a format may pair it with Binary or Hex.
     const text = analog && radix !== 'signed' ? 'dec' : radix;
-    return { kind: 'signal', v, radix: text, color, expanded: !!o.expanded && v.width > 1, analog, signed: text === 'signed' || o.signed === true };
+    return { kind: 'signal', v, radix: text, color, expanded: !!o.expanded && v.width > 1, analog, signed: text === 'signed' || o.signed === true, adaptive: o.adaptive === true };
   }
   if (typeof o.group === 'string') return { kind: 'group', text: o.group, collapsed: !!o.collapsed };
   if (o.blank) return { kind: 'blank' };

@@ -187,3 +187,40 @@ test("a saved view keeps the bus expanded and its bits by path", async ({ page }
   const bus = (await lastView()).rows.find((r: { signal?: string }) => r.signal === "morse_tb.dut.pattern");
   expect(bus.expanded).toBe(true);
 });
+
+// Adaptive scale (R59; the user's request, 2026-11-25): at the run's start
+// the Morse beacon is on its first character, so the range of char_index
+// shown there is smaller than the whole run's.
+test("Adaptive scale fits an analog line's range to the shown time range", async ({ page }) => {
+  await open(page, "plain");
+  await showSignal(page, "dut", "char_index");
+  // The scale in use, as the name's hover box gives it: "Analog scale: 0 to 99 (whole run)".
+  const range = async () => {
+    const m = /Analog scale: (\S+) to (\S+) \((.+)\)/.exec((await row(page, "char_index").getAttribute("title")) || "");
+    return m ? { lo: +m[1], hi: +m[2], which: m[3] } : null;
+  };
+  await menuOf(page, row(page, "char_index"));
+  await expect(page.getByRole("menuitemcheckbox", { name: "Adaptive scale" })).toBeDisabled();
+  await format(page, "Analog").click();
+  const whole = (await range())!;
+  expect(whole.which).toBe("whole run");
+  // Zoom in at the run's start, where the counter hasn't counted yet.
+  const w = (await page.locator("#wavecol").boundingBox())!;
+  await page.mouse.move(w.x + w.width * 0.05, w.y + 40);
+  for (let k = 0; k < 3; k++) await page.mouse.wheel(0, -400);
+  await page.waitForTimeout(400);
+  expect(await range()).toEqual(whole); // off: the whole run's range
+  await menuOf(page, row(page, "char_index"));
+  await page.getByRole("menuitemcheckbox", { name: "Adaptive scale" }).click();
+  // On: the range of the values shown, smaller than the whole run's.
+  await expect.poll(async () => (await range())!.which).toBe("shown range");
+  const shown = (await range())!;
+  expect(shown.hi).toBeLessThan(whole.hi);
+  expect([shown.lo, shown.hi]).not.toEqual([whole.lo, whole.hi]);
+  const saved = async () => {
+    const writes = (await hostCalls(page)).filter((c) => c[0] === "writeDeclared");
+    const v = writes.length ? JSON.parse(writes[writes.length - 1][2] as string) : null;
+    return v && v.rows.find((r: { signal?: string }) => r.signal?.endsWith(".char_index"));
+  };
+  await expect.poll(saved).toMatchObject({ analog: true, adaptive: true });
+});
