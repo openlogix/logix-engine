@@ -4,10 +4,13 @@
 // pull request, saying why in a comment.
 {
   "$schema": "https://www.openlogix.org/schemas/logix-remote-config-v1.json",
-  // The newest engine pre-release.
+  // The newest engine pre-release: a dev release (CI checks it isn't on
+  // prod), never older than prod's latest (the janitor checks it), so it
+  // moves past each promotion. 2026-11-25: the day after the launch's
+  // 2026-11-24.
   "latest": {
     "repo": "openlogix/logix-engine",
-    "release": "2026-11-22",
+    "release": "2026-11-25",
     "file": "logix-engine-${PLATFORM}-${YYYYMMDD}.tgz"
   },
   "dependencies": {
