@@ -842,13 +842,13 @@ const RANGES = new Map();
 // it fits is taken once a zoom or pan has settled, so the line doesn't
 // jump while dragging; until then the last one stays.
 const SCALE = { start: null, end: null, timer: null };
-// The last adaptive range of each row's signal and format, with its window.
+// Adaptive ranges by signal, format and window, so drawing stays cheap.
 const ADAPTIVE = new Map();
 function scaleWindow() {
   if (SCALE.start == null) { SCALE.start = S.start; SCALE.end = S.end; }
   else if (SCALE.start !== S.start || SCALE.end !== S.end) {
     clearTimeout(SCALE.timer);
-    SCALE.timer = setTimeout(() => { SCALE.start = S.start; SCALE.end = S.end; SCALE.timer = null; renderRows(); }, 300);
+    SCALE.timer = setTimeout(() => { SCALE.start = S.start; SCALE.end = S.end; SCALE.timer = null; renderRows(); }, 150);
   }
   return SCALE;
 }
@@ -869,16 +869,26 @@ function scaleText(r) {
   const { lo, hi } = analogRange(r), n = (x) => String(+x.toPrecision(6));
   return `Analog scale: ${n(lo)} to ${n(hi)}${r.adaptive ? ' (shown range)' : ' (whole run)'}`;
 }
+function adaptiveRange(r, from, to) {
+  const key = r.v.id + '|' + r.radix + '|' + from + '|' + to;
+  if (ADAPTIVE.has(key)) return ADAPTIVE.get(key);
+  let { lo, hi } = rangeBetween(r, S.wave.data.get(r.v.id), from, to);
+  if (lo === Infinity) { lo = 0; hi = 1; }
+  if (lo === hi) { lo -= 1; hi += 1; }
+  if (ADAPTIVE.size > 200) ADAPTIVE.clear();
+  const out = { lo, hi }; ADAPTIVE.set(key, out); return out;
+}
 function analogRange(r) {
   if (r.adaptive) {
-    const w = scaleWindow(), key = r.v.id + '|' + r.radix + '|' + w.start + '|' + w.end;
-    const hit = ADAPTIVE.get(r.v.id + '|' + r.radix);
-    if (hit && hit.key === key) return hit.range;
-    let { lo, hi } = rangeBetween(r, S.wave.data.get(r.v.id), w.start, w.end);
-    if (lo === Infinity) { lo = 0; hi = 1; }
-    if (lo === hi) { lo -= 1; hi += 1; }
-    ADAPTIVE.set(r.v.id + '|' + r.radix, { key, range: { lo, hi } });
-    return { lo, hi };
+    // The settled window's range, grown at once to take in what's shown
+    // now: a value coming into view while the view moves widens the scale
+    // right away, and the scale shrinks only once the view settles (the
+    // user's report, 2026-11-25: values beyond the old range overflowed
+    // the row for the time it took to settle).
+    const w = scaleWindow(), settled = adaptiveRange(r, w.start, w.end);
+    if (w.start === S.start && w.end === S.end) return settled;
+    const now = adaptiveRange(r, S.start, S.end);
+    return { lo: Math.min(settled.lo, now.lo), hi: Math.max(settled.hi, now.hi) };
   }
   const key = r.v.id + '|' + r.radix;
   if (RANGES.has(key)) return RANGES.get(key);
@@ -1089,6 +1099,8 @@ function draw() {
       // range (printed at the row's left), x and z as gaps (R59).
       const { lo: vmin, hi: vmax } = analogRange(r), Y = (n) => lo - (n - vmin) / (vmax - vmin) * (lo - hi);
       ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+      // The line never leaves its row, whatever its scale.
+      ctx.save(); ctx.beginPath(); ctx.rect(0, y0, ctx.canvas.width, RH); ctx.clip();
       let a = Math.max(idx(d.t, S.start), 0), prevY = null;
       ctx.beginPath();
       for (; a < d.t.length && d.t[a] <= S.end; a++) {
@@ -1104,6 +1116,7 @@ function draw() {
         ctx.lineTo(x2, y); prevY = y;
       }
       ctx.stroke();
+      ctx.restore();
       // The scale, over the line, on the row's background.
       ctx.font = `500 10px ${mono}`; ctx.textAlign = 'left';
       for (const [n, y] of [[vmax, hi + 6], [vmin, lo - 6]]) {
