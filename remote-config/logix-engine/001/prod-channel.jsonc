@@ -11,7 +11,7 @@
   // the newest release on prod in assign.jsonc. Set it when promoting.
   "latest": {
     "repo": "openlogix/logix-engine",
-    "release": "2026-11-21",
+    "release": "2026-11-24",
     "file": "logix-engine-${PLATFORM}-${YYYYMMDD}.tgz"
   },
   "dependencies": {
@@ -22,9 +22,12 @@
     // the Windows package has libwdi's wdi-simple for install_driver, and
     // openXC7 2026-11-15 counts Xilinx resources right (apio#1192) and finds
     // the suite's Python on Windows (apio#1194).
+    // 2026-11-24, the launch (Milestone 6): Logix Viewer, the app that shows
+    // the engine's waveforms and diagrams in windows of their own, each app
+    // with its own icon and taskbar button (logix-core#2 to #11).
     "logix-core": {
       "repo": "openlogix/logix-core",
-      "release": "2026-11-15",
+      "release": "2026-11-24",
       "file": "logix-core-${PLATFORM}-${YYYYMMDD}.tgz"
     },
 
@@ -33,9 +36,13 @@
     // 2026-11-21, a promotion: the UART of the Alhambra II, iCESugar Pro,
     // Tang Nano 9K and Arty A7-35T (logix-catalog#1), for Logix IDE's
     // Serial Monitor and serial examples.
+    // 2026-11-24, the launch (Milestone 6): headers by position, the
+    // iCESugar v1.5's RGB LED and PMOD4 as real boards have them, the
+    // Soan-Papdi's resources, and the note on addressable LEDs
+    // (logix-catalog#4 to #11).
     "logix-catalog": {
       "repo": "openlogix/logix-catalog",
-      "release": "2026-11-19",
+      "release": "2026-11-24",
       "file": "logix-catalog-${YYYYMMDD}.tgz"
     }
   }

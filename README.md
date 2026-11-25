@@ -28,7 +28,7 @@ In development: macOS on Apple Silicon, Windows x64 and Linux x64.
 - **Milestone 3, released (2026-11-16):** the engine and Logix IDE on Windows.
 - **Milestone 4, released (2026-11-18):** the engine and Logix IDE on Linux.
 - **Milestone 5, released (2026-11-21):** Open Logix's own waveform viewer in place of GTKWave.
-- **Milestone 6, in progress:** cleanup and fixes before the public launch.
+- **Milestone 6, released (2026-11-24):** cleanup and fixes, and the public launch.
 
 Daily development builds are on the [Releases](https://github.com/openlogix/logix-engine/releases) page.
 
