@@ -429,6 +429,39 @@ function setTheme(t) {
 setTheme(new URLSearchParams(location.search).get('theme'));
 window.addEventListener('message', (e) => { if (e.data && e.data.type === 'logix-wave:theme') setTheme(e.data.theme); });
 const RADIX = [['bin', 'Binary'], ['hex', 'Hex'], ['dec', 'Decimal'], ['signed', 'Signed'], ['ascii', 'ASCII']];
+// The formats a signal's menu offers (the user's design, 2026-11-25): a
+// bus's values as Binary, Hex, ASCII or Decimal text, or Analog, a line
+// (R59); Signed, a checkbox under them, reads Decimal and Analog as two's
+// complement. A row keeps 'radix' for its text ('signed' when Decimal or
+// Analog is signed) and 'analog' for the line, as saved views store them,
+// and 'signed' remembers the checkbox while another format shows.
+const FORMATS = [['bin', 'Binary'], ['hex', 'Hex'], ['ascii', 'ASCII'], ['dec', 'Decimal'], ['analog', 'Analog']];
+const isReal = (v) => v.type === 'real';
+const formatOf = (r) => (r.analog ? 'analog' : r.radix === 'signed' ? 'dec' : r.radix);
+const signedApplies = (r) => !isReal(r.v) && (r.analog || r.radix === 'dec' || r.radix === 'signed');
+function setFormat(r, f) {
+  r.analog = f === 'analog';
+  if (isReal(r.v)) return;
+  r.radix = f === 'analog' || f === 'dec' ? (r.signed ? 'signed' : 'dec') : f;
+}
+function setSigned(r, on) {
+  r.signed = on;
+  if (signedApplies(r)) r.radix = on ? 'signed' : 'dec';
+}
+// The formats part of a menu, for one row or several: a real has Decimal
+// and Analog only, and no Signed.
+function formatItems(rows) {
+  const real = rows.every((r) => isReal(r.v));
+  const shown = rows.length && rows.every((r) => formatOf(r) === formatOf(rows[0])) ? formatOf(rows[0]) : null;
+  const list = FORMATS.filter(([k]) => !real || k === 'dec' || k === 'analog');
+  const items = [{ html: `<div class="lbl">Show values as</div><div class="seg">${list.map(([k, n]) => `<button data-format="${k}" class="${shown === k ? 'on' : ''}">${n}</button>`).join('')}</div>`,
+    click: (e) => { const b = e.target.closest('[data-format]'); if (!b) return false; for (const r of rows) setFormat(r, b.dataset.format); renderRows(); commit(); } }];
+  if (!real) {
+    const applies = rows.some(signedApplies), on = rows.every((r) => !!r.signed);
+    items.push({ label: 'Signed', checked: on, disabled: !applies, act: () => { for (const r of rows) setSigned(r, !on); renderRows(); commit(); } });
+  }
+  return items;
+}
 
 /* ---------- VCD reading ---------- */
 function parseTimescale(s) {
@@ -764,9 +797,6 @@ function bitByPath(map, p) {
 const MAX_BITS = 64;
 function toggleBits(i) {
   const r = S.rows[i]; if (!r || !r.v || r.v.width < 2 || r.v.bitOf) return;
-  // A row shows its bits or an analog line, not both (the user's rules,
-  // 2026-11-22): showing the bits turns analog off.
-  if (!r.expanded && r.analog) r.analog = false;
   if (r.expanded) {
     let n = 0; while (S.rows[i + 1 + n] && S.rows[i + 1 + n].v && S.rows[i + 1 + n].v.bitOf === r.v.path) n++;
     S.rows.splice(i + 1, n); r.expanded = false;
@@ -781,8 +811,10 @@ function toggleBits(i) {
 
 // An analog row draws its values as a line, three rows tall (R59: the
 // user's request, 2026-11-21, as GTKWave's analog formats).
-const ANALOG_ROWS = 3;
-const rowHeight = (r) => (r && r.v && r.analog ? S.rowH * ANALOG_ROWS : S.rowH);
+// An analog row is three rows tall, or two while its bits show under it
+// (the user's choice, 2026-11-25: compact, with room for its range).
+const ANALOG_ROWS = 3, ANALOG_ROWS_WITH_BITS = 2;
+const rowHeight = (r) => (r && r.v && r.analog ? S.rowH * (r.expanded ? ANALOG_ROWS_WITH_BITS : ANALOG_ROWS) : S.rowH);
 // Where each shown row is: its index in S.rows, its top and its height.
 function layout() {
   let y = 0;
@@ -866,7 +898,7 @@ function bitsInPlace() {
     if (r.v && r.v.bitOf) continue;
     out.push(r);
     if (!r.v || !r.expanded) continue;
-    if (r.v.width < 2 || r.v.width > MAX_BITS || r.analog) { r.expanded = false; continue; }
+    if (r.v.width < 2 || r.v.width > MAX_BITS) { r.expanded = false; continue; }
     for (let k = r.v.width - 1; k >= 0; k--) {
       const v = bitVar(r.v, k), old = S.rows.find((x) => x.v === v);
       out.push(Object.assign(old || { kind: 'signal', v, radix: 'bin' }, { color: r.color, analog: false }));
@@ -1542,7 +1574,9 @@ function defaultRows() {
   return paths.map((p) => map.get(p)).filter(Boolean).map(sigRow);
 }
 function serRow(r) {
-  if (r.v) return Object.assign({ signal: r.v.path, show_as: r.radix, color: r.color }, r.expanded ? { expanded: true } : {}, r.analog ? { analog: true } : {});
+  // 'signed' only remembers the checkbox while Binary, Hex or ASCII shows;
+  // otherwise show_as says it ('signed'), as views always have.
+  if (r.v) return Object.assign({ signal: r.v.path, show_as: r.radix, color: r.color }, r.expanded ? { expanded: true } : {}, r.analog ? { analog: true } : {}, r.signed && r.radix !== 'signed' ? { signed: true } : {});
   return r.kind === 'group' ? (r.collapsed ? { group: r.text, collapsed: true } : { group: r.text }) : { blank: true };
 }
 // A saved row, or null for one this run can't show: a signal that's gone
@@ -1556,7 +1590,10 @@ function deserRow(o) {
     const color = Number.isInteger(o.color) && o.color >= 1 && o.color <= 6 ? o.color : 1;
     // Analog is for buses and reals (R59), bits for buses (R58).
     const analog = !!o.analog && (v.width > 1 || v.type === 'real');
-    return { kind: 'signal', v, radix, color, expanded: !!o.expanded && v.width > 1, analog };
+    // A line reads its values as decimal, signed or not: a view from before
+    // Analog was a format may pair it with Binary or Hex.
+    const text = analog && radix !== 'signed' ? 'dec' : radix;
+    return { kind: 'signal', v, radix: text, color, expanded: !!o.expanded && v.width > 1, analog, signed: text === 'signed' || o.signed === true };
   }
   if (typeof o.group === 'string') return { kind: 'group', text: o.group, collapsed: !!o.collapsed };
   if (o.blank) return { kind: 'blank' };
@@ -2019,18 +2056,15 @@ function rowMenu(i, t, x, y) {
     openMenu(x, y, [
       ...(t != null ? [...timeItems(t), '-'] : []),
       ...(looksLikeClock(r.v) ? [clockItem(r.v.path), '-'] : []),
-      ...copyItems, '-',
-      { label: `Show each bit (${S.rows[bus].v.width})`, checked: true, act: () => toggleBits(bus) },
+      ...copyItems,
     ], r.v.path);
     return;
   }
   openMenu(x, y, [
     ...(t != null ? [...timeItems(t), '-'] : []),
-    r.v.width > 1 ? { html: `<div class="lbl">Show values as</div><div class="seg">${RADIX.map(([k, n]) => `<button data-radix="${k}" class="${r.radix === k ? 'on' : ''}">${n}</button>`).join('')}</div>`,
-      click: (e) => { const b = e.target.closest('[data-radix]'); if (!b) return false; r.radix = b.dataset.radix; renderRows(); } } : null,
-    // Checkboxes, each turning the other off: a row shows its bits or a line.
-    r.v.width > 1 ? { label: `Show each bit (${r.v.width})`, checked: !!r.expanded, act: () => toggleBits(i) } : null,
-    r.v.width > 1 || r.v.type === 'real' ? { label: 'Show as analog (a line)', checked: !!r.analog, act: () => { r.analog = !r.analog; renderRows(); commit(); } } : null,
+    // Its bits show with the row's chevron, not from here (the user's
+    // design, 2026-11-25).
+    ...(r.v.width > 1 || isReal(r.v) ? formatItems([r]) : []),
     { html: `<div class="lbl">Color</div><div class="swatches">${[1, 2, 3, 4, 5, 6].map((c) => `<button data-color="${c}" style="--c:var(--s${c})" class="${r.color === c ? 'on' : ''}" aria-label="Color ${c}"></button>`).join('')}</div>`,
       click: (e) => { const b = e.target.closest('[data-color]'); if (!b) return false; r.color = +b.dataset.color; renderRows(); } },
     '-', ...common, '-',
@@ -2044,14 +2078,12 @@ function rowMenu(i, t, x, y) {
 // signals, and removing them all; what reads or changes one signal (its
 // cycles, its name and value, its bits, analog) is on a single row's menu.
 function selectionMenu(chosen, t, x, y) {
-  const sigs = chosen.filter((r) => r.v), buses = sigs.filter((r) => r.v.width > 1);
-  const radix = buses.length && buses.every((r) => r.radix === buses[0].radix) ? buses[0].radix : null;
+  const sigs = chosen.filter((r) => r.v), buses = sigs.filter((r) => r.v.width > 1 || isReal(r.v));
   const color = sigs.length && sigs.every((r) => r.color === sigs[0].color) ? sigs[0].color : null;
   const all = sigs.length === chosen.length;
   openMenu(x, y, [
     ...(t != null ? [...timeItems(t), '-'] : []),
-    buses.length ? { html: `<div class="lbl">Show values as</div><div class="seg">${RADIX.map(([k, n]) => `<button data-radix="${k}" class="${radix === k ? 'on' : ''}">${n}</button>`).join('')}</div>`,
-      click: (e) => { const b = e.target.closest('[data-radix]'); if (!b) return false; for (const r of buses) r.radix = b.dataset.radix; renderRows(); } } : null,
+    ...(buses.length ? formatItems(buses) : []),
     sigs.length ? { html: `<div class="lbl">Color</div><div class="swatches">${[1, 2, 3, 4, 5, 6].map((c) => `<button data-color="${c}" style="--c:var(--s${c})" class="${color === c ? 'on' : ''}" aria-label="Color ${c}"></button>`).join('')}</div>`,
       click: (e) => { const b = e.target.closest('[data-color]'); if (!b) return false; for (const r of sigs) r.color = +b.dataset.color; renderRows(); } } : null,
     '-',
