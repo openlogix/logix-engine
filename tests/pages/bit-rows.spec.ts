@@ -106,21 +106,21 @@ test("a bus's menu has the formats and Signed, and no checkboxes for its bits or
   await expect(signedBox(page)).toHaveCount(1);
 });
 
-test("an analog bus stays analog while its bits show, two rows tall instead of three", async ({ page }) => {
+test("an analog bus stays analog while its bits show, always two rows tall", async ({ page }) => {
   await withBits(page);
   await row(page, "pattern").locator(".fold.bits").click(); // hide the bits
   const flat = await height(page, "pattern");
   await menuOf(page, row(page, "pattern"));
   await format(page, "Analog").click();
-  expect(await height(page, "pattern")).toBeCloseTo(flat * 3, 0);
+  expect(await height(page, "pattern")).toBeCloseTo(flat * 2, 0);
   await row(page, "pattern").locator(".fold.bits").click(); // the bits again
   expect(await afterBus(page)).toEqual(BITS);
   expect(await height(page, "pattern")).toBeCloseTo(flat * 2, 0);
   await menuOf(page, row(page, "pattern"));
   await expect(format(page, "Analog")).toHaveClass(/on/);
   await page.keyboard.press("Escape");
-  await row(page, "pattern").locator(".fold.bits").click(); // and hidden: still analog, full height
-  expect(await height(page, "pattern")).toBeCloseTo(flat * 3, 0);
+  await row(page, "pattern").locator(".fold.bits").click(); // and hidden: still analog, the same height
+  expect(await height(page, "pattern")).toBeCloseTo(flat * 2, 0);
 });
 
 test("Signed applies to Decimal and Analog, and keeps its state under the other formats", async ({ page }) => {

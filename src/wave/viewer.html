@@ -809,12 +809,13 @@ function toggleBits(i) {
   S.anchor = null; S.sel = i; renderRows(); commit();
 }
 
-// An analog row draws its values as a line, three rows tall (R59: the
+// An analog row draws its values as a line, two rows tall (R59: the
 // user's request, 2026-11-21, as GTKWave's analog formats).
-// An analog row is three rows tall, or two while its bits show under it
-// (the user's choice, 2026-11-25: compact, with room for its range).
-const ANALOG_ROWS = 3, ANALOG_ROWS_WITH_BITS = 2;
-const rowHeight = (r) => (r && r.v && r.analog ? S.rowH * (r.expanded ? ANALOG_ROWS_WITH_BITS : ANALOG_ROWS) : S.rowH);
+// An analog row is two rows tall, with or without its bits under it (the
+// user's choice, 2026-11-25: compact, with room for its range, and the
+// row's height never changes when the bits show or hide).
+const ANALOG_ROWS = 2;
+const rowHeight = (r) => (r && r.v && r.analog ? S.rowH * ANALOG_ROWS : S.rowH);
 // Where each shown row is: its index in S.rows, its top and its height.
 function layout() {
   let y = 0;
