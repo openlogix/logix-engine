@@ -79,6 +79,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - "Tutorial: Claude Code": tutorial-claude-code.md
+  - Custom boards: custom-boards.md
   - Tool API: tool-api.md
   - Command line: command-line.md
   - Requirements: requirements.md
