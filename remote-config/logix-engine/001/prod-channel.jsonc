@@ -11,7 +11,7 @@
   // the newest release on prod in assign.jsonc. Set it when promoting.
   "latest": {
     "repo": "openlogix/logix-engine",
-    "release": "2026-11-24",
+    "release": "2026-11-25",
     "file": "logix-engine-${PLATFORM}-${YYYYMMDD}.tgz"
   },
   "dependencies": {
