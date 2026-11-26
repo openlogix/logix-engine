@@ -116,6 +116,16 @@ pub struct ListDevicesOutput {
     /// build_folder, a problem is a request error, as in program_board.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_boards_problem: Option<ToolError>,
+    /// The USB serial ports the engine couldn't tie to a listed device,
+    /// sorted by vendor ID, product ID, interface and name: such as a
+    /// device that gives the serial port list another serial number than
+    /// its USB listing, two adapters without serial numbers that look the
+    /// same, or a device the engine can't open. Every USB serial port is
+    /// either here or in a device's serial_ports, so a host can always let
+    /// the user choose any of them (open_serial, without device). Omitted
+    /// when none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub other_serial_ports: Vec<crate::serial::OtherSerialPort>,
 }
 
 /// Whether the request's board is connected (ListDevicesOutput.status).
@@ -229,6 +239,7 @@ pub fn add_serial_ports(
         None => None,
     };
     let found = crate::serial::ports_of_devices(&out.devices, ports);
+    out.other_serial_ports = crate::serial::other_ports(&found, ports);
     for (d, device_ports) in out.devices.iter_mut().zip(found) {
         let board_id = build_board.clone().or_else(|| {
             board
@@ -339,6 +350,7 @@ pub fn run_with_drivers(
         unreachable: Vec::new(),
         status: None,
         custom_boards_problem,
+        other_serial_ports: Vec::new(),
     };
     // Every connected device, for the status's hints: the ones that can be
     // opened, and those that can't whose USB IDs fit a board.
@@ -794,6 +806,7 @@ mod tests {
             unreachable: Vec::new(),
             status: None,
             custom_boards_problem: None,
+            other_serial_ports: Vec::new(),
         };
         let key = crate::serial::DeviceKey {
             vid: 0x0403,
@@ -834,6 +847,80 @@ mod tests {
             ]
         );
     }
+    /// The Tang Nano 9K on macOS (2026-11-25): its BL702 gives the USB
+    /// listing one serial number and the serial port list another. Its two
+    /// ports are its own anyway, the catalog's usb_interface picks the UART,
+    /// and a CH340 adapter's port, seen twice by two lookalike adapters, is
+    /// in other_serial_ports.
+    #[test]
+    fn mismatched_serial_numbers_still_find_the_ports() {
+        let mut nano = device(
+            "0403",
+            "6010",
+            Some("JTAG Debugger"),
+            Some("FactoryAIOT Pro\"3DUal"),
+            3,
+        );
+        nano.likely_boards = vec!["sipeed-tang-nano-9k".into()];
+        nano.who = "the Sipeed Tang Nano 9k".into();
+        let mut out = ListDevicesOutput {
+            devices: vec![
+                nano,
+                device("1a86", "7523", Some("USB Serial"), None, 4),
+                device("1a86", "7523", Some("USB Serial"), None, 5),
+            ],
+            unreachable: Vec::new(),
+            status: None,
+            custom_boards_problem: None,
+            other_serial_ports: Vec::new(),
+        };
+        let key = |vid, pid, serial: Option<&str>| crate::serial::DeviceKey {
+            vid,
+            pid,
+            serial_number: serial.map(Into::into),
+        };
+        let port = |name: &str, interface: u8, description: &str| crate::serial::DevicePort {
+            port: name.into(),
+            interface: Some(interface),
+            role: None,
+            description: description.into(),
+        };
+        let ports = vec![
+            (
+                key(0x0403, 0x6010, Some("FactoryAIOT Pro")),
+                port("/dev/cu.usbserial-1100", 0, ""),
+            ),
+            (
+                key(0x0403, 0x6010, Some("FactoryAIOT Pro")),
+                port("/dev/cu.usbserial-1101", 1, ""),
+            ),
+            (
+                key(0x1a86, 0x7523, None),
+                port(
+                    "/dev/cu.wchusbserial-1",
+                    0,
+                    "A serial port of USB Serial (1a86:7523)",
+                ),
+            ),
+        ];
+        add_serial_ports(&mut out, &ports, None, None, None).unwrap();
+        let d = &out.devices[0];
+        assert_eq!(d.serial_port.as_deref(), Some("/dev/cu.usbserial-1101"));
+        assert_eq!(d.serial_ports.len(), 2);
+        assert!(out.devices[1].serial_ports.is_empty());
+        assert_eq!(
+            out.other_serial_ports,
+            [crate::serial::OtherSerialPort {
+                port: "/dev/cu.wchusbserial-1".into(),
+                vid: "1a86".into(),
+                pid: "7523".into(),
+                serial_number: None,
+                interface: Some(0),
+                description: "A serial port of USB Serial (1a86:7523)".into(),
+            }]
+        );
+    }
+
     use serde_json::json;
 
     fn list(

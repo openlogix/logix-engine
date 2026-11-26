@@ -93,7 +93,10 @@ impl DeviceKey {
 }
 
 /// The system's serial ports that are on a USB device, with that device's
-/// key (system ports and Bluetooth ports are left out).
+/// key as the system's serial port list reports it (system ports and
+/// Bluetooth ports are left out). Each has a description from the names
+/// that list gives, "A serial port of <the device>", which list_devices
+/// replaces for the ports it ties to a device.
 pub fn usb_ports() -> Vec<(DeviceKey, DevicePort)> {
     let Ok(ports) = serialport::available_ports() else {
         return Vec::new();
@@ -111,7 +114,15 @@ pub fn usb_ports() -> Vec<(DeviceKey, DevicePort)> {
                     port: macos_callout(p.port_name),
                     interface: u.interface,
                     role: None,
-                    description: String::new(),
+                    description: port_description(
+                        None,
+                        &crate::devices::label(
+                            u.manufacturer.as_deref(),
+                            u.product.as_deref(),
+                            &format!("{:04x}", u.vid),
+                            &format!("{:04x}", u.pid),
+                        ),
+                    ),
                 },
             )),
             _ => None,
@@ -132,6 +143,15 @@ fn macos_callout(name: String) -> String {
 /// system's USB ports: those with the device's USB IDs and serial number.
 /// A device with no serial number gets ports only when no other listed
 /// device has its USB IDs, since they couldn't be told apart.
+///
+/// Some devices give the USB listing and the serial port list different
+/// serial numbers (the Tang Nano 9K's BL702 debugger, 2026-11-25: its
+/// listing reads `FactoryAIOT Pro"3DUal`, macOS's port list `FactoryAIOT
+/// Pro`). So a device whose serial number no port has takes the ports with
+/// its USB IDs anyway when they can only be its own: no other listed device
+/// has its USB IDs, they all report one serial number, and no USB interface
+/// comes twice (two such devices would give
+/// each interface twice).
 pub fn ports_of_devices(
     devices: &[Device],
     ports: &[(DeviceKey, DevicePort)],
@@ -159,11 +179,98 @@ pub fn ports_of_devices(
                 })
                 .map(|(_, p)| p.clone())
                 .collect();
+            if found.is_empty() && twins == 1 {
+                found = only_ports_of(key, ports);
+            }
             found.sort_by(|a, b| (a.interface, &a.port).cmp(&(b.interface, &b.port)));
             found.dedup();
             found
         })
         .collect()
+}
+
+/// The ports with `key`'s USB IDs, when they can only be that device's
+/// (ports_of_devices, which checks no other listed device has its USB IDs):
+/// they all report one serial number, and no USB interface comes twice.
+fn only_ports_of(key: &DeviceKey, ports: &[(DeviceKey, DevicePort)]) -> Vec<DevicePort> {
+    // Each port once: macOS lists each as /dev/tty.* and /dev/cu.*, which
+    // usb_ports gives the same name.
+    let mut same_ids: Vec<&(DeviceKey, DevicePort)> = Vec::new();
+    for entry in ports
+        .iter()
+        .filter(|(k, _)| k.vid == key.vid && k.pid == key.pid)
+    {
+        if !same_ids.iter().any(|(_, p)| p.port == entry.1.port) {
+            same_ids.push(entry);
+        }
+    }
+    let Some((first, _)) = same_ids.first() else {
+        return Vec::new();
+    };
+    let one_serial = same_ids
+        .iter()
+        .all(|(k, _)| k.serial_number == first.serial_number);
+    let mut interfaces: Vec<Option<u8>> = same_ids.iter().map(|(_, p)| p.interface).collect();
+    interfaces.sort();
+    let unique_interfaces = interfaces.windows(2).all(|w| w[0] != w[1])
+        && (interfaces.iter().all(Option::is_some) || interfaces.len() == 1);
+    if one_serial && unique_interfaces {
+        same_ids.iter().map(|(_, p)| p.clone()).collect()
+    } else {
+        Vec::new()
+    }
+}
+
+/// A USB serial port that list_devices couldn't tie to a listed device
+/// (ListDevicesOutput.other_serial_ports), such as one whose device gives
+/// the serial port list another serial number than its USB listing, two
+/// adapters without serial numbers that look the same, or a device the
+/// engine can't open.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct OtherSerialPort {
+    /// The port's name, to pass to open_serial (without device).
+    pub port: String,
+    /// The USB vendor ID of the device it's on, as the system's serial port
+    /// list reports it: 4 lowercase hex digits, such as 0403.
+    pub vid: String,
+    /// The USB product ID, the same way, such as 6010.
+    pub pid: String,
+    /// The device's serial number, as the serial port list reports it.
+    /// Omitted when it has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub serial_number: Option<String>,
+    /// The USB interface it's on, when the system says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interface: Option<u8>,
+    /// The port for people, in a phrase: "A serial port of <the device>",
+    /// such as "A serial port of USB Serial (1a86:7523)".
+    pub description: String,
+}
+
+/// The USB serial ports in `ports` that aren't among `taken` (the listed
+/// devices' ports), by USB IDs, interface and name.
+pub fn other_ports(
+    taken: &[Vec<DevicePort>],
+    ports: &[(DeviceKey, DevicePort)],
+) -> Vec<OtherSerialPort> {
+    let mut out: Vec<OtherSerialPort> = ports
+        .iter()
+        .filter(|(_, p)| !taken.iter().flatten().any(|t| t.port == p.port))
+        .map(|(k, p)| OtherSerialPort {
+            port: p.port.clone(),
+            vid: format!("{:04x}", k.vid),
+            pid: format!("{:04x}", k.pid),
+            serial_number: k.serial_number.clone(),
+            interface: p.interface,
+            description: p.description.clone(),
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        (&a.vid, &a.pid, a.interface, &a.port).cmp(&(&b.vid, &b.pid, b.interface, &b.port))
+    });
+    out.dedup_by(|a, b| a.port == b.port);
+    out
 }
 
 /// The port of a board's UART among a device's ports: the one on the
@@ -230,10 +337,9 @@ struct Session {
     baud: u32,
     /// The port's name now: it may change when the board comes back.
     port_name: Mutex<String>,
-    /// The device it belongs to, when open_serial named one, and the USB
-    /// interface the port is on: how to find the port again.
-    device: Option<DeviceKey>,
-    interface: Option<u8>,
+    /// The device it belongs to, when open_serial named one: which
+    /// program_board pauses it, and how to find the port again.
+    owner: Option<PortOwner>,
     /// The open port's handle for writing (the reader has its own); None
     /// while paused or gone.
     port: Mutex<Option<Box<dyn serialport::SerialPort>>>,
@@ -279,13 +385,13 @@ impl Session {
         self.port.lock().unwrap().is_some()
     }
 
-    /// The port's name now: found again by the device's key and interface
+    /// The port's name now: found again by the port's own key and interface
     /// when the session has a device, else the name it was opened with.
     fn current_name(&self) -> String {
-        if let Some(key) = &self.device
+        if let Some(owner) = &self.owner
             && let Some((_, p)) = usb_ports()
                 .into_iter()
-                .find(|(k, p)| k == key && p.interface == self.interface)
+                .find(|(k, p)| *k == owner.port_key && p.interface == owner.interface)
         {
             *self.port_name.lock().unwrap() = p.port.clone();
             return p.port;
@@ -402,16 +508,28 @@ fn no_session(id: &str) -> ToolError {
     ))
 }
 
+/// The device a session's port is on (open_serial's device).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PortOwner {
+    /// The device's key from its ID (the USB listing's), which program_board
+    /// pauses by.
+    pub device: DeviceKey,
+    /// The port's own key and USB interface, as the system's serial port
+    /// list reports them, to find the port again after an unplug: the two
+    /// lists may give different serial numbers (ports_of_devices).
+    pub port_key: DeviceKey,
+    pub interface: Option<u8>,
+}
+
 impl Sessions {
-    /// Opens a port. `device` and its port's `interface` let the session
-    /// find the port again after the board is unplugged, and pause it while
-    /// program_board writes that board.
+    /// Opens a port. `owner`, its device, lets the session find the port
+    /// again after the board is unplugged, and pause it while program_board
+    /// writes that board.
     pub fn open(
         &self,
         name: &str,
         baud: u32,
-        device: Option<DeviceKey>,
-        interface: Option<u8>,
+        owner: Option<PortOwner>,
     ) -> Result<(String, String), ToolError> {
         if let Some(other) = self
             .sessions
@@ -426,7 +544,7 @@ impl Sessions {
             )));
         }
         let port = open_port(name, baud).map_err(|e| open_error(name, &e))?;
-        self.start(name, port, baud, device, interface)
+        self.start(name, port, baud, owner)
     }
 
     /// Starts a session on a port already open (open; tests give a
@@ -436,8 +554,7 @@ impl Sessions {
         name: &str,
         port: Box<dyn serialport::SerialPort>,
         baud: u32,
-        device: Option<DeviceKey>,
-        interface: Option<u8>,
+        owner: Option<PortOwner>,
     ) -> Result<(String, String), ToolError> {
         // The writer's own handle (read_loop says why).
         let writer = port
@@ -448,8 +565,7 @@ impl Sessions {
             id: id.clone(),
             baud,
             port_name: Mutex::new(name.to_string()),
-            device,
-            interface,
+            owner,
             port: Mutex::new(Some(writer)),
             inbox: Mutex::new(Inbox::default()),
             arrived: tokio::sync::Notify::new(),
@@ -583,7 +699,12 @@ impl Sessions {
             .lock()
             .unwrap()
             .values()
-            .filter(|s| s.device.is_some() && s.device == key)
+            .filter(|s| {
+                s.owner
+                    .as_ref()
+                    .map(|o| &o.device)
+                    .is_some_and(|d| Some(d) == key.as_ref())
+            })
             .cloned()
             .collect();
         for s in &paused {
@@ -710,6 +831,93 @@ mod tests {
         assert_eq!(ports_of_devices(&[a, b], &ports), vec![vec![], vec![]]);
     }
 
+    /// A device whose serial number no port has (the Tang Nano 9K's BL702)
+    /// takes the ports with its USB IDs when they can only be its own.
+    #[test]
+    fn ports_with_another_serial_number_go_to_the_only_device_they_can_be() {
+        let nano = || {
+            device(
+                "0403",
+                "6010",
+                Some("JTAG Debugger"),
+                Some("FactoryAIOT Pro\"3DUal"),
+                3,
+            )
+        };
+        let one = vec![
+            (
+                key(0x0403, 0x6010, Some("FactoryAIOT Pro")),
+                port("/dev/cu.usbserial-1100", Some(0)),
+            ),
+            (
+                key(0x0403, 0x6010, Some("FactoryAIOT Pro")),
+                port("/dev/cu.usbserial-1101", Some(1)),
+            ),
+        ];
+        // As on macOS: each port twice (tty and cu), under one name.
+        let mut one_twice = one.clone();
+        one_twice.extend(one.clone());
+        assert_eq!(
+            ports_of_devices(&[nano()], &one_twice),
+            ports_of_devices(&[nano()], &one)
+        );
+        assert_eq!(
+            ports_of_devices(&[nano()], &one),
+            vec![vec![
+                port("/dev/cu.usbserial-1100", Some(0)),
+                port("/dev/cu.usbserial-1101", Some(1))
+            ]]
+        );
+        // Two such boards, one unlisted: each interface twice, so none.
+        let mut two = one.clone();
+        two.push((
+            key(0x0403, 0x6010, Some("FactoryAIOT Pro")),
+            port("/dev/cu.usbserial-2100", Some(0)),
+        ));
+        assert_eq!(
+            ports_of_devices(&[nano()], &two),
+            vec![Vec::<DevicePort>::new()]
+        );
+        // Ports with two serial numbers: two devices, so none.
+        let mut mixed = one.clone();
+        mixed[1].0 = key(0x0403, 0x6010, Some("B2"));
+        assert_eq!(
+            ports_of_devices(&[nano()], &mixed),
+            vec![Vec::<DevicePort>::new()]
+        );
+        // Two listed devices with those USB IDs: none either.
+        let other = device("0403", "6010", Some("JTAG Debugger"), Some("X"), 4);
+        assert_eq!(
+            ports_of_devices(&[nano(), other], &one),
+            vec![vec![], vec![]]
+        );
+    }
+
+    #[test]
+    fn ports_no_device_took_are_the_other_ports() {
+        let mut adapter = port("/dev/ttyUSB3", Some(0));
+        adapter.description = "A serial port of USB Serial (1a86:7523)".into();
+        let ports = vec![
+            (
+                key(0x0403, 0x6010, Some("A1")),
+                port("/dev/ttyUSB0", Some(0)),
+            ),
+            (key(0x1a86, 0x7523, None), adapter),
+        ];
+        let others = other_ports(&[vec![port("/dev/ttyUSB0", Some(0))]], &ports);
+        assert_eq!(
+            others,
+            [OtherSerialPort {
+                port: "/dev/ttyUSB3".into(),
+                vid: "1a86".into(),
+                pid: "7523".into(),
+                serial_number: None,
+                interface: Some(0),
+                description: "A serial port of USB Serial (1a86:7523)".into(),
+            }]
+        );
+    }
+
     #[test]
     fn port_descriptions() {
         assert_eq!(
@@ -753,9 +961,7 @@ mod tests {
         let name = computer.name().expect("the pty's name");
         computer.set_timeout(READ_SLICE).unwrap();
         let s = sessions();
-        let (id, _) = s
-            .start(&name, Box::new(computer), 115_200, None, None)
-            .unwrap();
+        let (id, _) = s.start(&name, Box::new(computer), 115_200, None).unwrap();
         // The board talks: read it, waiting for the whole line.
         board.write_all(b"Hello from your FPGA board\r\n").unwrap();
         let r = s
@@ -802,7 +1008,7 @@ mod tests {
         board.read_exact(&mut keys).unwrap();
         assert_eq!(&keys, b"kkkkkkkkkkkkkkkkkkkk");
         // The same port can't be opened twice.
-        assert!(s.open(&name, 115_200, None, None).is_err());
+        assert!(s.open(&name, 115_200, None).is_err());
         // Closing returns once the reader has let go of its handle, so the
         // port can be opened again at once (such as at another baud rate:
         // it was refused as busy, the user's report, 2026-11-20).

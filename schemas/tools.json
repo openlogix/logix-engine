@@ -5521,6 +5521,13 @@
               "type": "null"
             }
           ]
+        },
+        "other_serial_ports": {
+          "description": "The USB serial ports the engine couldn't tie to a listed device,\nsorted by vendor ID, product ID, interface and name: such as a\ndevice that gives the serial port list another serial number than\nits USB listing, two adapters without serial numbers that look the\nsame, or a device the engine can't open. Every USB serial port is\neither here or in a device's serial_ports, so a host can always let\nthe user choose any of them (open_serial, without device). Omitted\nwhen none.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OtherSerialPort"
+          }
         }
       },
       "additionalProperties": false,
@@ -6316,6 +6323,51 @@
             "error",
             "warning",
             "info"
+          ]
+        },
+        "OtherSerialPort": {
+          "description": "A USB serial port that list_devices couldn't tie to a listed device\n(ListDevicesOutput.other_serial_ports), such as one whose device gives\nthe serial port list another serial number than its USB listing, two\nadapters without serial numbers that look the same, or a device the\nengine can't open.",
+          "type": "object",
+          "properties": {
+            "port": {
+              "description": "The port's name, to pass to open_serial (without device).",
+              "type": "string"
+            },
+            "vid": {
+              "description": "The USB vendor ID of the device it's on, as the system's serial port\nlist reports it: 4 lowercase hex digits, such as 0403.",
+              "type": "string"
+            },
+            "pid": {
+              "description": "The USB product ID, the same way, such as 6010.",
+              "type": "string"
+            },
+            "serial_number": {
+              "description": "The device's serial number, as the serial port list reports it.\nOmitted when it has none.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "interface": {
+              "description": "The USB interface it's on, when the system says.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "maximum": 255,
+              "minimum": 0
+            },
+            "description": {
+              "description": "The port for people, in a phrase: \"A serial port of <the device>\",\nsuch as \"A serial port of USB Serial (1a86:7523)\".",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "port",
+            "vid",
+            "pid",
+            "description"
           ]
         }
       }

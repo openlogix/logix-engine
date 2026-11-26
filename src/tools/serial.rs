@@ -71,14 +71,20 @@ pub fn open(input: OpenSerialInput) -> Result<OpenSerialOutput, ToolError> {
         Some(id) => Some(device_key(id)?),
         None => None,
     };
-    // The port's USB interface, to find it again later.
-    let interface = device.as_ref().and_then(|key| {
+    // The port's own key and USB interface, as the serial port list
+    // reports them, to find it again later (its serial number may differ
+    // from the device ID's: serial::ports_of_devices).
+    let owner = device.and_then(|device| {
         crate::serial::usb_ports()
             .into_iter()
-            .find(|(k, p)| k == key && p.port == input.port)
-            .and_then(|(_, p)| p.interface)
+            .find(|(k, p)| k.vid == device.vid && k.pid == device.pid && p.port == input.port)
+            .map(|(port_key, p)| crate::serial::PortOwner {
+                device,
+                port_key,
+                interface: p.interface,
+            })
     });
-    let (session, port) = sessions().open(&input.port, baud, device, interface)?;
+    let (session, port) = sessions().open(&input.port, baud, owner)?;
     Ok(OpenSerialOutput {
         session,
         port,
