@@ -540,14 +540,6 @@ async fn display_paths_name_files_in_errors() {
 
 #[tokio::test]
 async fn build_streams_tool_output_when_asked() {
-    // Until the next promotion: prod pins catalog 2026-11-19, written before
-    // headers listed positions (logix-catalog#10), which this engine can't
-    // read. This engine must be promoted together with a catalog that lists
-    // positions; then remove this skip (the user's decision, 2026-11-23).
-    if std::env::var("LOGIX_ENGINE_CHANNEL").as_deref() == Ok("prod") {
-        eprintln!("Skipped on prod until the promotion: its catalog predates header positions.");
-        return;
-    }
     // The toolchain from the build tests' shared engine folder.
     let engine = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("test-engine");
     std::fs::create_dir_all(&engine).unwrap();
