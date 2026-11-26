@@ -20,9 +20,10 @@
       "type": "uart",
       "tx": "17",
       "rx": "18",
+      "usb_interface": 1,
       "io_standard": "LVCMOS33",
       "source": {"kind": "maker", "ref": "github.com/sipeed/TangNano-9K-example uart/src/top.cst"},
-      "user_notes": "The on-board BL702's USB serial port, over the USB-C cable."
+      "user_notes": "The on-board BL702's second channel, USB interface 1, over the USB-C cable: computers list two serial ports for the board, and this is the one for interface 1 (interface 0 programs the board)."
     }
   }
 }
