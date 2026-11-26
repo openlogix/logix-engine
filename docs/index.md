@@ -14,7 +14,7 @@ format, draw the design and program the board. Frontends such as
 as Claude Code start it and call its tools. It downloads the open source
 FPGA tools it needs, builds for every one of the [supported FPGAs](https://www.openlogix.org/logix-catalog/fpgas/),
 and knows the [supported boards](https://www.openlogix.org/logix-catalog/boards/) and their pins, and any board
-you describe yourself.
+you describe yourself ([custom boards](custom-boards.md)).
 
 Logix Engine is in development, on macOS with Apple Silicon, Windows x64 and
 Linux x64. It's
@@ -26,6 +26,7 @@ MIT or Apache 2.0.
 | Page | What it covers |
 | --- | --- |
 | [Tutorial: Claude Code](tutorial-claude-code.md) | Step by step, from installing the engine to designing, testing and programming a board by prompts |
+| [Custom boards](custom-boards.md) | Adding a board that isn't one of the supported boards, step by step, by hand or with an AI agent |
 | [Tool API](tool-api.md) | Every tool, its inputs, outputs and errors, and recipes for frontend developers |
 | [Command line](command-line.md) | Launch arguments and logging |
 | [Requirements](requirements.md) | Goals, platforms, capabilities, versioning, the error model, milestones and open questions |
