@@ -175,7 +175,8 @@ pub fn ports_of_devices(
                 .filter(|(k, _)| {
                     k.vid == key.vid
                         && k.pid == key.pid
-                        && (key.serial_number.is_none() || k.serial_number == key.serial_number)
+                        && (key.serial_number.is_none()
+                            || same_serial_number(&k.serial_number, &key.serial_number))
                 })
                 .map(|(_, p)| p.clone())
                 .collect();
@@ -187,6 +188,17 @@ pub fn ports_of_devices(
             found
         })
         .collect()
+}
+
+/// Whether two serial numbers are the same, in any case: Windows' port list
+/// reads them from the device instance ID, which Windows keeps in capitals
+/// (the iCESugar v1.5's `…a5a5a5a5…` is `…A5A5A5A5…` there, 2026-11-26), while
+/// the USB listing reads the device's own.
+fn same_serial_number(a: &Option<String>, b: &Option<String>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+        _ => a == b,
+    }
 }
 
 /// The ports with `key`'s USB IDs, when they can only be that device's
@@ -829,6 +841,34 @@ mod tests {
         let b = device("1a86", "7523", None, None, 5);
         let ports = vec![(key(0x1a86, 0x7523, None), port("/dev/ttyUSB3", Some(0)))];
         assert_eq!(ports_of_devices(&[a, b], &ports), vec![vec![], vec![]]);
+    }
+
+    /// Windows' port list gives serial numbers in capitals: two iCESugar
+    /// v1.5s each still get their own port.
+    #[test]
+    fn serial_numbers_match_in_any_case() {
+        let a = device(
+            "1d50",
+            "602b",
+            Some("DAPLink CMSIS-DAP"),
+            Some("0700a5a5"),
+            3,
+        );
+        let b = device(
+            "1d50",
+            "602b",
+            Some("DAPLink CMSIS-DAP"),
+            Some("0700b6b6"),
+            4,
+        );
+        let ports = vec![
+            (key(0x1d50, 0x602b, Some("0700B6B6")), port("COM9", Some(1))),
+            (key(0x1d50, 0x602b, Some("0700A5A5")), port("COM8", Some(1))),
+        ];
+        assert_eq!(
+            ports_of_devices(&[a, b], &ports),
+            vec![vec![port("COM8", Some(1))], vec![port("COM9", Some(1))]]
+        );
     }
 
     /// A device whose serial number no port has (the Tang Nano 9K's BL702)
