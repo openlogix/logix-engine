@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use super::{Call, EngineTool};
 use crate::build::{self, TOOLCHAIN};
 use crate::devices::{self, Device};
-use crate::errors::{ActionCode, Category, ToolError};
+use crate::errors::{Category, ToolError};
 use crate::output_rules::ToolOutput;
 use crate::paths;
 use crate::program;
@@ -305,16 +305,10 @@ pub async fn run_with_programmers(
             Err(program::runaway(&tool_name, &board.name))
         }
         Err(RunError::Cancelled) => Err(ToolError::cancelled("Programming was cancelled.")),
-        Err(RunError::Spawn(e)) => Err(ToolError::new(
-            Category::Tool,
-            format!("Can't start {}: {e}", program.display()),
-        )
-        .with_action(
-            ActionCode::DownloadPackages,
-            format!(
-                "Download the {} package again, which may be damaged.",
-                crate::packages::CORE
-            ),
+        Err(RunError::Spawn(e)) => Err(crate::packages::cant_start(
+            &program,
+            &program.display().to_string(),
+            &e,
         )),
     }
 }
@@ -369,16 +363,10 @@ async fn check_fpga(
             return Err(ToolError::cancelled("Programming was cancelled."));
         }
         Err(RunError::Spawn(e)) => {
-            return Err(ToolError::new(
-                Category::Tool,
-                format!("Can't start {}: {e}", exe.display()),
-            )
-            .with_action(
-                ActionCode::DownloadPackages,
-                format!(
-                    "Download the {} package again, which may be damaged.",
-                    crate::packages::CORE
-                ),
+            return Err(crate::packages::cant_start(
+                &exe,
+                &exe.display().to_string(),
+                &e,
             ));
         }
     };

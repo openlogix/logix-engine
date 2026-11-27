@@ -356,7 +356,7 @@ fn file_checksum(path: &Path) -> Result<String, ToolError> {
 pub fn inputs_checksum(
     req: &BuildRequest,
     includes: &BTreeSet<String>,
-    core_version: &str,
+    core_id: &str,
 ) -> Result<String, ToolError> {
     let mut contents = BTreeMap::new();
     for rel in req
@@ -369,7 +369,7 @@ pub fn inputs_checksum(
     }
     let key = serde_json::json!({
         "engine_version": crate::state::ENGINE_VERSION,
-        "core": [crate::packages::CORE, core_version],
+        "core": [crate::packages::CORE, core_id],
         "board": req.board.build_key(),
         "top_module": req.top_module,
         "source_files": req.source_files,
@@ -451,17 +451,7 @@ pub async fn run_watched(
         Err(RunError::Cancelled) => Err(ToolError::cancelled(format!(
             "The {operation} was cancelled."
         ))),
-        Err(RunError::Spawn(e)) => {
-            Err(
-                ToolError::new(Category::Tool, format!("Can't start {tool}: {e}")).with_action(
-                    crate::errors::ActionCode::DownloadPackages,
-                    format!(
-                        "Download the {} package again, which may be damaged.",
-                        crate::packages::CORE
-                    ),
-                ),
-            )
-        }
+        Err(RunError::Spawn(e)) => Err(crate::packages::cant_start(&program, tool, &e)),
     }
 }
 
@@ -523,7 +513,13 @@ pub async fn build(
     state.packages.load_if_empty().await?;
     let core = state.packages.spec(crate::packages::CORE)?;
     let fpga = &req.board.fpga;
-    let checksum = inputs_checksum(&req, &includes, &core.version)?;
+    // Its release and its file's SHA-256, so a release rebuilt under the
+    // same tag (a day's pre-release) makes the next build run again too.
+    let core_id = match state.packages.file_for(&core) {
+        Some(f) => format!("{} {}", core.version, f.sha256),
+        None => core.version.clone(),
+    };
+    let checksum = inputs_checksum(&req, &includes, &core_id)?;
 
     if let Some(record) = read_record(&req.build_folder)
         && record.inputs_checksum == checksum

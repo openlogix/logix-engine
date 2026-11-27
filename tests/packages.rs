@@ -329,6 +329,45 @@ async fn a_broken_package_is_repaired() {
 }
 
 #[tokio::test]
+async fn a_package_found_damaged_is_downloaded_again() {
+    let s = setup(good_package(), None, None);
+    let spec = s.pm.manifest().get("pkg").unwrap().clone();
+    s.pm.download(&spec, &phases(), &CancellationToken::new())
+        .await
+        .unwrap();
+    let dir = s.pm.package_dir(&spec);
+    std::fs::remove_file(dir.join("bin/tool")).unwrap();
+    // The status check reads only the receipt.
+    assert_eq!(s.pm.status(&spec), PackageStatus::Ready);
+
+    // A tool that finds its program missing marks the package damaged.
+    let e = std::io::Error::from(std::io::ErrorKind::NotFound);
+    let err = logix_engine::packages::cant_start(&dir.join("bin/tool"), "tool", &e);
+    assert!(err.action.is_some());
+    assert_eq!(s.pm.status(&spec), PackageStatus::Broken);
+
+    s.pm.download(&spec, &phases(), &CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(s.pm.status(&spec), PackageStatus::Ready);
+    assert!(dir.join("bin/tool").exists());
+}
+
+#[tokio::test]
+async fn other_start_failures_leave_the_package_ready() {
+    let s = setup(good_package(), None, None);
+    let spec = s.pm.manifest().get("pkg").unwrap().clone();
+    s.pm.download(&spec, &phases(), &CancellationToken::new())
+        .await
+        .unwrap();
+    let dir = s.pm.package_dir(&spec);
+    let e = std::io::Error::other("out of memory");
+    let err = logix_engine::packages::cant_start(&dir.join("bin/tool"), "tool", &e);
+    assert!(err.action.is_none());
+    assert_eq!(s.pm.status(&spec), PackageStatus::Ready);
+}
+
+#[tokio::test]
 async fn a_record_from_another_release_is_broken() {
     let s = setup(good_package(), None, None);
     let spec = s.pm.manifest().get("pkg").unwrap().clone();

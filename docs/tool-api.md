@@ -210,7 +210,7 @@ On success, a tool returns its output object as structured content. On failure, 
 
 | Action code | Meaning |
 | --- | --- |
-| `download_packages` | Required packages are missing or broken and weren't downloaded automatically, because auto-download is off or the download failed. The host downloads them by calling `check_updates` with `cached_config_ok` (the code keeps its name from the deprecated download_packages tool) |
+| `download_packages` | Required packages are missing or broken and weren't downloaded automatically, because auto-download is off or the download failed. The host downloads them by calling `check_updates` with `cached_config_ok` (the code keeps its name from the deprecated download_packages tool). It's also the action of an error that finds a package damaged after its download, such as a tool program missing: the engine then marks the package broken, so that call, or the next operation that needs it, downloads it again |
 | `connect_board` | No matching board is connected |
 | `fix_device_permissions` | A device was found but cannot be opened. On Linux, `install_driver` adds the udev rule it needs, after asking the user; from `program_board`, the error's `data` has the device's `who` and `driver`, as for `install_drivers`. When Linux can't ask for the password, `data.terminal_commands` are the commands to run in a terminal instead, a line each |
 | `install_drivers` | A driver required by the board is missing (Windows): `install_driver` installs it, after asking the user. From `program_board`, the error's `data` has the device's `who` and `driver`, as in Table 13, with the question to ask |
