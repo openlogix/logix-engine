@@ -1,4 +1,8 @@
 //! The download_packages tool (docs/tool-api.md, Tables 18 and 19).
+//! Deprecated: check_updates does it all (with cached_config_ok, the same as
+//! this tool without packages or force). It's kept working for hosts that
+//! call it, and will be dropped once Logix IDE's config names an engine
+//! without it.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -13,18 +17,11 @@ pub struct DownloadPackages;
 
 impl EngineTool for DownloadPackages {
     const NAME: &'static str = "download_packages";
-    const DESCRIPTION: &'static str = "Downloads or repairs the engine's toolchain packages from \
-        the internet, into its engine folder. Packages that are already ready are left alone, \
-        unless force is set to download them again, and the remote config is read first when \
-        that's due, so newer releases come down too. Other tools download the packages they \
-        need on their own, inside their own call. AI agents: before the first other call in \
-        a session, call this with check_only, which is quick and downloads nothing; when its \
-        to_download is empty, go on without mentioning it; otherwise download as a step of its \
-        own in your plan, telling the user how much (its summary says), then show the \
-        download's summary lines. Also call it to download ahead of time, such as before going offline, or when a tool returns a setup \
-        error with the download_packages action (for example when the engine was launched with \
-        automatic download turned off). A download can take a few minutes; the tool reports \
-        progress and can be cancelled.";
+    const DESCRIPTION: &'static str = "Deprecated: call check_updates instead. Without packages \
+        and force, this is the same as check_updates with cached_config_ok: it downloads or \
+        repairs the engine's toolchain packages, reading the remote config first when the \
+        saved one is more than 24 hours old, and check_only downloads nothing and says what \
+        would download. Kept for hosts that still call it.";
     const READ_ONLY: bool = false;
     const OPEN_WORLD: bool = true;
     type Input = DownloadPackagesInput;
@@ -147,6 +144,28 @@ pub async fn run(
             names
         }
     };
+    // check_only changes nothing, as check_updates' does.
+    if input.check_only {
+        let preview = state.packages.preview(false, true).await?;
+        let mut to_download = Vec::new();
+        for spec in preview
+            .to_download
+            .iter()
+            .filter(|s| names.contains(&s.name))
+        {
+            to_download.push(PackageDownload {
+                name: spec.name.clone(),
+                version: crate::packages::manifest::shown_version(&spec.version),
+                size: state.packages.download_size(spec).await,
+            });
+        }
+        return Ok(DownloadPackagesOutput {
+            downloaded: vec![],
+            summary: to_download_lines(&to_download),
+            to_download,
+            packages: package_list(state),
+        });
+    }
     // The host asked: read the remote config first if it's due, even with
     // automatic download off.
     state.packages.refresh(false, true).await?;
@@ -170,14 +189,6 @@ pub async fn run(
             name: spec.name.clone(),
             version: crate::packages::manifest::shown_version(&spec.version),
             size: state.packages.download_size(spec).await,
-        });
-    }
-    if input.check_only {
-        return Ok(DownloadPackagesOutput {
-            downloaded: vec![],
-            summary: to_download_lines(&to_download),
-            to_download,
-            packages: package_list(state),
         });
     }
     let phases = Phases::new(call.progress.clone(), needed.len());

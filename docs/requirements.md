@@ -278,7 +278,7 @@ The engine, its packages and the catalog all use date versions, as every Open Lo
 - **Catalog.** The catalog is a package like the others, with its own date, named by the remote config.
 - **Tool API never breaks.** Changes only add tools or optional fields. A breaking change gets a new tool name, and the old tool keeps working until it is retired in a documented, announced way.
 - **Version check.** A host asks the engine for its version and downloaded package dates when it starts. Each host declares the minimum engine version it needs and tells the user clearly when the engine is older.
-- **No unreported upgrades.** The engine never updates itself. Its packages change only to what its remote config names: before an operation, when its cached remote config is more than 24 hours old, or when a host asks (`check_updates`). Every update is reported, in the operation's progress (the release it downloads), the log, and `check_updates`'s result. The launch option that turns off automatic download turns this off too.
+- **No unreported upgrades.** The engine never updates itself. Its packages change only to what its remote config names, and only when a host or AI agent asks (`check_updates`, the one tool that switches releases, so a host's calls between two checks all run on the same packages; the user's decision, 2026-11-27). Other operations only download a missing or broken package of the release in use, reading the remote config only when there's none to use yet. Every update is reported, in the operation's progress (the release it downloads), the log, and `check_updates`'s result. The launch option that turns off automatic download turns this off too.
 
 ## Packages
 
@@ -383,7 +383,7 @@ The catalog is the `logix-catalog` release the engine's remote config names. Hos
 CLI hosts start a new engine instance for every command, so the engine's own overhead must stay small next to the time the tools take. These are targets, to be confirmed by measurement.
 
 - **Startup.** An instance is ready to accept requests within 200 ms of launch, excluding first-time package downloads.
-- **No network at startup.** Starting an instance never contacts the network. Network access happens only before an operation that needs packages (to download or repair them and, with remote updates, to refresh a remote config more than 24 hours old), or when a host asks for it.
+- **No network at startup.** Starting an instance never contacts the network. Network access happens only before an operation that needs packages (to download or repair them, and to read a remote config when there's none yet), or when a host asks for it (`check_updates`).
 - **Verification on download.** Package checksums are verified when packages are downloaded, not every time an instance starts.
 - **Operation overhead.** The engine adds no more than 100 ms to an operation beyond the time its tools take.
 - **Up-to-date builds.** A build with no changes since the last build finishes within 1 second, using the incremental state in the build folder.
@@ -539,7 +539,7 @@ Milestone 1 tested the interface with an AI coding agent as the host, before any
 | Auto Format | A `format` tool and the package with Verible |
 | Show Diagram | A `diagram` tool that writes the diagram: a page with every module, and each module's SVG |
 | Console | Live tool output, line by line, while each operation runs |
-| First start | `download_packages`, with progress |
+| First start | `download_packages`, with progress (since 2026-11-27, `check_updates` with `cached_config_ok`) |
 | Stop | Cancellation of every tool |
 
 **Hardware tests (done 2026-11-10).** All four toolchains (iCE40, ECP5, Gowin and Xilinx 7 Series) built a design and programmed a board through Logix IDE on the engine, tested by the user on real boards. Table 15's features are all in Logix IDE.

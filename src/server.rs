@@ -33,10 +33,11 @@ impl EngineServer {
 const INSTRUCTIONS: &str = "Logix Engine builds and tests FPGA designs and programs FPGA boards, using open source \
     tools that it downloads into its own folder and runs itself. Getting them can take minutes, \
     the first time and when newer releases come out, so make it a step of its own: before the \
-    first other call in a session, call download_packages with check_only, which is quick and \
-    downloads nothing. When its to_download is empty, go on without mentioning it; otherwise \
-    download them as a step of its own in your plan, telling the user how much (its summary \
-    says), then show the download's summary lines. Every request is self-contained: it names its own \
+    first other call in a session, call check_updates with cached_config_ok and check_only, \
+    which is quick and downloads nothing. When its to_download and updates are empty, go on \
+    without mentioning it; otherwise download them as a step of its own in your plan, telling \
+    the user how much (its summary says), by calling check_updates with cached_config_ok, \
+    then show its summary lines. Every request is self-contained: it names its own \
     board, source folder, source files and build folder, as absolute paths. Errors come back as \
     data with a category (design, setup, request, tool, engine or cancelled), a message and, \
     when there is one, a suggested action. Before writing a design for a board, read the \

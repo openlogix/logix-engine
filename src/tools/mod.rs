@@ -315,13 +315,15 @@ pub async fn call(
     let call = &named;
     let display = &*display;
     // Every tool that may use packages reads the remote config first when
-    // it's due (24 hours), so it works with the releases the config names.
-    // Best effort: a tool that needs a package and has none to use gets the
-    // error from needing_download; one that doesn't, such as get_catalog
-    // with a local catalog folder, works anyway. download_packages and
-    // check_updates read it themselves (they may use the network even with
-    // automatic download off), and get_engine_info, clean_build, clean_logs and the
-    // serial tools use no packages.
+    // there's none in use yet (a first start). It never switches to newer
+    // releases: only check_updates (and download_packages) do, so a host
+    // knows what every call runs on. Best effort: a tool that needs a
+    // package and has none to use gets the error from needing_download; one
+    // that doesn't, such as get_catalog with a local catalog folder, works
+    // anyway. download_packages and check_updates read it themselves (they
+    // may use the network even with automatic download off), and
+    // get_engine_info, clean_build, clean_logs and the serial tools use no
+    // packages.
     if ![
         GetEngineInfo::NAME,
         CleanBuild::NAME,
@@ -337,7 +339,7 @@ pub async fn call(
     ]
     .contains(&name)
         && all_definitions().iter().any(|t| t.name == name)
-        && let Err(e) = state.packages.refresh(false, false).await
+        && let Err(e) = state.packages.load_if_empty().await
     {
         log::info!("Before {name}: {}", e.message);
     }
