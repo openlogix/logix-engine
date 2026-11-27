@@ -415,6 +415,7 @@ pub async fn diagram_with(
     }
     std::fs::create_dir_all(&out).map_err(|e| io("create the diagram folder", e))?;
     if !elk.is_file() {
+        crate::packages::mark_damaged(elk);
         return Err(ToolError::setup(format!(
             "The {} package has no {ELKJS} ({ELK_BUNDLE}), which draws diagrams.",
             crate::packages::CORE

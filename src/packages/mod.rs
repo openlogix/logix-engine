@@ -478,7 +478,7 @@ impl PackageManager {
                 let name = entry.file_name().to_string_lossy().into_owned();
                 if new.get(&name).is_none() && entry.path().is_dir() {
                     log::info!("Removing package {name}: the remote config no longer names it");
-                    let _ = fs::remove_dir_all(entry.path());
+                    remove_logged(&entry.path());
                 }
             }
         }
@@ -570,6 +570,7 @@ impl PackageManager {
     pub fn bin_dir(&self, component: &str) -> Result<PathBuf, ToolError> {
         let core = self.package_dir(&self.spec(CORE)?);
         let components = self.core_components().ok_or_else(|| {
+            mark_damaged(&core);
             ToolError::setup(format!(
                 "The {CORE} package has no readable {CORE_METADATA}."
             ))
@@ -843,7 +844,7 @@ impl PackageManager {
                         "Removing package {name} {old}: replaced by {}",
                         spec.version
                     );
-                    let _ = fs::remove_dir_all(&path);
+                    remove_logged(&path);
                 }
             }
         }
@@ -1046,6 +1047,66 @@ impl PackageManager {
         );
         self.download(&again, phases, cancel).await
     }
+}
+
+/// Deletes a folder, logging a failure instead of ignoring it (on Windows, a
+/// program still running from an old release keeps its folder; the next
+/// download of the package tries again).
+fn remove_logged(path: &Path) {
+    if let Err(e) = fs::remove_dir_all(path)
+        && path.exists()
+    {
+        log::warn!("Can't remove {}: {e}", path.display());
+    }
+}
+
+/// Marks the downloaded package that holds `path` as damaged, by deleting
+/// its receipt, so its status is broken and the next operation, or
+/// check_updates, downloads it again. For files found missing or unreadable
+/// in a package that looked ready: the status check reads only the receipt.
+/// Does nothing for a path outside the downloaded packages, such as a local
+/// catalog.
+pub fn mark_damaged(path: &Path) {
+    for dir in path.ancestors() {
+        let receipt = dir.join(RECORD_FILE);
+        if receipt.is_file() {
+            match fs::remove_file(&receipt) {
+                Ok(()) => log::warn!(
+                    "Marked {} as damaged: it's downloaded again before its next use",
+                    dir.display()
+                ),
+                Err(e) => log::warn!("Can't mark {} as damaged: {e}", dir.display()),
+            }
+            return;
+        }
+    }
+}
+
+/// Whether a program that couldn't start points to a damaged package: it's
+/// missing, or can't be run.
+pub fn spawn_means_damaged(e: &std::io::Error) -> bool {
+    matches!(
+        e.kind(),
+        std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
+    )
+}
+
+/// The error for a core program that couldn't start, named `shown` in the
+/// message. When it's missing or can't be run, the core package is marked
+/// damaged and the error asks to download it again.
+pub fn cant_start(program: &Path, shown: &str, e: &std::io::Error) -> ToolError {
+    let err = ToolError::new(
+        crate::errors::Category::Tool,
+        format!("Can't start {shown}: {e}"),
+    );
+    if !spawn_means_damaged(e) {
+        return err;
+    }
+    mark_damaged(program);
+    err.with_action(
+        ActionCode::DownloadPackages,
+        format!("Download the {CORE} package again, which may be damaged."),
+    )
 }
 
 /// Deletes leftovers of interrupted downloads of this package: unpack

@@ -153,6 +153,7 @@ impl EngineState {
         }
         let folder = self.packages.package_dir(&spec);
         crate::catalog::load(&folder, &spec.version, false).map_err(|e| {
+            crate::packages::mark_damaged(&folder);
             crate::errors::ToolError::setup(format!("Can't read the board catalog: {e}"))
                 .with_action(
                     crate::errors::ActionCode::DownloadPackages,
