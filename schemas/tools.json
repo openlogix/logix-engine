@@ -451,7 +451,7 @@
   },
   {
     "name": "download_packages",
-    "description": "Downloads or repairs the engine's toolchain packages from the internet, into its engine folder. Packages that are already ready are left alone, unless force is set to download them again, and the remote config is read first when that's due, so newer releases come down too. Other tools download the packages they need on their own, inside their own call. AI agents: before the first other call in a session, call this with check_only, which is quick and downloads nothing; when its to_download is empty, go on without mentioning it; otherwise download as a step of its own in your plan, telling the user how much (its summary says), then show the download's summary lines. Also call it to download ahead of time, such as before going offline, or when a tool returns a setup error with the download_packages action (for example when the engine was launched with automatic download turned off). A download can take a few minutes; the tool reports progress and can be cancelled.",
+    "description": "Deprecated: call check_updates instead. Without packages and force, this is the same as check_updates with cached_config_ok: it downloads or repairs the engine's toolchain packages, reading the remote config first when the saved one is more than 24 hours old, and check_only downloads nothing and says what would download. Kept for hosts that still call it.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "DownloadPackagesInput",
@@ -636,12 +636,24 @@
   },
   {
     "name": "check_updates",
-    "description": "Checks now for newer releases of the engine's packages (the board catalog and the FPGA tools): reads the engine's remote config, downloads what it names that isn't downloaded yet, and uses it from the next call. The engine also checks on its own, before an operation that needs packages, when it last checked more than 24 hours ago, so call this only to check now, such as when the user asks for updates. It works even when automatic download is off. A download can take a few minutes; the tool reports progress and can be cancelled. When newer_engine is in the result, tell the user that a newer Logix Engine is available and give its page: the engine never updates itself.",
+    "description": "Downloads and updates the engine's packages (the board catalog and the FPGA tools): reads the engine's remote config, downloads what it names that isn't downloaded yet (or is broken), and uses it from the next call. It's the only tool that moves the engine to newer releases: other tools download a missing or broken package of the releases in use, inside their own call, but never switch releases. cached_config_ok uses the saved remote config when it was read less than 24 hours ago, so the call is quick and works offline; without it, the config is read now. check_only downloads nothing and says what would download, with sizes. AI agents: before the first other call in a session, call this with cached_config_ok and check_only; when its to_download and updates are both empty, go on without mentioning it; otherwise download as a step of its own in your plan, telling the user how much (its summary says), by calling it again with cached_config_ok and without check_only, then show that call's summary lines. Also call it when the user asks for updates, to download ahead of time (such as before going offline), or when a tool returns a setup error with the download_packages action. It works even when automatic download is off. A download can take a few minutes; the tool reports progress and can be cancelled. When newer_engine is in the result, tell the user that a newer Logix Engine is available and give its page: the engine never updates itself.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "CheckUpdatesInput",
-      "description": "The check_updates tool takes no inputs.",
+      "description": "How to check.",
       "type": "object",
+      "properties": {
+        "cached_config_ok": {
+          "description": "Use the saved remote config when it was read less than 24 hours ago,\ninstead of reading it now: quick, and works offline. The config is\nread anyway when there's no saved one, or it's older. Use it when the\nhost starts and before an AI session's first call; leave it off when\nthe user asks for updates. Defaults to false.",
+          "type": "boolean",
+          "default": false
+        },
+        "check_only": {
+          "description": "Download and switch nothing: only say what a call without it would\ndo, in to_download (with sizes) and updates. Quick: use it to tell\nthe user how much will download before downloading. It keeps the\nsaved remote config as it was, so call again with the same\ncached_config_ok to download. Defaults to false.",
+          "type": "boolean",
+          "default": false
+        }
+      },
       "additionalProperties": false
     },
     "outputSchema": {
@@ -651,18 +663,26 @@
       "type": "object",
       "properties": {
         "updates": {
-          "description": "The packages whose release changed, each with the release used before\n(from) and now (to). Empty when nothing changed.",
+          "description": "The packages whose release changed, each with the release used before\n(from) and now (to); with check_only, those whose release would\nchange. Empty when nothing changed.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/UpdateInfo"
           }
         },
         "downloaded": {
-          "description": "Names of the packages this call downloaded or repaired.",
+          "description": "Names of the packages this call downloaded or repaired. Empty with\ncheck_only.",
           "type": "array",
           "items": {
             "type": "string"
           }
+        },
+        "to_download": {
+          "description": "The packages that needed downloading, with their versions and sizes:\nwith check_only, what a call without it would download; otherwise\nwhat this call downloaded. Empty when everything is ready.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PackageDownload"
+          },
+          "default": []
         },
         "packages": {
           "description": "Every package the engine uses, with its status.",
@@ -672,11 +692,11 @@
           }
         },
         "remote_config": {
-          "description": "The remote config just read.",
+          "description": "The remote config in use: the one just read, or the saved one (with\ncached_config_ok, or when reading failed and the engine kept it).",
           "$ref": "#/$defs/RemoteConfigInfo"
         },
         "newer_engine": {
-          "description": "A newer Logix Engine release on this engine's channel, when there is\none. The engine never updates itself: tell the user, with its page.",
+          "description": "A newer Logix Engine release on this engine's channel, when there is\none, looked for when the call read the remote config. The engine\nnever updates itself: tell the user, with its page.",
           "anyOf": [
             {
               "$ref": "#/$defs/NewerEngine"
@@ -687,7 +707,7 @@
           ]
         },
         "summary": {
-          "description": "What changed, for people, a sentence each: \"Updated logix-core to\n2026.11.22.\" for each package whose release changed, \"Downloaded\nlogix-catalog 2026.11.22.\" for one only downloaded or repaired, or\n\"Logix Engine's packages are up to date.\" when nothing changed.\nPackages are named by their package names. A newer engine isn't in\nit: see newer_engine.",
+          "description": "What changed, for people, a sentence each: \"Updated logix-core to\n2026.11.22.\" for each package whose release changed, \"Downloaded\nlogix-catalog 2026.11.22.\" for one only downloaded or repaired, or\n\"Logix Engine's packages are up to date.\" when nothing changed.\nPackages are named by their package names. A newer engine isn't in\nit: see newer_engine. With check_only, what a download would get,\nsuch as \"To download: logix-core 2026.11.22 (412 MB).\" and, for more\nthan one, a total; empty when there's nothing to download.",
           "type": "array",
           "items": {
             "type": "string"
@@ -727,6 +747,33 @@
           "required": [
             "name",
             "to"
+          ]
+        },
+        "PackageDownload": {
+          "description": "A package a download gets.",
+          "type": "object",
+          "properties": {
+            "name": {
+              "description": "The package's name, such as logix-core.",
+              "type": "string"
+            },
+            "version": {
+              "description": "The version it downloads.",
+              "type": "string"
+            },
+            "size": {
+              "description": "The download's size in bytes, when the release or its download\nserver says. Omitted when neither does.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "version"
           ]
         },
         "PackageInfo": {
@@ -6084,7 +6131,7 @@
           "description": "A fix the host can offer the user.",
           "oneOf": [
             {
-              "description": "Required packages are missing or broken and weren't downloaded\nautomatically, because auto-download is off or the download failed.",
+              "description": "Required packages are missing or broken and weren't downloaded\nautomatically, because auto-download is off or the download failed.\nThe host calls check_updates with cached_config_ok (the code keeps the\nname of the deprecated download_packages tool).",
               "type": "string",
               "const": "download_packages"
             },

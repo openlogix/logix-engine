@@ -17,7 +17,7 @@ use logix_engine::packages::{PackageManager, RECORD_FILE};
 use logix_engine::progress::{NoProgress, Phases, ProgressSink};
 use logix_engine::state::EngineState;
 use logix_engine::tools::get_engine_info::{PackageStatus, package_info};
-use logix_engine::tools::{Call, download_packages};
+use logix_engine::tools::{Call, check_updates, download_packages};
 use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
 
@@ -906,6 +906,63 @@ async fn a_new_config_switches_releases_and_deletes_the_old_ones() {
 }
 
 #[tokio::test]
+async fn an_operation_never_switches_releases() {
+    // Only check_updates (refresh) moves to newer releases: an operation's
+    // needing_download keeps the set in use, even with the cached config
+    // more than 24 hours old and a new one on the server.
+    let r = remote_setup();
+    download_all(&r.pm(true, false)).await;
+    let cache = r.engine.join("remote-config/config.json");
+    let mut cached: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&cache).unwrap()).unwrap();
+    cached["fetched"] = 1.into();
+    std::fs::write(&cache, cached.to_string()).unwrap();
+    r.server
+        .put(&config_path(), config_text("2026-01-03").as_bytes());
+    let before = r.server.count();
+    // A new engine process with the same engine folder.
+    let pm = r.pm(true, false);
+    assert!(pm.needing_download(&BOTH).await.unwrap().is_empty());
+    assert_eq!(pm.spec("logix-catalog").unwrap().version, "2026-01-02");
+    assert_eq!(r.server.count(), before, "no network use");
+    // The host's check switches.
+    assert_eq!(pm.refresh(false, true).await.unwrap().len(), 1);
+    assert_eq!(pm.spec("logix-catalog").unwrap().version, "2026-01-03");
+}
+
+#[tokio::test]
+async fn a_preview_says_what_would_change_and_changes_nothing() {
+    let r = remote_setup();
+    let pm = r.pm(true, false);
+    download_all(&pm).await;
+    let cache = r.engine.join("remote-config/config.json");
+    let saved = std::fs::read_to_string(&cache).unwrap();
+    r.server
+        .put(&config_path(), config_text("2026-01-03").as_bytes());
+    let preview = pm.preview(true, true).await.unwrap();
+    assert!(preview.config_read);
+    assert_eq!(preview.updates.len(), 1);
+    assert_eq!(preview.updates[0].to, "2026.01.03");
+    let names: Vec<String> = preview
+        .to_download
+        .iter()
+        .map(|s| format!("{} {}", s.name, s.version))
+        .collect();
+    assert_eq!(names, ["logix-catalog 2026-01-03"]);
+    // The set in use, its packages and the cached config stay.
+    assert_eq!(pm.spec("logix-catalog").unwrap().version, "2026-01-02");
+    assert_eq!(std::fs::read_to_string(&cache).unwrap(), saved);
+    assert_eq!(
+        entries(&r.engine.join("packages/logix-catalog")),
+        vec!["2026-01-02"]
+    );
+    // Not due without force: nothing read, nothing to download.
+    let preview = pm.preview(false, true).await.unwrap();
+    assert!(!preview.config_read);
+    assert!(preview.updates.is_empty() && preview.to_download.is_empty());
+}
+
+#[tokio::test]
 async fn a_rebuild_after_the_config_was_read_is_downloaded_on_the_first_try() {
     // The config is read (and cached) before the release is rebuilt under
     // the same tag, as logix-core's was on 2026-11-23: the cached checksum
@@ -1126,4 +1183,93 @@ fn to_download_lines_give_a_total_for_more_than_one() {
         ]
     );
     assert!(to_download_lines(&[]).is_empty());
+}
+
+// ----- The check_updates tool.
+
+fn remote_state(r: &RemoteSetup) -> EngineState {
+    EngineState {
+        engine_folder: r.engine.display().to_string(),
+        engine_folder_resolved: r.engine.clone(),
+        auto_download: true,
+        command_line: vec![],
+        log_file: r.engine.join("logs/test.log"),
+        packages: r.pm(true, false),
+    }
+}
+
+async fn check(state: &EngineState, input: serde_json::Value) -> check_updates::CheckUpdatesOutput {
+    let input: check_updates::CheckUpdatesInput = serde_json::from_value(input).unwrap();
+    let call = Call::new(Arc::new(NoProgress), CancellationToken::new());
+    check_updates::run(state, input, &call).await.unwrap()
+}
+
+fn names(list: &[download_packages::PackageDownload]) -> Vec<String> {
+    list.iter()
+        .map(|p| format!("{} {}", p.name, p.version))
+        .collect()
+}
+
+#[tokio::test]
+async fn check_updates_with_check_only_and_cached_config_ok() {
+    let r = remote_setup();
+    let state = remote_state(&r);
+    let both = ["logix-catalog 2026.01.02", "logix-core 2026.01.02"];
+
+    // The first start: no config yet, so it's read even with
+    // cached_config_ok; check_only downloads nothing.
+    let out = check(
+        &state,
+        serde_json::json!({"cached_config_ok": true, "check_only": true}),
+    )
+    .await;
+    assert_eq!(names(&out.to_download), both);
+    assert!(out.downloaded.is_empty());
+    assert!(entries(&r.engine.join("packages")).is_empty());
+
+    // Then the download.
+    let out = check(&state, serde_json::json!({"cached_config_ok": true})).await;
+    assert_eq!(names(&out.to_download), both);
+    assert_eq!(out.downloaded.len(), 2);
+
+    // A new config on the server: the cached one is under 24 hours old, so
+    // cached_config_ok doesn't read it.
+    r.server
+        .put(&config_path(), config_text("2026-01-03").as_bytes());
+    let before = r.server.count();
+    let out = check(
+        &state,
+        serde_json::json!({"cached_config_ok": true, "check_only": true}),
+    )
+    .await;
+    assert!(out.to_download.is_empty() && out.updates.is_empty());
+    assert_eq!(r.server.count(), before, "no network use");
+
+    // Without it, the check reads the new config and says what would change,
+    // changing nothing.
+    let out = check(&state, serde_json::json!({"check_only": true})).await;
+    assert_eq!(names(&out.to_download), ["logix-catalog 2026.01.03"]);
+    assert_eq!(out.updates.len(), 1);
+    assert!(out.downloaded.is_empty());
+    assert_eq!(
+        state.packages.spec("logix-catalog").unwrap().version,
+        "2026-01-02"
+    );
+
+    // A plain check switches.
+    let out = check(&state, serde_json::json!({})).await;
+    assert_eq!(out.updates.len(), 1);
+    assert_eq!(out.downloaded, ["logix-catalog"]);
+    assert_eq!(
+        entries(&r.engine.join("packages/logix-catalog")),
+        vec!["2026-01-03"]
+    );
+}
+
+#[test]
+fn check_updates_refuses_unknown_inputs() {
+    let err = serde_json::from_value::<check_updates::CheckUpdatesInput>(
+        serde_json::json!({"packages": ["logix-core"]}),
+    );
+    assert!(err.is_err());
 }

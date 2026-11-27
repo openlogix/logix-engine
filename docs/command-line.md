@@ -7,7 +7,7 @@ A host launches the engine as a child process on the same computer and talks MCP
 | Argument | Required | Description |
 | --- | --- | --- |
 | `--engine-folder <absolute path>` | Yes | The host's engine folder. It must satisfy the path keyword rules. Hosts don't share engine folders by default |
-| `--no-auto-download` | No | Turns off automatic package download and repair, and the engine's own reading of its remote config. A missing or broken package is then a setup error with `download_packages`; `download_packages` and `check_updates` still work, since the host asks |
+| `--no-auto-download` | No | Turns off automatic package download and repair, and the engine's own reading of its remote config. A missing or broken package is then a setup error with `download_packages`; `check_updates` (and the deprecated `download_packages`) still work, since the host asks |
 | `--log-level <level>` | No | One of `error`, `warn`, `info` and `debug`. Defaults to `info` |
 | `--log-folder <absolute path>` | No | The host's log session folder (see Logs). The engine writes its log there and deletes nothing in it. Without it, the engine is at the top and makes its own session folder in its engine folder's `logs` |
 | `--log-name <name>` | No | The engine's name in the host's session folder: the chain of programs that started it, joined by dots, such as `my-ide.engine` (the engine writes `my-ide.engine.log`). Lowercase letters, digits, `-` and `.`. Needs `--log-folder`; defaults to `engine` |

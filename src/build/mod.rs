@@ -518,9 +518,9 @@ pub async fn build(
     call: &Call,
 ) -> Result<BuildResult, ToolError> {
     let includes = find_includes(&req.source_folder, &req.source_files)?;
-    // The core release the remote config names, which the up-to-date check
-    // compares (reading the config first when it's due).
-    state.packages.refresh(false, false).await?;
+    // The core release in use, which the up-to-date check compares (reading
+    // the remote config first when there's none in use yet).
+    state.packages.load_if_empty().await?;
     let core = state.packages.spec(crate::packages::CORE)?;
     let fpga = &req.board.fpga;
     let checksum = inputs_checksum(&req, &includes, &core.version)?;

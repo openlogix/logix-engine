@@ -189,6 +189,32 @@ struct Remote {
     lock: Arc<tokio::sync::Mutex<()>>,
 }
 
+/// What check_updates with check_only reports: see `PackageManager::preview`.
+#[derive(Debug, Clone)]
+pub struct Preview {
+    /// The packages whose release would change.
+    pub updates: Vec<Update>,
+    /// The packages that would be downloaded.
+    pub to_download: Vec<PackageSpec>,
+    /// Whether the remote config was read.
+    pub config_read: bool,
+}
+
+/// The packages whose release differs from `old` to `new`.
+fn updates_between(old: &Manifest, new: &Manifest) -> Vec<Update> {
+    new.packages
+        .iter()
+        .filter_map(|p| {
+            let from = old.get(&p.name).map(|o| o.version.clone());
+            (from.as_deref() != Some(&p.version)).then(|| Update {
+                name: p.name.clone(),
+                from: from.map(|f| manifest::shown_version(&f)),
+                to: manifest::shown_version(&p.version),
+            })
+        })
+        .collect()
+}
+
 /// The remote config in use, for get_engine_info.
 #[derive(Debug, Clone)]
 pub struct RemoteInfo {
@@ -305,12 +331,60 @@ impl PackageManager {
     /// asked for packages). Without the network, or when reading fails, the
     /// config in use stays (with a warning in the log); it's an error only
     /// when there's none to use, or for the diagnostic override, which never
-    /// falls back.
+    /// falls back. Only check_updates (and download_packages) switch releases
+    /// this way; an operation reads the config only when there's none in use
+    /// (see `needing_download`).
     pub async fn refresh(&self, force: bool, asked: bool) -> Result<Vec<Update>, ToolError> {
         let Some(remote) = &self.remote else {
             return Ok(vec![]);
         };
         let _one = remote.lock.lock().await;
+        match self.read_due(remote, force, asked).await? {
+            Some((new, channel)) => Ok(self.switch(remote, new, channel)),
+            None => Ok(vec![]),
+        }
+    }
+
+    /// What `refresh` would do, without doing it: reads the remote config
+    /// when it's due, the same way, but keeps the set in use and the cached
+    /// copy. Returns the packages whose release would change and those that
+    /// would be downloaded (missing, broken or of another release), and
+    /// whether the config was read.
+    pub async fn preview(&self, force: bool, asked: bool) -> Result<Preview, ToolError> {
+        let read = match &self.remote {
+            Some(remote) => {
+                let _one = remote.lock.lock().await;
+                self.read_due(remote, force, asked).await?
+            }
+            None => None,
+        };
+        let config_read = read.is_some();
+        let old = self.manifest();
+        let (updates, set) = match read {
+            Some((new, _)) => (updates_between(&old, &new), Arc::new(new)),
+            None => (vec![], old),
+        };
+        let to_download = set
+            .packages
+            .iter()
+            .filter(|s| self.status(s) != PackageStatus::Ready)
+            .cloned()
+            .collect();
+        Ok(Preview {
+            updates,
+            to_download,
+            config_read,
+        })
+    }
+
+    /// Reads the remote config when it's due (see `refresh`). None when it
+    /// isn't due, or can't be read and the config in use stays.
+    async fn read_due(
+        &self,
+        remote: &Remote,
+        force: bool,
+        asked: bool,
+    ) -> Result<Option<(Manifest, remote_config::Channel)>, ToolError> {
         let have = !self.manifest().packages.is_empty();
         let fetched = *remote.fetched.read().unwrap_or_else(|e| e.into_inner());
         let due = force
@@ -319,7 +393,7 @@ impl PackageManager {
                 remote_config::now().saturating_sub(t) >= remote_config::MAX_AGE.as_secs()
             });
         if !due {
-            return Ok(vec![]);
+            return Ok(None);
         }
         let no_config = |problem: String| {
             let what = if remote.source.is_override {
@@ -337,7 +411,7 @@ impl PackageManager {
         };
         if !remote.network && !asked {
             return if have {
-                Ok(vec![])
+                Ok(None)
             } else {
                 Err(no_config("automatic download is turned off".into()))
             };
@@ -352,27 +426,25 @@ impl PackageManager {
                     .await?;
             Ok::<_, String>((set, read.channel))
         };
-        let (new, channel) = match read.await {
-            Ok(read) => read,
+        match read.await {
+            Ok(read) => Ok(Some(read)),
             Err(e) if have && !remote.source.is_override => {
                 log::warn!("Can't read the remote config, keeping the one in use: {e}");
-                return Ok(vec![]);
+                Ok(None)
             }
-            Err(e) => return Err(no_config(e)),
-        };
-        let old = self.manifest();
-        let updates: Vec<Update> = new
-            .packages
-            .iter()
-            .filter_map(|p| {
-                let from = old.get(&p.name).map(|o| o.version.clone());
-                (from.as_deref() != Some(&p.version)).then(|| Update {
-                    name: p.name.clone(),
-                    from: from.map(|f| manifest::shown_version(&f)),
-                    to: manifest::shown_version(&p.version),
-                })
-            })
-            .collect();
+            Err(e) => Err(no_config(e)),
+        }
+    }
+
+    /// Switches to a config just read: saves it as the cached copy, deletes
+    /// the packages it no longer names and uses its set from now on.
+    fn switch(
+        &self,
+        remote: &Remote,
+        new: Manifest,
+        channel: remote_config::Channel,
+    ) -> Vec<Update> {
+        let updates = updates_between(&self.manifest(), &new);
         let now = remote_config::now();
         let cached = remote_config::Cached {
             source: remote.source.location.clone(),
@@ -412,7 +484,27 @@ impl PackageManager {
         }
         *self.set.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(new);
         *remote.fetched.write().unwrap_or_else(|e| e.into_inner()) = Some(now);
-        Ok(updates)
+        updates
+    }
+
+    /// Puts a package's new entry, for the same release, in the set in use
+    /// and in the cached copy, keeping when the config was read: a release
+    /// rebuilt under the same tag (see `retry_rebuilt`).
+    fn replace_spec(&self, remote: &Remote, spec: &PackageSpec) {
+        let mut set = (*self.manifest()).clone();
+        let Some(entry) = set.packages.iter_mut().find(|p| p.name == spec.name) else {
+            return;
+        };
+        *entry = spec.clone();
+        if let Some(mut cached) =
+            remote_config::load_cache(&self.engine_folder).filter(|c| c.matches(&remote.source))
+        {
+            cached.set = set.clone();
+            if let Err(e) = remote_config::save_cache(&self.engine_folder, &cached) {
+                log::warn!("Can't save the remote config: {e}");
+            }
+        }
+        *self.set.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(set);
     }
 
     fn packages_dir(&self, name: &str) -> PathBuf {
@@ -553,10 +645,12 @@ impl PackageManager {
         }
     }
 
-    /// The packages, by name, that aren't downloaded and intact. Reads the
-    /// remote config first when it's due (see `refresh`).
+    /// The packages, by name, that aren't downloaded and intact, in the set
+    /// in use. Reads the remote config first only when there's none in use
+    /// yet: an operation never switches to newer releases (only
+    /// check_updates does), so a host knows what every call runs on.
     pub async fn needing_download(&self, names: &[&str]) -> Result<Vec<PackageSpec>, ToolError> {
-        self.refresh(false, false).await?;
+        self.load_if_empty().await?;
         let mut out = Vec::new();
         for name in names {
             let spec = self.spec(name)?;
@@ -565,6 +659,15 @@ impl PackageManager {
             }
         }
         Ok(out)
+    }
+
+    /// Reads the remote config when there's no set in use yet (a first
+    /// start, or a cache from another engine build), as `refresh` does.
+    pub async fn load_if_empty(&self) -> Result<(), ToolError> {
+        if self.manifest().packages.is_empty() {
+            self.refresh(false, false).await?;
+        }
+        Ok(())
     }
 
     /// The error for packages that need downloading when auto-download is off.
@@ -893,12 +996,14 @@ impl PackageManager {
     }
 
     /// After a failed download, reads the remote config again and, when it
-    /// names another file for the package, downloads that one. A dev
-    /// pre-release is rebuilt under the same tag (each push to a package
-    /// repo's `main` remakes the day's), so a config cached before the
-    /// rebuild names the old file's size and checksum, and the download
+    /// names another file for the same release of the package, downloads that
+    /// one. A dev pre-release is rebuilt under the same tag (each push to a
+    /// package repo's `main` remakes the day's), so a config cached before
+    /// the rebuild names the old file's size and checksum, and the download
     /// would fail until the cache was 24 hours old (logix-core's rebuild,
-    /// 2026-11-23). Otherwise returns the first error.
+    /// 2026-11-23). It takes only that package's new file: a config naming
+    /// other releases waits for check_updates, since an operation never
+    /// switches releases. Otherwise returns the first error.
     async fn retry_rebuilt(
         &self,
         spec: &PackageSpec,
@@ -906,20 +1011,34 @@ impl PackageManager {
         phases: &Phases,
         cancel: &CancellationToken,
     ) -> Result<(), ToolError> {
-        if self.remote.is_none() || cancel.is_cancelled() {
+        let Some(remote) = &self.remote else {
+            return Err(first);
+        };
+        if cancel.is_cancelled() {
             return Err(first);
         }
         let before = self.file_for(spec).map(|f| f.sha256.clone());
-        if let Err(e) = self.refresh(true, true).await {
-            log::warn!("Can't read the remote config again after a failed download: {e:?}");
-            return Err(first);
-        }
-        let Ok(again) = self.spec(&spec.name) else {
+        let read = {
+            let _one = remote.lock.lock().await;
+            self.read_due(remote, true, true).await
+        };
+        let new = match read {
+            Ok(Some((new, _))) => new,
+            Ok(None) => return Err(first),
+            Err(e) => {
+                log::warn!("Can't read the remote config again after a failed download: {e:?}");
+                return Err(first);
+            }
+        };
+        let Some(again) = new.get(&spec.name).cloned() else {
             return Err(first);
         };
-        if self.file_for(&again).map(|f| f.sha256.clone()) == before {
+        if again.version != spec.version
+            || self.file_for(&again).map(|f| f.sha256.clone()) == before
+        {
             return Err(first);
         }
+        self.replace_spec(remote, &again);
         log::info!(
             "The remote config names another file for {} {}: downloading it",
             again.name,

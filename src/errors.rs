@@ -66,6 +66,8 @@ pub enum Severity {
 pub enum ActionCode {
     /// Required packages are missing or broken and weren't downloaded
     /// automatically, because auto-download is off or the download failed.
+    /// The host calls check_updates with cached_config_ok (the code keeps the
+    /// name of the deprecated download_packages tool).
     DownloadPackages,
     /// No matching board is connected.
     ConnectBoard,
