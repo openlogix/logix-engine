@@ -806,7 +806,10 @@
   // Column widths, fitted to the names and the widest values at each draw.
   const BITS_W = 48;
   let NAME_W = 150, LABEL_W = NAME_W + BITS_W, VALUE_W = 190;
-  const ROW_H = 32, HEAD_H = 26, AXIS_H = 24;
+  // ROW_H follows the Drive rows' height (measured on each draw, kept
+  // while Drive is hidden), so both sections' rows line up alike.
+  let ROW_H = 46;
+  const HEAD_H = 26, AXIS_H = 24;
 
   // Late by three periods (at least 5 s): no longer live. A sample's
   // values hold on the plot until the next read, a failed read or this,
@@ -869,6 +872,8 @@
     if (!$("section-watch").open) return;
     const rows = plotRows();
     const cssW = canvas.clientWidth;
+    const driveRow = document.querySelector("#drive tbody tr");
+    if (driveRow?.offsetParent) ROW_H = Math.round(driveRow.getBoundingClientRect().height);
     const cssH = HEAD_H + Math.max(1, rows.length) * ROW_H + AXIS_H;
     const dpr = window.devicePixelRatio || 1;
     if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
@@ -926,7 +931,7 @@
       g.fillText("This build watches no nets.", 12, HEAD_H + ROW_H / 2);
     }
     rows.forEach((row, i) => {
-      const top = HEAD_H + i * ROW_H, yHi = top + 5, yLo = top + ROW_H - 5;
+      const top = HEAD_H + i * ROW_H, yHi = top + 8, yLo = top + ROW_H - 8;
       g.strokeStyle = line;
       g.lineWidth = 1;
       g.beginPath(); g.moveTo(0, top + ROW_H + 0.5); g.lineTo(cssW, top + ROW_H + 0.5); g.stroke();
