@@ -228,6 +228,16 @@ net = "main.u_ctrl.state"
   value is applied over time is a separate question from this coupling:
   a write holds a steady value until release, and a one-bit entry can
   also pulse (Pulses, in the next section). Neither needs a key.
+- The order of the `[[watch]]` and `[[drive]]` entries is the order of
+  the panel's rows. Dragging a row's name in the panel moves it, and a
+  host that saves the layout (Logix IDE) writes the new order back into
+  the file, moving the entries as they are, comments and all.
+- `[panel]`, optional: the panel's settings, `refresh_ms` (how often it
+  reads the board, in milliseconds) and `window_s` (how many seconds of
+  the chart it shows). The panel starts with them and picks the nearest
+  rate and span it offers; a host that saves the layout writes them when
+  they change in the panel. They cost no logic and aren't part of the
+  build ID, so changing them never rebuilds (since 2026-11-27).
 
 For the next phases, the file gains `trigger` (the signals each trigger
 looks at), `count` (each counter's trigger and limit) and `capture`
@@ -996,6 +1006,18 @@ see the cost to-do under To do before porting.
   capture phase is for those. A build that watches no nets shows only a
   message in Watch (no plot controls), as Drive does with
   no driven nets.
+- **Order and layout:** rows start in the debug file's order, with the
+  file's `[panel]` rate and span. Dragging a Watch or Drive row by its
+  name moves it within its section. In a plain browser the order is kept
+  per build in that browser; in a host that offers `saveDebugLayout`
+  (Logix IDE), every change of order, rate or span is passed to the host
+  as `{watch, drive, refresh_ms, window_s}` (rows by their `name`, else
+  their net), and the host writes it into `debug.toml`, so the next build
+  starts with it. A host that offers `chooseNets` gets a **Choose nets…**
+  button in the tool row, which hands the choice back to the host (Logix
+  IDE opens its nets picker, which rebuilds). The panel calls them on
+  `window.logixHost` (the page contract in `tool-api.md`); one that
+  reaches the panel's own server by mistake gets an empty answer (204).
 - **The panel:** `src/debug/panel.rs` serves `panel.html` from the
   soft-agent process on 127.0.0.1, on a port the system picks, while
   soft-agent runs. Every request needs the server's random token, which is

@@ -35,6 +35,17 @@
         "$ref": "#/$defs/WatchNet"
       },
       "default": []
+    },
+    "panel": {
+      "description": "The debug panel's settings, which the host writes when they change\nin the panel. They don't change the debug build.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PanelSettings"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "additionalProperties": false,
@@ -179,6 +190,31 @@
       "required": [
         "net"
       ]
+    },
+    "PanelSettings": {
+      "description": "The debug panel's settings: how often it reads the board and how much\nof the chart it shows. Each is optional; the panel picks the nearest\nrate and span it offers.",
+      "type": "object",
+      "properties": {
+        "refresh_ms": {
+          "description": "How often the panel reads the board, in milliseconds between reads.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 1
+        },
+        "window_s": {
+          "description": "How much of the chart the panel shows, in seconds.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
     }
   },
   "$id": "https://www.openlogix.org/schemas/logix-debug-v1.json"

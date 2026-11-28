@@ -190,9 +190,19 @@ async fn respond_json(stream: &mut TcpStream, result: Result<Value, ToolError>) 
     }
 }
 
+/// Where the page's host calls go when its host catches them as
+/// navigations (Logix IDE's debug window): /__logix-host/<call>.
+const HOST_CALL_PATH: &str = "/__logix-host/";
+
 async fn handle(mut stream: TcpStream, port: u16, token: &str) -> Option<()> {
     let req = read_request(&mut stream).await?;
     let host_ok = [format!("127.0.0.1:{port}"), format!("localhost:{port}")].contains(&req.host);
+    if host_ok && req.method == "GET" && req.path.starts_with(HOST_CALL_PATH) {
+        // A host call its host didn't catch (its window stops the page's
+        // navigation to these paths): 204 keeps the page where it is.
+        respond(&mut stream, "204 No Content", "text/plain", b"").await;
+        return Some(());
+    }
     if !host_ok || req.param("t") != Some(token) {
         respond(&mut stream, "403 Forbidden", "text/plain", b"Forbidden").await;
         return Some(());

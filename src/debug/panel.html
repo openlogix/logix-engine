@@ -144,6 +144,12 @@
   }
   #fmt-menu button:hover, #fmt-menu button:focus-visible { background: var(--line); outline: none; }
   #fmt-menu .check { width: 1em; }
+  /* Rows are reordered by dragging their names. */
+  .reorder td.name, .reorder #plot.on-name { cursor: grab; }
+  body.dragging, body.dragging * { cursor: grabbing !important; user-select: none; }
+  #drive tr.drop-before td { box-shadow: inset 0 2px 0 var(--accent); }
+  #drive tr.drop-after td { box-shadow: inset 0 -2px 0 var(--accent); }
+  #drive tr.moving td { opacity: .5; }
   select.fmt { font-size: 13px; padding: 1px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
 </style>
 </head>
@@ -152,6 +158,8 @@
   <span id="status"></span>
   <button id="pause" title="Stop or restart the live updates">Pause</button>
   <button id="refresh" title="Read the watched nets once, now">Read now</button>
+  <!-- Only when the page's host offers it (Logix IDE's debug window). -->
+  <button id="choose-nets" title="Choose the nets to watch and drive, and rebuild" hidden>Choose nets…</button>
   <div class="right">
     <!-- Shown only when several debug sessions are open, such as two boards. -->
     <span class="meta" id="session-box" hidden>Session <select id="session"></select></span>
@@ -219,6 +227,12 @@
   let lastRead = null;  // when the last read came back, in ms
   const $ = (id) => document.getElementById(id);
 
+  // The page's host, when it has one (Logix IDE's debug window): what it
+  // offers is in its features list. In a browser there is none, and the
+  // order, rate and span aren't saved in the debug file.
+  const host = window.logixHost;
+  const hostHas = (call) => Boolean(host && Array.isArray(host.features) && host.features.includes(call));
+
   // True while the page can't reach the program serving it, whose name
   // comes from /api/about, asked at load.
   let offline = false;
@@ -274,6 +288,44 @@
     const td = cell(name, "name");
     td.dataset.tip = net;
     return td;
+  }
+
+  // --- The rows' order, the refresh rate and the plot's span ---------------
+  // Rows start in the debug file's order. Dragging a name moves its row;
+  // the order is kept in this browser for the build, and the host, when
+  // it offers saveDebugLayout, writes it, the rate and the span into the
+  // debug file, for the next build.
+  const ORDER_KEY = "logix-debug-panel.order.";
+  let buildId = "";
+  function driveNames() {
+    return [...$("drive").tBodies[0].rows].map((tr) => tr.dataset.name);
+  }
+  function saveLayout() {
+    const layout = {
+      watch: watchRows.map((r) => r.name),
+      drive: driveNames(),
+      refresh_ms: Number($("rate").value),
+      window_s: Number($("plot-window").value) / 1000,
+    };
+    try { localStorage.setItem(ORDER_KEY + buildId, JSON.stringify({ watch: layout.watch, drive: layout.drive })); } catch { /* not kept */ }
+    if (hostHas("saveDebugLayout")) {
+      try { host.saveDebugLayout(layout); } catch { /* the host didn't take it */ }
+    }
+  }
+  // Items in a saved order of their names; new names after, as they were.
+  function ordered(items, names) {
+    if (!Array.isArray(names)) return items;
+    const at = new Map(names.map((n, i) => [n, i]));
+    return items.map((x, i) => [x, at.has(x.name) ? at.get(x.name) : names.length + i])
+      .sort((a, b) => a[1] - b[1]).map(([x]) => x);
+  }
+  // The option of a select nearest a value.
+  function nearest(sel, value) {
+    let best = null;
+    for (const o of sel.options) {
+      if (best === null || Math.abs(Number(o.value) - value) < Math.abs(Number(best.value) - value)) best = o;
+    }
+    if (best) sel.value = best.value;
   }
 
   // Each row's format, watched or driven: the one chosen in its menu
@@ -374,8 +426,19 @@
   function build(info) {
     const ob = $("drive").tBodies[0];
     ob.replaceChildren();
-    watchRows = info.watch.map((i) => ({ name: i.name, net: i.net, width: i.width, fileFormat: i.format }));
-    for (const o of info.drive) {
+    buildId = info.build_id;
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(ORDER_KEY + buildId) || "{}") || {}; } catch { saved = {}; }
+    watchRows = ordered(info.watch.map((i) => ({ name: i.name, net: i.net, width: i.width, fileFormat: i.format })), saved.watch);
+    // The debug file's rate and span, the nearest the panel offers.
+    const panel = info.panel || {};
+    if (panel.refresh_ms) {
+      const before = $("rate").value;
+      nearest($("rate"), panel.refresh_ms);
+      if ($("rate").value !== before) schedule();
+    }
+    if (panel.window_s) nearest($("plot-window"), panel.window_s * 1000);
+    for (const o of ordered(info.drive, saved.drive)) {
       const tr = document.createElement("tr");
       tr.dataset.name = o.name;
       const state = cell("");
@@ -449,7 +512,44 @@
     $("plot-card").hidden = !watching;
     $("no-drive").hidden = driving;
     $("drive-table").hidden = !driving;
+    $("section-drive").classList.toggle("reorder", info.drive.length > 1);
+    $("section-watch").classList.toggle("reorder", info.watch.length > 1);
   }
+
+  // Dragging a drive row by its name.
+  $("drive").addEventListener("mousedown", (e) => {
+    const td = e.target.closest("td.name");
+    if (e.button !== 0 || !td || !$("section-drive").classList.contains("reorder")) return;
+    e.preventDefault();
+    const tr = td.parentElement, body = tr.parentElement;
+    const y0 = e.clientY;
+    let target = null;  // [row, "before" | "after"]
+    const clear = () => body.querySelectorAll(".drop-before, .drop-after").forEach((r) => r.classList.remove("drop-before", "drop-after"));
+    const move = (m) => {
+      if (!target && Math.abs(m.clientY - y0) < 4) return;
+      document.body.classList.add("dragging");
+      tr.classList.add("moving");
+      tip.style.display = "none";
+      const rows = [...body.rows];
+      let over = rows.find((r) => m.clientY < r.getBoundingClientRect().top + r.offsetHeight / 2);
+      target = over ? [over, "before"] : [rows[rows.length - 1], "after"];
+      clear();
+      if (target[0] !== tr && !(target[1] === "before" && target[0] === tr.nextElementSibling)) target[0].classList.add(`drop-${target[1]}`);
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.classList.remove("dragging");
+      tr.classList.remove("moving");
+      clear();
+      if (!target) return;
+      const before = driveNames().join("\n");
+      if (target[1] === "before") target[0].before(tr); else target[0].after(tr);
+      if (driveNames().join("\n") !== before) saveLayout();
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  });
 
   // A drive row's state, in its format: read back from the board, or, when
   // it couldn't be, what was last written, marked unconfirmed.
@@ -622,7 +722,9 @@
     showStatus();
     schedule();
   };
-  $("rate").onchange = schedule;
+  $("rate").onchange = () => { schedule(); saveLayout(); };
+  $("choose-nets").hidden = !hostHas("chooseNets");
+  $("choose-nets").onclick = () => { try { host.chooseNets(); } catch (e) { showError(e); } };
   $("refresh").onclick = async () => {
     // Paused: the values from before the pause end at it, and the plot
     // moves on to end at this read, so it shows.
@@ -821,6 +923,14 @@
     }
     g.textAlign = "left";
 
+    // Where a dragged row would go.
+    if (rowDrag && rowDrag.to !== null) {
+      g.strokeStyle = accent;
+      g.lineWidth = 2;
+      const y = HEAD_H + rowDrag.to * ROW_H;
+      g.beginPath(); g.moveTo(0, y); g.lineTo(cssW, y); g.stroke();
+    }
+
     // The pointer's moment.
     if (hoverT !== null) {
       g.strokeStyle = accent;
@@ -844,7 +954,41 @@
     return { x, row, col };
   }
 
+  // Dragging a watched row by its name: rowDrag is { from, to, y0 }, to
+  // the index of the gap it would go into (null until it moves).
+  let rowDrag = null;
+  $("plot").addEventListener("mousedown", (e) => {
+    const spot = plotSpot(e);
+    if (e.button !== 0 || !spot.row || spot.col !== "name" || watchRows.length < 2) return;
+    e.preventDefault();
+    rowDrag = { from: watchRows.indexOf(spot.row), to: null, y0: e.clientY };
+    const move = (m) => {
+      if (rowDrag.to === null && Math.abs(m.clientY - rowDrag.y0) < 4) return;
+      document.body.classList.add("dragging");
+      tip.style.display = "none";
+      const r = $("plot").getBoundingClientRect();
+      rowDrag.to = Math.max(0, Math.min(watchRows.length, Math.round((m.clientY - r.top - HEAD_H) / ROW_H)));
+      drawPlot();
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.classList.remove("dragging");
+      const { from, to } = rowDrag;
+      rowDrag = null;
+      if (to !== null && to !== from && to !== from + 1) {
+        const [row] = watchRows.splice(from, 1);
+        watchRows.splice(to > from ? to - 1 : to, 0, row);
+        saveLayout();
+      }
+      drawPlot();
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  });
+
   $("plot").addEventListener("mousemove", (e) => {
+    if (rowDrag) return;
     const spot = plotSpot(e);
     hoverX = spot.x;
     // Over a name, the net's path; over a value, how to change its format.
@@ -853,7 +997,9 @@
     tip.textContent = text;
     tip.classList.toggle("mono", spot.col === "name");
     tip.style.display = text ? "block" : "none";
-    $("plot").style.cursor = spot.col === "trace" ? "crosshair" : spot.row && spot.col === "value" ? "context-menu" : "default";
+    const onName = Boolean(spot.row) && spot.col === "name" && watchRows.length > 1;
+    $("plot").classList.toggle("on-name", onName);
+    $("plot").style.cursor = spot.col === "trace" ? "crosshair" : spot.row && spot.col === "value" ? "context-menu" : onName ? "" : "default";
     drawPlot();
   });
   $("plot").addEventListener("mouseleave", () => { hoverX = null; tip.style.display = "none"; drawPlot(); });
@@ -888,7 +1034,7 @@
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
   window.addEventListener("blur", closeMenu);
   window.addEventListener("scroll", closeMenu, true);
-  $("plot-window").onchange = drawPlot;
+  $("plot-window").onchange = () => { drawPlot(); saveLayout(); };
   $("plot-clear").onclick = () => { samples = []; drawPlot(); };
   $("section-watch").addEventListener("toggle", drawPlot);
   window.addEventListener("resize", drawPlot);
