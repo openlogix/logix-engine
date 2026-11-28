@@ -283,10 +283,11 @@
     return td;
   }
 
-  // The name, with the net's path as its hover text.
+  // The name, with the net's path as its hover text when the name isn't
+  // the path already.
   function nameCell(name, net) {
     const td = cell(name, "name");
-    td.dataset.tip = net;
+    if (String(net) !== name) td.dataset.tip = net;
     return td;
   }
 
@@ -991,9 +992,8 @@
     if (rowDrag) return;
     const spot = plotSpot(e);
     hoverX = spot.x;
-    // Over a name, the net's path; over a value, how to change its format.
-    const text = !spot.row ? "" : spot.col === "name" ? spot.row.net
-      : spot.col === "value" ? "Right-click to choose the format" : "";
+    // Over a name, the net's path, when the name isn't the path already.
+    const text = spot.row && spot.col === "name" && String(spot.row.net) !== spot.row.name ? spot.row.net : "";
     tip.textContent = text;
     tip.classList.toggle("mono", spot.col === "name");
     tip.style.display = text ? "block" : "none";
