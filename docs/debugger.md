@@ -975,7 +975,9 @@ see the cost to-do under To do before porting.
   was paused, the plot is empty, as before the first read. It samples at
   the refresh rate (up to 50 a second), so it is a strip chart, not a logic analyzer: changes faster
   than the refresh don't show, and fast counters look like sawtooths. The
-  capture phase is for those.
+  capture phase is for those. A build that watches no nets shows only a
+  message in Watch and Plot (no table, no plot controls), as Drive does with
+  no driven nets.
 - **The panel:** `src/debug/panel.rs` serves `panel.html` from the
   soft-agent process on 127.0.0.1, on a port the system picks, while
   soft-agent runs. Every request needs the server's random token, which is
