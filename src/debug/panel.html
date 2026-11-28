@@ -52,9 +52,8 @@
   .scroll { overflow-x: auto; }
   [hidden] { display: none !important; }
   table { border-collapse: collapse; }
-  /* Cells' side padding: --pad-x, wider in the Watch table. */
+  /* Cells' side padding. */
   table { --pad-x: 20px; }
-  #watch { --pad-x: 28px; }
   th, td { text-align: left; padding: 8px var(--pad-x); border-bottom: 1px solid var(--line); white-space: nowrap; }
   tr:last-child td { border-bottom: none; }
   th + th, td + td { border-left: 1px solid var(--line); }
@@ -118,11 +117,23 @@
   }
   #error-close:hover { opacity: 1; }
   .empty { padding: 12px 14px; color: var(--muted); }
-  /* The live plot: as wide as the page, a row per watched net. */
+  /* Watch: a live plot as wide as the page, a row per watched net. */
   .plot-tools { display: flex; gap: 8px; align-items: center; margin: 0 0 8px; color: var(--muted); font-size: 13px; }
   .plot-card { display: block; position: relative; }
   #plot { display: block; width: 100%; cursor: crosshair; }
   select { font: inherit; }
+  /* A watched value's format menu, opened with a right-click on it. */
+  #fmt-menu {
+    position: fixed; z-index: 20; display: none; min-width: 120px; padding: 4px;
+    background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+    box-shadow: 0 4px 14px rgb(0 0 0 / .2); font-size: 13px;
+  }
+  #fmt-menu button {
+    display: flex; width: 100%; gap: 8px; border: none; background: none; color: inherit;
+    padding: 5px 10px; border-radius: 5px; text-align: left; cursor: pointer;
+  }
+  #fmt-menu button:hover, #fmt-menu button:focus-visible { background: var(--line); outline: none; }
+  #fmt-menu .check { width: 1em; }
   select.fmt { font-size: 13px; padding: 1px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
 </style>
 </head>
@@ -168,18 +179,8 @@
   </details>
   <details class="section" id="section-watch" open>
     <summary>Watch</summary>
-    <div class="card">
-      <div class="scroll" id="watch-table"><table id="watch">
-        <thead><tr><th>Name</th><th class="num">Bits</th><th class="center">Format</th><th class="num">Value</th></tr></thead>
-        <tbody></tbody>
-      </table></div>
-      <div class="empty" id="no-watch" hidden>This build watches no nets.</div>
-    </div>
-  </details>
-  <details class="section" id="section-plot" open>
-    <summary>Plot</summary>
     <!-- With no watched nets, only a message, no controls. -->
-    <div class="card" id="no-plot" hidden><div class="empty">This build watches no nets.</div></div>
+    <div class="card" id="no-watch" hidden><div class="empty">This build watches no nets.</div></div>
     <div class="plot-tools" id="plot-tools">
       <!-- What the panel reads, at its refresh rate: a strip chart, not a
            logic analyzer; changes faster than the refresh don't show. -->
@@ -196,6 +197,7 @@
     <div class="card plot-card" id="plot-card"><canvas id="plot" height="60"></canvas></div>
   </details>
 </main>
+<div id="fmt-menu" role="menu"></div>
 <script>
 (() => {
   const params = new URLSearchParams(location.search);
@@ -341,15 +343,6 @@
     return null;
   }
 
-  // The value cell is as wide as the format's longest value for the net,
-  // so the column keeps its width as the value changes.
-  function sizeValue(td, width, fmt) {
-    const chars = fmt === "bin" ? width
-      : fmt === "dec" ? Math.max(1, Math.ceil(width * Math.log10(2)))
-      : 2 + Math.ceil(width / 4);
-    td.style.width = `calc(${chars}ch + 2 * var(--pad-x) + 2px)`;  // + padding, border and slack
-  }
-
   // The net's path, at once, next to the pointer (the browser's own title
   // text comes late or not at all).
   const tip = document.createElement("div");
@@ -370,21 +363,9 @@
   });
 
   function build(info) {
-    const ib = $("watch").tBodies[0], ob = $("drive").tBodies[0];
-    ib.replaceChildren(); ob.replaceChildren();
-    for (const i of info.watch) {
-      const tr = document.createElement("tr");
-      tr.dataset.name = i.name;
-      const value = cell("", "mono num value");
-      const fmtCell = formatCell(i.name, i.width, i.format, (fmt) => {
-        sizeValue(value, i.width, fmt);
-        value.textContent = shown(tr.dataset.bits, fmt);
-        drawPlot();
-      });
-      sizeValue(value, i.width, fmtCell.firstChild.value);
-      tr.append(nameCell(i.name, i.net), cell(String(i.width), "num"), fmtCell, value);
-      ib.append(tr);
-    }
+    const ob = $("drive").tBodies[0];
+    ob.replaceChildren();
+    watchRows = info.watch.map((i) => ({ name: i.name, net: i.net, width: i.width, fileFormat: i.format }));
     for (const o of info.drive) {
       const tr = document.createElement("tr");
       tr.dataset.name = o.name;
@@ -455,8 +436,6 @@
     // A section with no nets shows only its message: no table, no plot.
     const watching = info.watch.length > 0, driving = info.drive.length > 0;
     $("no-watch").hidden = watching;
-    $("watch-table").hidden = !watching;
-    $("no-plot").hidden = watching;
     $("plot-tools").hidden = !watching;
     $("plot-card").hidden = !watching;
     $("no-drive").hidden = driving;
@@ -507,12 +486,6 @@
     if (key !== built) { build(info); built = key; }
     $("board").textContent = info.board;
     $("port").textContent = info.port;
-    for (const v of state.values) {
-      const tr = $("watch").querySelector(`tr[data-name="${CSS.escape(v.name)}"]`);
-      if (!tr) continue;
-      tr.dataset.bits = v.bits;
-      setText(tr.querySelector(".value"), shown(v.bits, tr.querySelector(".fmt").value));
-    }
     for (const o of info.drive) {
       const tr = $("drive").querySelector(`tr[data-name="${CSS.escape(o.name)}"]`);
       if (!tr) continue;
@@ -620,7 +593,7 @@
 
   $("session").onchange = (e) => { session = e.target.value; built = ""; refresh(true); };
   // Each section's folded state, remembered in this browser.
-  for (const id of ["section-drive", "section-watch", "section-plot"]) {
+  for (const id of ["section-drive", "section-watch"]) {
     const el = $(id);
     const key = `logix-debug-panel.${id}`;
     try { if (localStorage.getItem(key) === "closed") el.open = false; } catch { /* open */ }
@@ -651,19 +624,22 @@
   };
 
   api("/api/about").then((about) => { if (about.name) server = about; }).catch(() => {});
-  // --- The live plot -------------------------------------------------------
+  // --- Watch: the live plot ------------------------------------------------
   // Every read's watched values, with their time, kept for the longest
-  // window; drawn as a row per net: one bit as a high/low trace, more as a
-  // stepped line scaled to the values in view, with the value at the right
-  // in the row's format. A pointer over it shows that moment's time and
-  // values. Paused, it stays at the moment of the pause, or of the last
+  // window; drawn as a row per net: its name, its number of bits, one bit
+  // as a high/low trace, more as a stepped line scaled to the values in
+  // view, and the value at the right in the row's format, which a
+  // right-click on it chooses. A pointer over it shows that moment's time
+  // and values. Paused, it stays at the moment of the pause, or of the last
   // read made with Read now.
 
   const PLOT_KEEP = 300000;  // ms: the longest window
   let samples = [];          // { t, bits: { name: "0101" } }
   let pausedAt = null;
   let hoverX = null;
-  const LABEL_W = 150, VALUE_W = 190, ROW_H = 51, AXIS_H = 24;
+  let watchRows = [];        // { name, net, width, fileFormat }, in the debug file's order
+  const NAME_W = 150, BITS_W = 48, LABEL_W = NAME_W + BITS_W, VALUE_W = 190;
+  const ROW_H = 51, HEAD_H = 26, AXIS_H = 24;
 
   // Late by three periods (at least 5 s): no longer live. A sample's
   // values hold on the plot until the next read, a failed read or this,
@@ -694,14 +670,9 @@
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   }
 
-  // The watched rows, in the Watch table's order, with their widths and
-  // formats.
+  // The watched rows, with their formats.
   function plotRows() {
-    return [...$("watch").tBodies[0].rows].map((tr) => ({
-      name: tr.dataset.name,
-      width: Number(tr.cells[1].textContent),
-      fmt: tr.querySelector(".fmt").value,
-    }));
+    return watchRows.map((r) => ({ ...r, fmt: formatOf(r.name, r.width, r.fileFormat) }));
   }
 
   // The sample whose values hold at t (by binary search), or null where
@@ -722,10 +693,10 @@
 
   function drawPlot() {
     const canvas = $("plot");
-    if (!$("section-plot").open) return;
+    if (!$("section-watch").open) return;
     const rows = plotRows();
     const cssW = canvas.clientWidth;
-    const cssH = Math.max(1, rows.length) * ROW_H + AXIS_H;
+    const cssH = HEAD_H + Math.max(1, rows.length) * ROW_H + AXIS_H;
     const dpr = window.devicePixelRatio || 1;
     if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
       canvas.width = Math.round(cssW * dpr);
@@ -752,19 +723,34 @@
     if (first === -1) first = samples.length;
     const view = samples.slice(Math.max(0, first - 1)).filter((x) => x.t <= end);
 
-    g.font = "13px system-ui, -apple-system, sans-serif";
     g.textBaseline = "middle";
+    // The column titles, as the tables' headers.
+    g.font = "600 13px system-ui, -apple-system, sans-serif";
+    g.fillStyle = muted;
+    g.fillText("Name", 12, HEAD_H / 2);
+    g.textAlign = "right";
+    g.fillText("Bits", NAME_W + BITS_W - 12, HEAD_H / 2);
+    g.fillText("Value", cssW - 12, HEAD_H / 2);
+    g.textAlign = "left";
+    g.strokeStyle = line;
+    g.lineWidth = 1;
+    g.beginPath(); g.moveTo(0, HEAD_H - 0.5); g.lineTo(cssW, HEAD_H - 0.5); g.stroke();
+    g.font = "13px system-ui, -apple-system, sans-serif";
     if (!rows.length) {
       g.fillStyle = muted;
-      g.fillText("This build watches no nets.", 12, ROW_H / 2);
+      g.fillText("This build watches no nets.", 12, HEAD_H + ROW_H / 2);
     }
     rows.forEach((row, i) => {
-      const top = i * ROW_H, yHi = top + 7, yLo = top + ROW_H - 7;
+      const top = HEAD_H + i * ROW_H, yHi = top + 7, yLo = top + ROW_H - 7;
       g.strokeStyle = line;
       g.lineWidth = 1;
       g.beginPath(); g.moveTo(0, top + ROW_H + 0.5); g.lineTo(cssW, top + ROW_H + 0.5); g.stroke();
       g.fillStyle = text;
-      g.fillText(row.name, 12, top + ROW_H / 2, LABEL_W - 20);
+      g.fillText(row.name, 12, top + ROW_H / 2, NAME_W - 20);
+      g.fillStyle = muted;
+      g.textAlign = "right";
+      g.fillText(String(row.width), NAME_W + BITS_W - 12, top + ROW_H / 2);
+      g.textAlign = "left";
       // The values in view, as numbers (null at failed reads).
       const pts = view.filter((x) => x.gap || x.bits[row.name] !== undefined)
         .map((x) => ({ t: x.t, n: x.gap ? null : Number(BigInt("0b" + x.bits[row.name])) }));
@@ -808,14 +794,15 @@
     });
 
     // The time axis: seconds before now (or the pause).
-    const axisY = rows.length * ROW_H + AXIS_H / 2;
+    const bottom = HEAD_H + rows.length * ROW_H;
+    const axisY = bottom + AXIS_H / 2;
     g.fillStyle = muted;
     g.font = "12px system-ui, -apple-system, sans-serif";
     const step = span / 5;
     for (let k = 0; k <= 5; k++) {
       const t = start + k * step, x = xOf(t);
       g.strokeStyle = line;
-      g.beginPath(); g.moveTo(x + 0.5, 0); g.lineTo(x + 0.5, rows.length * ROW_H); g.stroke();
+      g.beginPath(); g.moveTo(x + 0.5, HEAD_H); g.lineTo(x + 0.5, bottom); g.stroke();
       const ago = (end - t) / 1000;
       const label = k === 5 ? (pausedAt ? "paused" : "now") : ago >= 60 ? `−${ago / 60} min` : `−${ago} s`;
       g.textAlign = k === 0 ? "left" : k === 5 ? "right" : "center";
@@ -827,7 +814,7 @@
     if (hoverT !== null) {
       g.strokeStyle = accent;
       g.lineWidth = 1;
-      g.beginPath(); g.moveTo(hoverX + 0.5, 0); g.lineTo(hoverX + 0.5, rows.length * ROW_H); g.stroke();
+      g.beginPath(); g.moveTo(hoverX + 0.5, HEAD_H); g.lineTo(hoverX + 0.5, bottom); g.stroke();
       const ago = ((end - hoverT) / 1000).toFixed(1);
       g.fillStyle = accent;
       g.textAlign = "right";
@@ -836,14 +823,63 @@
     }
   }
 
+  // Where a pointer is on the plot: its row (or null) and column.
+  function plotSpot(e) {
+    const r = $("plot").getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    const i = Math.floor((y - HEAD_H) / ROW_H);
+    const row = y >= HEAD_H && i < watchRows.length ? watchRows[i] : null;
+    const col = x < NAME_W ? "name" : x < LABEL_W ? "bits" : x > r.width - VALUE_W ? "value" : "trace";
+    return { x, row, col };
+  }
+
   $("plot").addEventListener("mousemove", (e) => {
-    hoverX = e.clientX - $("plot").getBoundingClientRect().left;
+    const spot = plotSpot(e);
+    hoverX = spot.x;
+    // Over a name, the net's path; over a value, how to change its format.
+    const text = !spot.row ? "" : spot.col === "name" ? spot.row.net
+      : spot.col === "value" ? "Right-click to choose the format" : "";
+    tip.textContent = text;
+    tip.classList.toggle("mono", spot.col === "name");
+    tip.style.display = text ? "block" : "none";
+    $("plot").style.cursor = spot.col === "trace" ? "crosshair" : spot.row && spot.col === "value" ? "context-menu" : "default";
     drawPlot();
   });
-  $("plot").addEventListener("mouseleave", () => { hoverX = null; drawPlot(); });
+  $("plot").addEventListener("mouseleave", () => { hoverX = null; tip.style.display = "none"; drawPlot(); });
+
+  // A right-click on a watched value: its format menu.
+  const menu = $("fmt-menu");
+  function closeMenu() { menu.style.display = "none"; }
+  $("plot").addEventListener("contextmenu", (e) => {
+    const { row, col } = plotSpot(e);
+    if (!row || col !== "value") return;
+    e.preventDefault();
+    tip.style.display = "none";
+    const current = formatOf(row.name, row.width, row.fileFormat);
+    menu.replaceChildren();
+    for (const [v, label] of FORMATS) {
+      const b = document.createElement("button");
+      b.setAttribute("role", "menuitemradio");
+      b.setAttribute("aria-checked", String(v === current));
+      const check = document.createElement("span");
+      check.className = "check";
+      check.textContent = v === current ? "✓" : "";
+      b.append(check, label);
+      b.onclick = () => { saveFormat(row.name, v); closeMenu(); drawPlot(); };
+      menu.append(b);
+    }
+    menu.style.display = "block";
+    menu.style.left = `${Math.max(8, Math.min(e.clientX, window.innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 8))}px`;
+    menu.querySelector("button[aria-checked=true]")?.focus();
+  });
+  document.addEventListener("mousedown", (e) => { if (!menu.contains(e.target)) closeMenu(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
+  window.addEventListener("blur", closeMenu);
+  window.addEventListener("scroll", closeMenu, true);
   $("plot-window").onchange = drawPlot;
   $("plot-clear").onclick = () => { samples = []; drawPlot(); };
-  $("section-plot").addEventListener("toggle", drawPlot);
+  $("section-watch").addEventListener("toggle", drawPlot);
   window.addEventListener("resize", drawPlot);
   // The time axis moves on between reads.
   setInterval(() => { if (!pausedAt) drawPlot(); }, 250);
