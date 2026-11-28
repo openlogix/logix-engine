@@ -10,12 +10,17 @@
     --line: #e3e2de; --accent: #2f6fdb; --accent-text: #ffffff;
     --on: #1f9d55; --off: #8a8a84; --warn-bg: #fdecea; --warn: #a12a1f;
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    /* Watched rows' colors, as Logix Waveforms' signal colors. */
+    --s1: #0f8a66; --s2: #2463c7; --s3: #b25b06; --s4: #8a3fd0; --s5: #c23478; --s6: #0d7891; --s7: var(--text);
+    --sel: color-mix(in srgb, var(--accent) 9%, var(--panel));
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #161615; --panel: #1f1f1d; --text: #ecebe7; --muted: #9a9993;
       --line: #33332f; --accent: #5b8ff0; --accent-text: #0b0b0a;
       --on: #3ccf7a; --off: #6f6f6a; --warn-bg: #3a1d1a; --warn: #f2a59c;
+      --s1: #3ad69c; --s2: #72a9ff; --s3: #f5a43a; --s4: #bd92ff; --s5: #f477b5; --s6: #2fd0ea;
+      --sel: color-mix(in srgb, var(--accent) 16%, var(--panel));
     }
   }
   * { box-sizing: border-box; }
@@ -144,6 +149,27 @@
   }
   #fmt-menu button:hover, #fmt-menu button:focus-visible { background: var(--line); outline: none; }
   #fmt-menu .check { width: 1em; }
+  /* Rows are selected with a click on their names and reordered by
+     dragging them, as Logix Waveforms' rows: a pointer, no grab hand, and
+     the moved row stays as it is while a line shows where it goes. */
+  td.name, #plot.on-name { cursor: pointer; user-select: none; }
+  body.dragging, body.dragging * { cursor: pointer !important; user-select: none; }
+  #drive tr.sel td { background: var(--sel); }
+  /* A row's color (--row, one of the --s colors) on its whole line: the
+     name, the bits, the format, the state and the controls' text. A driven
+     state keeps its border and gets a light tint, so it still stands out
+     from a released one. */
+  #drive td, #drive select, #drive input[type=text], #drive button,
+  #drive .pill.on, #drive .pill.off { color: var(--row, var(--text)); }
+  #drive input[type=text]::placeholder { color: color-mix(in srgb, var(--row, var(--muted)) 55%, transparent); }
+  #drive .pill.on { border-color: var(--row, var(--on)); background: color-mix(in srgb, var(--row, var(--on)) 12%, transparent); }
+  #drive tr.sel td:first-child { box-shadow: inset 2px 0 0 var(--row, var(--text)); }
+  #drive tr.drop-before td { box-shadow: inset 0 2px 0 var(--accent); }
+  #drive tr.drop-after td { box-shadow: inset 0 -2px 0 var(--accent); }
+  #fmt-menu .lbl { padding: 4px 10px 6px; color: var(--muted); font-size: 12px; }
+  #fmt-menu .swatches { display: flex; gap: 8px; padding: 0 10px 6px; }
+  #fmt-menu .swatches button { width: 22px; height: 22px; padding: 0; border-radius: 6px; background: var(--c); }
+  #fmt-menu .swatches button.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--c); }
   select.fmt { font-size: 13px; padding: 1px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
 </style>
 </head>
@@ -152,6 +178,8 @@
   <span id="status"></span>
   <button id="pause" title="Stop or restart the live updates">Pause</button>
   <button id="refresh" title="Read the watched nets once, now">Read now</button>
+  <!-- Only when the page's host offers it (Logix IDE's debug window). -->
+  <button id="choose-nets" title="Choose the nets to watch and drive, and rebuild" hidden>Choose nets…</button>
   <div class="right">
     <!-- Shown only when several debug sessions are open, such as two boards. -->
     <span class="meta" id="session-box" hidden>Session <select id="session"></select></span>
@@ -178,30 +206,30 @@
     <div class="plot-tools" id="plot-tools">
       <!-- What the panel reads, at its refresh rate: a strip chart, not a
            logic analyzer; changes faster than the refresh don't show. -->
-      Refresh
+      Read
       <!-- Not round periods: a design's own periods, such as a blinky's half
            second, would otherwise show the same phase at every read. -->
-      <select id="rate" title="Refresh rate">
+      <select id="rate" title="How often the panel reads the watched nets">
         <option value="19">50 per second</option>
         <option value="47">20 per second</option>
         <option value="97">10 per second</option>
         <option value="197">5 per second</option>
         <option value="491">2 per second</option>
-        <option value="973" selected>1 per second</option>
-        <option value="1973">every 2 seconds</option>
-        <option value="4931">every 5 seconds</option>
-        <option value="9967">every 10 seconds</option>
-        <option value="29959">every 30 seconds</option>
-        <option value="59957">every 60 seconds</option>
+        <option value="973" selected>every 1 sec</option>
+        <option value="1973">every 2 secs</option>
+        <option value="4931">every 5 secs</option>
+        <option value="9967">every 10 secs</option>
+        <option value="29959">every 30 secs</option>
+        <option value="59957">every 60 secs</option>
       </select>
       <span class="gap"></span>Show
       <select id="plot-window" title="How much time the plot shows">
-        <option value="10000">10 seconds</option>
-        <option value="30000" selected>30 seconds</option>
+        <option value="10000">10 secs</option>
+        <option value="30000" selected>30 secs</option>
         <option value="60000">1 minute</option>
         <option value="300000">5 minutes</option>
       </select>
-      <button id="plot-clear" title="Start the plot over">Clear</button>
+      <span class="gap"></span><button id="plot-clear" title="Start the plot over">Clear</button>
     </div>
     <div class="card plot-card" id="plot-card"><canvas id="plot" height="60"></canvas></div>
   </details>
@@ -218,6 +246,12 @@
   let paused = false;
   let lastRead = null;  // when the last read came back, in ms
   const $ = (id) => document.getElementById(id);
+
+  // The page's host, when it has one (Logix IDE's debug window): what it
+  // offers is in its features list. In a browser there is none, and the
+  // order, rate and span aren't saved in the debug file.
+  const host = window.logixHost;
+  const hostHas = (call) => Boolean(host && Array.isArray(host.features) && host.features.includes(call));
 
   // True while the page can't reach the program serving it, whose name
   // comes from /api/about, asked at load.
@@ -269,11 +303,50 @@
     return td;
   }
 
-  // The name, with the net's path as its hover text.
+  // The name, with the net's path as its hover text when the name isn't
+  // the path already.
   function nameCell(name, net) {
     const td = cell(name, "name");
-    td.dataset.tip = net;
+    if (String(net) !== name) td.dataset.tip = net;
     return td;
+  }
+
+  // --- The rows' order, the refresh rate and the plot's span ---------------
+  // Rows start in the debug file's order. Dragging a name moves its row;
+  // the order is kept in this browser for the build, and the host, when
+  // it offers saveDebugLayout, writes it, the rate and the span into the
+  // debug file, for the next build.
+  const ORDER_KEY = "logix-debug-panel.order.";
+  let buildId = "";
+  function driveNames() {
+    return [...$("drive").tBodies[0].rows].map((tr) => tr.dataset.name);
+  }
+  function saveLayout() {
+    const layout = {
+      watch: watchRows.map((r) => r.name),
+      drive: driveNames(),
+      refresh_ms: Number($("rate").value),
+      window_s: Number($("plot-window").value) / 1000,
+    };
+    try { localStorage.setItem(ORDER_KEY + buildId, JSON.stringify({ watch: layout.watch, drive: layout.drive })); } catch { /* not kept */ }
+    if (hostHas("saveDebugLayout")) {
+      try { host.saveDebugLayout(layout); } catch { /* the host didn't take it */ }
+    }
+  }
+  // Items in a saved order of their names; new names after, as they were.
+  function ordered(items, names) {
+    if (!Array.isArray(names)) return items;
+    const at = new Map(names.map((n, i) => [n, i]));
+    return items.map((x, i) => [x, at.has(x.name) ? at.get(x.name) : names.length + i])
+      .sort((a, b) => a[1] - b[1]).map(([x]) => x);
+  }
+  // The option of a select nearest a value.
+  function nearest(sel, value) {
+    let best = null;
+    for (const o of sel.options) {
+      if (best === null || Math.abs(Number(o.value) - value) < Math.abs(Number(best.value) - value)) best = o;
+    }
+    if (best) sel.value = best.value;
   }
 
   // Each row's format, watched or driven: the one chosen in its menu
@@ -289,6 +362,37 @@
   function saveFormat(name, fmt) {
     formats[name] = fmt;
     try { localStorage.setItem(FORMATS_KEY, JSON.stringify(formats)); } catch { /* kept for this page only */ }
+  }
+
+  // The selected row, { section: "drive" | "watch", name }, shown with a
+  // tinted background, as Logix Waveforms' selected rows.
+  let selected = null;
+  function select(section, name) {
+    selected = { section, name };
+    document.querySelectorAll("#drive tr.sel").forEach((r) => r.classList.remove("sel"));
+    if (section === "drive") document.querySelector(`#drive tr[data-name="${CSS.escape(name)}"]`)?.classList.add("sel");
+    drawPlot();
+  }
+  const isSelected = (section, name) => selected?.section === section && selected.name === name;
+
+  // Rows' colors (1 to 7, the --s colors: Logix Waveforms' six, then
+  // black, the default, which is the text color, so white in the dark
+  // theme), by name, for Watch and Drive
+  // rows alike, chosen with a right-click on a name; kept in this
+  // browser, as the formats.
+  const COLORS_KEY = "logix-debug-panel.colors";
+  let colors = {};
+  try { colors = JSON.parse(localStorage.getItem(COLORS_KEY) || "{}") || {}; } catch { colors = {}; }
+  const colorOf = (name) => colors[name] || 7;
+  // A Drive row's --row: unset for black, so its state keeps the usual
+  // driven and released colors.
+  function rowColor(tr, c) {
+    if (c === 7) tr.style.removeProperty("--row");
+    else tr.style.setProperty("--row", `var(--s${c})`);
+  }
+  function saveColor(name, c) {
+    colors[name] = c;
+    try { localStorage.setItem(COLORS_KEY, JSON.stringify(colors)); } catch { /* kept for this page only */ }
   }
 
   // A value, from its bits (most significant first), in a format.
@@ -374,10 +478,23 @@
   function build(info) {
     const ob = $("drive").tBodies[0];
     ob.replaceChildren();
-    watchRows = info.watch.map((i) => ({ name: i.name, net: i.net, width: i.width, fileFormat: i.format }));
-    for (const o of info.drive) {
+    buildId = info.build_id;
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(ORDER_KEY + buildId) || "{}") || {}; } catch { saved = {}; }
+    watchRows = ordered(info.watch.map((i) => ({ name: i.name, net: i.net, width: i.width, fileFormat: i.format })), saved.watch);
+    // The debug file's rate and span, the nearest the panel offers.
+    const panel = info.panel || {};
+    if (panel.refresh_ms) {
+      const before = $("rate").value;
+      nearest($("rate"), panel.refresh_ms);
+      if ($("rate").value !== before) schedule();
+    }
+    if (panel.window_s) nearest($("plot-window"), panel.window_s * 1000);
+    for (const o of ordered(info.drive, saved.drive)) {
       const tr = document.createElement("tr");
       tr.dataset.name = o.name;
+      if (isSelected("drive", o.name)) tr.classList.add("sel");
+      rowColor(tr, colorOf(o.name));
       const state = cell("");
       state.className = "state";
       const ctl = document.createElement("td");
@@ -449,7 +566,44 @@
     $("plot-card").hidden = !watching;
     $("no-drive").hidden = driving;
     $("drive-table").hidden = !driving;
+    $("section-drive").classList.toggle("reorder", info.drive.length > 1);
+    $("section-watch").classList.toggle("reorder", info.watch.length > 1);
   }
+
+  // Dragging a drive row by its name.
+  $("drive").addEventListener("mousedown", (e) => {
+    const td = e.target.closest("td.name");
+    if (e.button !== 0 || !td) return;
+    if (!$("section-drive").classList.contains("reorder")) { select("drive", td.parentElement.dataset.name); return; }
+    e.preventDefault();
+    const tr = td.parentElement, body = tr.parentElement;
+    select("drive", tr.dataset.name);
+    const y0 = e.clientY;
+    let target = null;  // [row, "before" | "after"]
+    const clear = () => body.querySelectorAll(".drop-before, .drop-after").forEach((r) => r.classList.remove("drop-before", "drop-after"));
+    const move = (m) => {
+      if (!target && Math.abs(m.clientY - y0) < 4) return;
+      document.body.classList.add("dragging");
+      tip.style.display = "none";
+      const rows = [...body.rows];
+      let over = rows.find((r) => m.clientY < r.getBoundingClientRect().top + r.offsetHeight / 2);
+      target = over ? [over, "before"] : [rows[rows.length - 1], "after"];
+      clear();
+      if (target[0] !== tr && !(target[1] === "before" && target[0] === tr.nextElementSibling)) target[0].classList.add(`drop-${target[1]}`);
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.classList.remove("dragging");
+      clear();
+      if (!target) return;
+      const before = driveNames().join("\n");
+      if (target[1] === "before") target[0].before(tr); else target[0].after(tr);
+      if (driveNames().join("\n") !== before) saveLayout();
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  });
 
   // A drive row's state, in its format: read back from the board, or, when
   // it couldn't be, what was last written, marked unconfirmed.
@@ -489,7 +643,8 @@
     if (td.textContent !== text) td.textContent = text;
   }
 
-  function render(state) {
+  // t: when the board was read (the request's middle), for the plot.
+  function render(state, t = Date.now()) {
     const info = state.info;
     const key = `${info.session}/${info.build_id}`;
     if (key !== built) { build(info); built = key; }
@@ -504,7 +659,7 @@
       showDriveState(tr);
     }
     if (state.values.length) {
-      lastRead = Date.now();
+      lastRead = t;
       showStatus();
       addSample(lastRead, state.values);
     }
@@ -514,7 +669,9 @@
     if (busy || !session) return;
     busy = true;
     try {
-      render(await api(`/api/state?session=${encodeURIComponent(session)}&read=${read ? 1 : 0}`));
+      const sent = Date.now();
+      const state = await api(`/api/state?session=${encodeURIComponent(session)}&read=${read ? 1 : 0}`);
+      render(state, Math.round((sent + Date.now()) / 2));
       showError(null);
     } catch (e) {
       showError(e);
@@ -576,9 +733,28 @@
   }
   setInterval(showStatus, 1000);
 
+  // Reads at the refresh rate, on a steady beat: each read is due one
+  // period after the one before it was due, not after it ended, so a
+  // slower read doesn't push the next ones late. One that ran past its
+  // successor's turn is followed at once, and the beat goes on from there;
+  // one that comes while another call has the board waits for it, rather
+  // than being skipped.
+  let due = 0;
   function schedule() {
-    clearInterval(timer);
-    if (!paused) timer = setInterval(() => refresh(true), Number($("rate").value));
+    clearTimeout(timer);
+    timer = null;
+    if (paused) return;
+    due = Date.now() + Number($("rate").value);
+    timer = setTimeout(tick, due - Date.now());
+  }
+  async function tick() {
+    const mine = timer;
+    if (busy) { timer = setTimeout(tick, 5); return; }
+    await refresh(true);
+    if (paused || timer !== mine) return;  // paused or rescheduled meanwhile
+    const now = Date.now();
+    due = Math.max(due + Number($("rate").value), now);
+    timer = setTimeout(tick, due - now);
   }
 
   async function sessions() {
@@ -622,7 +798,9 @@
     showStatus();
     schedule();
   };
-  $("rate").onchange = schedule;
+  $("rate").onchange = () => { schedule(); saveLayout(); };
+  $("choose-nets").hidden = !hostHas("chooseNets");
+  $("choose-nets").onclick = () => { try { host.chooseNets(); } catch (e) { showError(e); } };
   $("refresh").onclick = async () => {
     // Paused: the values from before the pause end at it, and the plot
     // moves on to end at this read, so it shows.
@@ -647,8 +825,13 @@
   let pausedAt = null;
   let hoverX = null;
   let watchRows = [];        // { name, net, width, fileFormat }, in the debug file's order
-  const NAME_W = 150, BITS_W = 48, LABEL_W = NAME_W + BITS_W, VALUE_W = 190;
-  const ROW_H = 32, HEAD_H = 26, AXIS_H = 24;
+  // Column widths, fitted to the names and the widest values at each draw.
+  const BITS_W = 48;
+  let NAME_W = 150, LABEL_W = NAME_W + BITS_W, VALUE_W = 190;
+  // ROW_H follows the Drive rows' height (measured on each draw, kept
+  // while Drive is hidden), so both sections' rows line up alike.
+  let ROW_H = 46;
+  const HEAD_H = 26, AXIS_H = 24;
 
   // Late by three periods (at least 5 s): no longer live. A sample's
   // values hold on the plot until the next read, a failed read or this,
@@ -675,8 +858,14 @@
     if (samples.length && !samples[samples.length - 1].gap) keep({ t, gap: true });
   }
 
+  // A color token, resolved (a token made with color-mix() of other
+  // tokens comes back as its formula, which a canvas can't read).
+  const probe = document.createElement("span");
+  probe.hidden = true;
+  document.body.append(probe);
   function cssVar(name) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    probe.style.color = `var(${name})`;
+    return getComputedStyle(probe).color;
   }
 
   // The watched rows, with their formats.
@@ -700,11 +889,22 @@
     return null;
   }
 
+  // Draws at the next frame, once however many asked since the last:
+  // a pointer moving over the plot doesn't hold up the reads.
+  let drawQueued = false;
   function drawPlot() {
+    if (drawQueued) return;
+    drawQueued = true;
+    requestAnimationFrame(() => { drawQueued = false; drawNow(); });
+  }
+
+  function drawNow() {
     const canvas = $("plot");
     if (!$("section-watch").open) return;
     const rows = plotRows();
     const cssW = canvas.clientWidth;
+    const driveRow = document.querySelector("#drive tbody tr");
+    if (driveRow?.offsetParent) ROW_H = Math.round(driveRow.getBoundingClientRect().height);
     const cssH = HEAD_H + Math.max(1, rows.length) * ROW_H + AXIS_H;
     const dpr = window.devicePixelRatio || 1;
     if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
@@ -715,8 +915,18 @@
     const g = canvas.getContext("2d");
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, cssW, cssH);
-    const text = cssVar("--text"), muted = cssVar("--muted"), line = cssVar("--line"), trace = cssVar("--on"), accent = cssVar("--accent");
+    const text = cssVar("--text"), muted = cssVar("--muted"), line = cssVar("--line"), accent = cssVar("--accent");
     const mono = getComputedStyle(document.body).getPropertyValue("--mono") || "monospace";
+    // The name column fits the longest name; the value column the widest
+    // value a row can show in its format (all its bits at 1), with room
+    // on its left so values stand apart from the traces.
+    g.font = "13px system-ui, -apple-system, sans-serif";
+    NAME_W = Math.ceil(Math.max(g.measureText("Name").width, ...rows.map((r) => g.measureText(r.name).width)) + 24);
+    NAME_W = Math.min(Math.max(NAME_W, 80), 320);
+    LABEL_W = NAME_W + BITS_W;
+    g.font = `13px ${mono}`;
+    VALUE_W = Math.ceil(Math.max(40, ...rows.map((r) => g.measureText(shown("1".repeat(r.width), r.fmt)).width)) + 36);
+    VALUE_W = Math.min(VALUE_W, Math.max(120, cssW - LABEL_W - 200));
     const span = Number($("plot-window").value);
     const end = pausedAt ?? Date.now();
     const start = end - span;
@@ -752,13 +962,21 @@
       g.fillText("This build watches no nets.", 12, HEAD_H + ROW_H / 2);
     }
     rows.forEach((row, i) => {
-      const top = HEAD_H + i * ROW_H, yHi = top + 5, yLo = top + ROW_H - 5;
+      const top = HEAD_H + i * ROW_H, yHi = top + 8, yLo = top + ROW_H - 8;
       g.strokeStyle = line;
       g.lineWidth = 1;
       g.beginPath(); g.moveTo(0, top + ROW_H + 0.5); g.lineTo(cssW, top + ROW_H + 0.5); g.stroke();
-      g.fillStyle = text;
-      g.fillText(row.name, 12, top + ROW_H / 2, NAME_W - 20);
-      g.fillStyle = muted;
+      const color = cssVar(`--s${colorOf(row.name)}`);
+      // The selected row: a tinted background and a bar of its color.
+      if (isSelected("watch", row.name)) {
+        g.fillStyle = cssVar("--sel");
+        g.fillRect(0, top, cssW, ROW_H);
+        g.fillStyle = color;
+        g.fillRect(0, top, 2, ROW_H);
+      }
+      // The whole row in its color: name, bits, trace and value.
+      g.fillStyle = color;
+      g.fillText(row.name, 12, top + ROW_H / 2, NAME_W - 24);
       g.textAlign = "right";
       g.fillText(String(row.width), NAME_W + BITS_W - 12, top + ROW_H / 2);
       g.textAlign = "left";
@@ -775,7 +993,7 @@
         const yOf = (n) => (hi === lo ? (yHi + yLo) / 2 : yLo - ((n - lo) / (hi - lo)) * (yLo - yHi));
         g.save();
         g.beginPath(); g.rect(x0, top, x1 - x0, ROW_H); g.clip();
-        g.strokeStyle = trace;
+        g.strokeStyle = color;
         g.lineWidth = 1.5;
         g.beginPath();
         pts.forEach((p, k) => {
@@ -795,10 +1013,10 @@
       }
       const b = shownAt?.bits[row.name];
       if (b !== undefined) {
-        g.fillStyle = hoverT !== null ? accent : text;
-        g.font = `13px ${mono}`;
+        g.fillStyle = color;
+        g.font = `${hoverT !== null ? "600 " : ""}13px ${mono}`;
         g.textAlign = "right";
-        g.fillText(shown(b, row.fmt), cssW - 12, top + ROW_H / 2, VALUE_W - 20);
+        g.fillText(shown(b, row.fmt), cssW - 12, top + ROW_H / 2, VALUE_W - 36);
         g.textAlign = "left";
         g.font = "13px system-ui, -apple-system, sans-serif";
       }
@@ -820,6 +1038,14 @@
       g.fillText(label, x, axisY);
     }
     g.textAlign = "left";
+
+    // Where a dragged row would go.
+    if (rowDrag && rowDrag.to !== null) {
+      g.strokeStyle = accent;
+      g.lineWidth = 2;
+      const y = HEAD_H + rowDrag.to * ROW_H;
+      g.beginPath(); g.moveTo(0, y); g.lineTo(cssW, y); g.stroke();
+    }
 
     // The pointer's moment.
     if (hoverT !== null) {
@@ -844,16 +1070,53 @@
     return { x, row, col };
   }
 
+  // Dragging a watched row by its name: rowDrag is { from, to, y0 }, to
+  // the index of the gap it would go into (null until it moves).
+  let rowDrag = null;
+  $("plot").addEventListener("mousedown", (e) => {
+    const spot = plotSpot(e);
+    if (e.button !== 0 || !spot.row || spot.col !== "name") return;
+    e.preventDefault();
+    select("watch", spot.row.name);
+    if (watchRows.length < 2) return;
+    rowDrag = { from: watchRows.indexOf(spot.row), to: null, y0: e.clientY };
+    const move = (m) => {
+      if (rowDrag.to === null && Math.abs(m.clientY - rowDrag.y0) < 4) return;
+      document.body.classList.add("dragging");
+      tip.style.display = "none";
+      const r = $("plot").getBoundingClientRect();
+      rowDrag.to = Math.max(0, Math.min(watchRows.length, Math.round((m.clientY - r.top - HEAD_H) / ROW_H)));
+      drawPlot();
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.classList.remove("dragging");
+      const { from, to } = rowDrag;
+      rowDrag = null;
+      if (to !== null && to !== from && to !== from + 1) {
+        const [row] = watchRows.splice(from, 1);
+        watchRows.splice(to > from ? to - 1 : to, 0, row);
+        saveLayout();
+      }
+      drawPlot();
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  });
+
   $("plot").addEventListener("mousemove", (e) => {
+    if (rowDrag) return;
     const spot = plotSpot(e);
     hoverX = spot.x;
-    // Over a name, the net's path; over a value, how to change its format.
-    const text = !spot.row ? "" : spot.col === "name" ? spot.row.net
-      : spot.col === "value" ? "Right-click to choose the format" : "";
+    // Over a name, the net's path, when the name isn't the path already.
+    const text = spot.row && spot.col === "name" && String(spot.row.net) !== spot.row.name ? spot.row.net : "";
     tip.textContent = text;
     tip.classList.toggle("mono", spot.col === "name");
     tip.style.display = text ? "block" : "none";
-    $("plot").style.cursor = spot.col === "trace" ? "crosshair" : spot.row && spot.col === "value" ? "context-menu" : "default";
+    const onName = Boolean(spot.row) && spot.col === "name";
+    $("plot").classList.toggle("on-name", onName);
+    $("plot").style.cursor = spot.col === "trace" ? "crosshair" : spot.row && spot.col === "value" ? "context-menu" : onName ? "" : "default";
     drawPlot();
   });
   $("plot").addEventListener("mouseleave", () => { hoverX = null; tip.style.display = "none"; drawPlot(); });
@@ -863,6 +1126,7 @@
   function closeMenu() { menu.style.display = "none"; }
   $("plot").addEventListener("contextmenu", (e) => {
     const { row, col } = plotSpot(e);
+    if (row && col === "name") { e.preventDefault(); colorMenu("watch", row.name, e); return; }
     if (!row || col !== "value") return;
     e.preventDefault();
     tip.style.display = "none";
@@ -884,11 +1148,47 @@
     menu.style.top = `${Math.max(8, Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 8))}px`;
     menu.querySelector("button[aria-checked=true]")?.focus();
   });
+  // A right-click on a row's name, watched or driven: its color, as in
+  // Logix Waveforms.
+  function colorMenu(section, name, e) {
+    tip.style.display = "none";
+    select(section, name);
+    const lbl = document.createElement("div");
+    lbl.className = "lbl";
+    lbl.textContent = "Color";
+    const sw = document.createElement("div");
+    sw.className = "swatches";
+    for (let c = 1; c <= 7; c++) {
+      const b = document.createElement("button");
+      b.style.setProperty("--c", `var(--s${c})`);
+      b.className = colorOf(name) === c ? "on" : "";
+      b.setAttribute("aria-label", c === 7 ? "Black" : `Color ${c}`);
+      b.onclick = () => {
+        saveColor(name, c);
+        closeMenu();
+        const tr = document.querySelector(`#drive tr[data-name="${CSS.escape(name)}"]`);
+        if (tr) rowColor(tr, c);
+        drawPlot();
+      };
+      sw.append(b);
+    }
+    menu.replaceChildren(lbl, sw);
+    menu.style.display = "block";
+    menu.style.left = `${Math.max(8, Math.min(e.clientX, window.innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 8))}px`;
+    sw.querySelector(".on")?.focus();
+  }
+  $("drive").addEventListener("contextmenu", (e) => {
+    const td = e.target.closest("td.name");
+    if (!td) return;
+    e.preventDefault();
+    colorMenu("drive", td.parentElement.dataset.name, e);
+  });
   document.addEventListener("mousedown", (e) => { if (!menu.contains(e.target)) closeMenu(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
   window.addEventListener("blur", closeMenu);
   window.addEventListener("scroll", closeMenu, true);
-  $("plot-window").onchange = drawPlot;
+  $("plot-window").onchange = () => { drawPlot(); saveLayout(); };
   $("plot-clear").onclick = () => { samples = []; drawPlot(); };
   $("section-watch").addEventListener("toggle", drawPlot);
   window.addEventListener("resize", drawPlot);

@@ -263,6 +263,7 @@ pub async fn run(
     let digest = hasher.finalize();
     let id = u32::from_le_bytes([digest[0], digest[1], digest[2], digest[3]]);
     map.build_id = format!("{id:08x}");
+    map.panel = config.panel.clone();
 
     let parts: Vec<Vec<String>> = config.watch.iter().map(|i| i.parts.clone()).collect();
     let out_parts: Vec<Vec<String>> = config.drive.iter().map(|o| o.parts.clone()).collect();
@@ -1182,6 +1183,7 @@ fn layout(
         enables,
         watch: inputs,
         drive: outputs,
+        panel: None,
     })
 }
 

@@ -34,6 +34,10 @@ pub struct DebugConfig {
     /// Nets the host reads.
     #[serde(default)]
     pub watch: Vec<WatchNet>,
+    /// The debug panel's settings, which the host writes when they change
+    /// in the panel. They don't change the debug build.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel: Option<PanelSettings>,
     /// Reserved for the triggers phase; refused in version 1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(skip)]
@@ -46,6 +50,22 @@ pub struct DebugConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(skip)]
     pub capture: Option<toml::Value>,
+}
+
+/// The debug panel's settings: how often it reads the board and how much
+/// of the chart it shows. Each is optional; the panel picks the nearest
+/// rate and span it offers.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PanelSettings {
+    /// How often the panel reads the board, in milliseconds between reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(range(min = 1))]
+    pub refresh_ms: Option<u32>,
+    /// How much of the chart the panel shows, in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(range(min = 1))]
+    pub window_s: Option<u32>,
 }
 
 /// The link to the host: give resource, or tx and rx.
@@ -394,6 +414,21 @@ name = "two_pins"
         )
         .unwrap();
         assert_eq!((c.watch.len(), c.drive.len()), (1, 1));
+    }
+
+    #[test]
+    fn reads_the_panel_settings() {
+        let c = parse(
+            "clock = \"c\"\nuplink = { kind = \"uart\", resource = \"uart\" }\n\n[[watch]]\nnet = \"main.led\"\n\n[panel]\nrefresh_ms = 197\nwindow_s = 60\n",
+        )
+        .unwrap();
+        let panel = c.panel.unwrap();
+        assert_eq!((panel.refresh_ms, panel.window_s), (Some(197), Some(60)));
+        let e = parse_json(
+            r#"{"clock":"c","uplink":{"kind":"uart","resource":"uart"},"watch":[{"net":"main.led"}],"panel":{"rate":5}}"#,
+        )
+        .unwrap_err();
+        assert!(e.contains("rate"), "{e}");
     }
 
     #[test]

@@ -130,6 +130,10 @@ pub struct DebugMap {
     pub drive: Vec<MapDrive>,
     /// The nets the debugger reads, in read-space order.
     pub watch: Vec<MapWatch>,
+    /// The debug file's panel settings, for the panel to start with. Not
+    /// part of the build ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel: Option<crate::debug::config::PanelSettings>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

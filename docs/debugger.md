@@ -228,6 +228,16 @@ net = "main.u_ctrl.state"
   value is applied over time is a separate question from this coupling:
   a write holds a steady value until release, and a one-bit entry can
   also pulse (Pulses, in the next section). Neither needs a key.
+- The order of the `[[watch]]` and `[[drive]]` entries is the order of
+  the panel's rows. Dragging a row's name in the panel moves it, and a
+  host that saves the layout (Logix IDE) writes the new order back into
+  the file, moving the entries as they are, comments and all.
+- `[panel]`, optional: the panel's settings, `refresh_ms` (how often it
+  reads the board, in milliseconds) and `window_s` (how many seconds of
+  the chart it shows). The panel starts with them and picks the nearest
+  rate and span it offers; a host that saves the layout writes them when
+  they change in the panel. They cost no logic and aren't part of the
+  build ID, so changing them never rebuilds (since 2026-11-27).
 
 For the next phases, the file gains `trigger` (the signals each trigger
 looks at), `count` (each counter's trigger and limit) and `capture`
@@ -984,7 +994,10 @@ see the cost to-do under To do before porting.
 - **The Watch section:** the panel draws every read's watched values,
   a row per net with its name, its number of bits and its value at the
   right (a right-click on the value chooses hex, decimal or binary,
-  remembered in that browser), over the last 10 seconds to 5 minutes: one bit as a high/low trace, more
+  and a right-click on the name chooses the row's color from the
+  waveform viewer's six or black (the default; white in the dark theme), for its name, bits, trace and value, both
+  remembered in that browser; a right-click on a Drive row's name
+  colors its whole line the same way), over the last 10 seconds to 5 minutes: one bit as a high/low trace, more
   as a stepped line scaled to the values in view, with a hover cursor for a
   moment's time and values. A value holds until the next read, a failed
   read, a pause, or the time the status stops being Live (three refresh
@@ -996,6 +1009,20 @@ see the cost to-do under To do before porting.
   capture phase is for those. A build that watches no nets shows only a
   message in Watch (no plot controls), as Drive does with
   no driven nets.
+- **Order and layout:** rows start in the debug file's order, with the
+  file's `[panel]` rate and span. A click on a row's name selects it
+  (one row at a time, shaded), and dragging a Watch or Drive row by its
+  name moves it within its section, with a pointer cursor and a line
+  showing where it goes, as in the waveform viewer. In a plain browser the order is kept
+  per build in that browser; in a host that offers `saveDebugLayout`
+  (Logix IDE), every change of order, rate or span is passed to the host
+  as `{watch, drive, refresh_ms, window_s}` (rows by their `name`, else
+  their net), and the host writes it into `debug.toml`, so the next build
+  starts with it. A host that offers `chooseNets` gets a **Choose nets…**
+  button in the tool row, which hands the choice back to the host (Logix
+  IDE opens its nets picker, which rebuilds). The panel calls them on
+  `window.logixHost` (the page contract in `tool-api.md`); one that
+  reaches the panel's own server by mistake gets an empty answer (204).
 - **The panel:** `src/debug/panel.rs` serves `panel.html` from the
   soft-agent process on 127.0.0.1, on a port the system picks, while
   soft-agent runs. Every request needs the server's random token, which is

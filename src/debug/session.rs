@@ -994,6 +994,9 @@ pub struct SessionInfo {
     pub verified: bool,
     pub drive: Vec<OutputState>,
     pub watch: Vec<NetInfo>,
+    /// The debug file's panel settings, when it has them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub panel: Option<crate::debug::config::PanelSettings>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1030,6 +1033,7 @@ pub fn info(id: &str) -> Result<SessionInfo, ToolError> {
             build_id: s.map.build_id.clone(),
             board: s.map.board.clone(),
             top_module: s.map.top_module.clone(),
+            panel: s.map.panel.clone(),
             watch: s
                 .map
                 .watch
