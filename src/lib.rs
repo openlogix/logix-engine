@@ -10,6 +10,7 @@ pub mod build;
 pub mod catalog;
 pub mod commands;
 pub mod custom_boards;
+pub mod debug;
 pub mod devices;
 pub mod diagram;
 pub mod display_paths;

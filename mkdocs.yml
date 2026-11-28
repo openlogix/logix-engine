@@ -81,6 +81,7 @@ nav:
   - "Tutorial: Claude Code": tutorial-claude-code.md
   - Custom boards: custom-boards.md
   - Tool API: tool-api.md
+  - Debugger: debugger.md
   - Command line: command-line.md
   - Requirements: requirements.md
   - Architecture: architecture.md

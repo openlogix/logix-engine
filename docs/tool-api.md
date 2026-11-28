@@ -340,6 +340,7 @@ The Logix Engine adds the FPGA's primitive models, so designs that use primitive
 | `diagnostics` | list of diagnostics | The problems found, at file, line and column where known. A Verilator warning code, such as `WIDTHTRUNC`, ends the text in parentheses, since a `/* verilator lint_off WIDTHTRUNC */` comment names it. Problems in the primitive models keep their location in the text |
 | `checked_files` | list of relative paths | The files lint read and checked: the design files, the testbenches and the files they include (see Checked files) |
 | `commands` | list of commands | The programs this call ran, in order, so they can be run again without the Logix Engine. See Commands |
+| `debug` | object | Only for a debug build (`debug_file`): `debug_map` (the debug map's path, relative to the build folder: `debug_map.json`), `build_id` (8 hex digits, which the debugger on the board reports), `drive` and `watch` (the nets, as the debug map lists them) and `debugger` (its own share, synthesized alone, an estimate: `luts`, `flip_flops`, `luts_percent` and `flip_flops_percent` where the build reports the FPGA's totals, and `report`, a line for people) |
 
 **Errors:** setup errors with `download_packages`. Request errors, such as an unknown board, a missing file or an included file outside the source folder. Tool failures, when Verilator fails without reporting a problem. Engine errors and cancellation.
 
@@ -765,6 +766,7 @@ Xilinx builds use two of the core's tools, `oss-cad-suite` and `openxc7`. Two Xi
 | `defines` | map of text | No | Verilog and SystemVerilog macro definitions, from name to value, such as `{ "USE_PLL": "", "WIDTH": "8" }`. Names follow Verilog identifier rules, and a bad name is a request error. An empty value defines the macro with no text, for use with `` `ifdef ``. The engine always passes each value explicitly, so every tool sees the same text, and passes them in name order, so the same request always gives the same tool commands. `SYNTHESIZE` is always defined |
 | `verbose` | boolean | No | Let yosys and nextpnr print more detail, shown in the live output and the logs. Defaults to false. See Verbose under Live tool output |
 | `lint` | boolean | No | Check the design with `lint` (Verilator) first, as an editor's Verify does, with the same board, files, top module and defines: it finds likely mistakes synthesis accepts and gives clearer errors. Its problems never stop the build, which alone decides success; they join the build's in `diagnostics` (see Lint first). Defaults to false |
+| `debug_file` | relative path | No | A debug file (`debug.toml`), relative to the source folder: build a debug build, with the Logix debugger inserted to watch and drive the nets the file names (see Debugging a design on the board). Omitted means a normal build |
 
 **Table 7.** build tool outputs
 
@@ -1540,6 +1542,68 @@ Four tools give frontends and AI agents a board's serial port, such as its UART 
 ```
 
 `open_serial` returns `{"session": "serial-1", "port": "/dev/ttyUSB1", "baud": 115200}`; then `read_serial` with `{"session": "serial-1", "wait_ms": 1000}` returns `{"hex": "48656c6c6f2066726f6d20796f7572204650474120626f6172640d0a", "open": true, "port": "/dev/ttyUSB1"}` ("Hello from your FPGA board" and a line ending).
+
+## Debugging a design on the board
+
+A debug build adds a small debugger, the Logix debugger, to the user's design, so a frontend or an AI agent can watch and drive chosen nets while the design runs on the board, over the board's USB serial port. A debug file, `debug.toml`, names the nets; `build` with `debug_file` inserts the debugger and its UART; the session tools then talk to it. The design itself is unchanged: the same sources build normally without `debug_file`. [The debugger's design](debugger.md) owns the file format, the debug map, the protocol and the hardware.
+
+**The flow.** `list_nets` lists the design's nets, for a host to offer to choose from; the host writes the debug file; `build` with `debug_file` builds the debug build, and `program_board` programs its bitstream; `open_debug` opens a session on the board's serial port, which checks that the board runs this build (its build ID); `read_debug` reads the watched nets in one snapshot and `write_debug` drives, releases or pulses the driven ones; `close_debug` releases everything and ends the session. `open_debug_panel` gives a page that does the same interactively.
+
+**Sessions** live in the engine, as serial sessions do, until `close_debug` or until the engine exits. The debugger owns the port while a session is open, so `open_serial` on the same port is refused. With `device`, a session finds its port again after the board is unplugged, even under another name. While `program_board` writes the board, its debug sessions close their ports and refuse reads and writes with a setup error; the next read or write after it reopens the port and checks the build ID again, so the same build goes on (with every override released, since the board restarted) and another build is refused.
+
+**Table 55.** list_nets tool inputs
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `board`, `board_variant`, `custom_boards_folder` | | | As for `build` (the board gives its FPGA's cell library) |
+| `top_module`, `source_folder`, `source_files`, `defines` | | | As for `build` |
+
+**Table 56.** list_nets tool outputs
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `nets` | list of objects | The top module's named nets after the design is read and flattened, sorted by path: `path` (as debug files name it, from the top module, such as `main.u_counter.count`), `width` (bits) and `kind` (`input`, `output` or `inout` for the top module's ports, `internal` otherwise) |
+
+`list_nets` runs only yosys's read and elaboration (no synthesis), so it's quick. A design that doesn't parse is a design error.
+
+**Table 57.** open_debug tool inputs
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `build_folder` | absolute path | Yes | The debug build's folder, with its `debug_map.json` |
+| `port` | text | Yes | The board's serial port, such as a device's `serial_port` from `list_devices` |
+| `device` | device ID | No | The device the port is on, as for `open_serial` |
+
+**Table 58.** open_debug tool outputs
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `session` | text | The session's ID, for the other debug tools |
+| `port`, `device` | text | The port opened, and the device given |
+| `build_id` | text | The build ID the board's debugger reported, which matches the debug map |
+| `drive`, `watch` | list of objects | What can be driven and watched: each net's `name` (as the debug file names it, or its own name there), `net`, `width` and, for watched nets, `format` (the debug file's format for showing it) |
+
+**Table 59.** read_debug and write_debug tool inputs
+
+| Tool | Field | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| both | `session` | text | Yes | The session, from `open_debug` |
+| `read_debug` | `names` | list of text | No | The watched nets to read. Omitted means all |
+| `write_debug` | `name` | text | Yes | A driven net |
+| `write_debug` | `value` | integer or text | No | The value to drive (a number, or text such as `0x1f`). Required unless `release` |
+| `write_debug` | `release` | boolean | No | Give the net back to the design. Defaults to false |
+| `write_debug` | `pulse` | boolean | No | For a one-bit net: flip it for one clock, then leave it as it was. Defaults to false |
+
+**Table 60.** read_debug and write_debug tool outputs
+
+| Tool | Field | Type | Description |
+| --- | --- | --- | --- |
+| `read_debug` | `values` | list of objects | One snapshot: each net's `name`, `net`, `width`, `value` (a number, when it has 53 bits or fewer), `hex` (such as `0x5b8d7f`) and `bits` (most significant first) |
+| `write_debug` | `name`, `driven`, `hex` | | The net, whether the debugger drives it now, and the value it drives, read back from the board (omitted when released) |
+
+`close_debug` takes `session` and returns `released`, false when the overrides couldn't be released (such as with the board unplugged). `open_debug_panel` takes `session` and `open` (default true: open it in the browser) and returns `url` and `opened`: the panel's page, served by the engine on 127.0.0.1 with a random token in its address, which shows the watched nets live and drives the driven ones through the same session. A host that shows pages itself passes `open` false and shows `url`. It's to become a Logix Viewer app of its own.
+
+**Errors:** request errors for an unknown session or net, a value that doesn't fit, or a pulse on a net wider than one bit; setup errors when the port can't be opened, while the board is programmed, or when the board runs another build (build the debug build again and program it); design errors from the debug build for a debug file that names a net the design doesn't have, or a board with no UART the debugger can use.
 
 ## open_waveform tool
 

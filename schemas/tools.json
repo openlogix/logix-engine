@@ -4926,6 +4926,13 @@
           "description": "Check the design with lint (Verilator) first, as an editor's Verify\ndoes: lint finds likely mistakes synthesis accepts and gives clearer\nerrors. Its problems never stop the build, which alone decides\nsuccess; they come first in diagnostics (and in a design error's\ndiagnostics), each with its tool, and a build problem on a line\nlint already flagged with the same severity is left out. Defaults\nto false.",
           "type": "boolean",
           "default": false
+        },
+        "debug_file": {
+          "description": "A debug build: the Logix debugger inserted into the design, so a\nhost can watch and drive its nets on the board while it runs\n(open_debug, read_debug, write_debug; docs/debugger.md). The debug\nfile, relative to the source folder, such as debug.toml: the nets to\nwatch and drive, by instance path from the top module (list_nets\nlists them), and the clock the debugger runs on. The debugger talks\nover the board's UART, so the design must not use its pins. The\nsources are unchanged; the build writes debug_map.json next to the\nbitstream and returns debug. Use a build folder of its own, such as\n_build_debug, so a normal build keeps its own. Omitted means a\nnormal build.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "additionalProperties": false,
@@ -5077,6 +5084,17 @@
           "items": {
             "$ref": "#/$defs/CommandRecord"
           }
+        },
+        "debug": {
+          "description": "For a debug build (debug_file): its debug map and what the debugger\nwatches and drives. Omitted for a normal build.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DebugBuildInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false,
@@ -5330,6 +5348,175 @@
             "cwd",
             "args",
             "shell"
+          ]
+        },
+        "DebugBuildInfo": {
+          "description": "A debug build's own result, build's debug.",
+          "type": "object",
+          "properties": {
+            "debug_map": {
+              "description": "The debug map, relative to the build folder: debug_map.json.",
+              "type": "string"
+            },
+            "build_id": {
+              "description": "The build ID the debugger reports, 8 hex digits.",
+              "type": "string"
+            },
+            "drive": {
+              "description": "The nets the debugger drives.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/MapDrive"
+              }
+            },
+            "watch": {
+              "description": "The nets the debugger reads.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/MapWatch"
+              }
+            },
+            "debugger": {
+              "description": "The debugger's own share, synthesized alone.",
+              "$ref": "#/$defs/DebuggerUse"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "debug_map",
+            "build_id",
+            "drive",
+            "watch",
+            "debugger"
+          ]
+        },
+        "MapDrive": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "net": {
+              "description": "The net, or a combined bus's list, as for watched nets.",
+              "type": "string"
+            },
+            "members": {
+              "description": "A combined bus's members, most significant first.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "offset": {
+              "description": "Its first bit in the write space.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "format": {
+              "description": "The debug file's format for showing it (hex, dec or bin), if any.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "enable_bit": {
+              "description": "Its bit in the override enables.",
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "net",
+            "width",
+            "offset",
+            "enable_bit"
+          ]
+        },
+        "MapWatch": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "description": "The host's name for it.",
+              "type": "string"
+            },
+            "net": {
+              "description": "The net in the design; for a bus combined from a list, the list,\nas {main.a, pin.18}.",
+              "type": "string"
+            },
+            "members": {
+              "description": "A combined bus's members, most significant first.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "width": {
+              "description": "Its width in bits.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "offset": {
+              "description": "Its first bit in the read space.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "format": {
+              "description": "The debug file's format for showing it (hex, dec or bin), if any.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "net",
+            "width",
+            "offset"
+          ]
+        },
+        "DebuggerUse": {
+          "description": "The debugger's resources, from synthesizing it alone (an estimate:\nplacing it with the design can pack it a little differently).",
+          "type": "object",
+          "properties": {
+            "luts": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "flip_flops": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "luts_percent": {
+              "description": "Each as a share of the FPGA's LUTs and flip-flops (on iCE40, its\nlogic cells, each of which has one of each), such as \"8%\": rounded\nup, so \"0%\" only when none. Omitted when the build didn't report\nthem.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "flip_flops_percent": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "report": {
+              "description": "For people, such as \"The debugger uses about 460 LUTs (9%) and 250\nflip-flops (5%) of the FPGA's 5280 logic cells.\"",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "luts",
+            "flip_flops",
+            "report"
           ]
         }
       }
@@ -7850,6 +8037,501 @@
       "title": "CloseSerialOutput",
       "type": "object",
       "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "list_nets",
+    "description": "Lists the nets of a design that a debug file can watch or drive: each named net of the top module after the design is read and flattened, with its path as debug files name it (from the top module, such as top.u_counter.count), its width in bits and its kind (input, output or inout for the top module's ports, internal otherwise). It only reads and elaborates the design (no synthesis), so it is quick. The board is needed for its FPGA's cell library.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "ListNetsInput",
+      "type": "object",
+      "properties": {
+        "board": {
+          "description": "The target board's ID, as for build.",
+          "type": "string"
+        },
+        "board_variant": {
+          "description": "The board variant, as for build.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VariantChoice"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "custom_boards_folder": {
+          "description": "A folder of custom boards, as for build.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "top_module": {
+          "description": "The design's top module.",
+          "type": "string"
+        },
+        "source_folder": {
+          "description": "The absolute folder the source files are in.",
+          "type": "string"
+        },
+        "source_files": {
+          "description": "The design's Verilog files, relative to source_folder.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "defines": {
+          "description": "Verilog defines, as for build.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "board",
+        "top_module",
+        "source_folder",
+        "source_files"
+      ],
+      "$defs": {
+        "VariantChoice": {
+          "description": "A board variant in a request: some or all of a selector's values, such\nas {\"memory\": \"ram\"}. The board's first variant with these values is\nused, so {} means its first variant, its default.",
+          "type": "object",
+          "properties": {
+            "connection": {
+              "description": "The connection, such as usb or ft232h. Omitted means any.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "memory": {
+              "description": "The memory, flash or ram. Omitted means any.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "ListNetsOutput",
+      "type": "object",
+      "properties": {
+        "nets": {
+          "description": "The nets, sorted by path.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Net"
+          }
+        }
+      },
+      "required": [
+        "nets"
+      ],
+      "$defs": {
+        "Net": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "description": "Its path as debug files name it, from the top module.",
+              "type": "string"
+            },
+            "width": {
+              "description": "Its width in bits.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "kind": {
+              "description": "input, output or inout for a port of the top module; internal otherwise.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "width",
+            "kind"
+          ]
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "open_debug",
+    "description": "Opens a debug session with the Logix debugger on a board, for a build made by build with debug_file and programmed with program_board. Give the build folder (its debug_map.json names the nets) and the board's serial port (a device's serial_port from list_devices). Give device too (its id from list_devices): then the session finds the port again when the board is plugged back in, even under another name. Checks that the board runs that very build, by its build ID, and refuses another. Opening releases every override, so the design runs on its own. The debugger owns the port while the session is open: don't open a serial session on it too. program_board on the board pauses the session, which reconnects after and checks the build again.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "DebugOpenInput",
+      "type": "object",
+      "properties": {
+        "build_folder": {
+          "description": "The debug build's folder, as an absolute path.",
+          "type": "string"
+        },
+        "port": {
+          "description": "The serial port, such as /dev/cu.usbmodem1102 or COM5.",
+          "type": "string"
+        },
+        "device": {
+          "description": "The device the port belongs to, by its id from list_devices, so the\nsession finds the port again after the board is unplugged, even\nunder another name. Omitted means the port alone.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "build_folder",
+        "port"
+      ]
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "DebugOpenOutput",
+      "type": "object",
+      "properties": {
+        "session": {
+          "description": "The session's ID, for the other debug tools.",
+          "type": "string"
+        },
+        "port": {
+          "type": "string"
+        },
+        "device": {
+          "description": "The device given, whose port the session follows.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "build_id": {
+          "description": "The build ID the board's debugger reported, which matches the map.",
+          "type": "string"
+        },
+        "drive": {
+          "description": "What can be driven: each driven net's name and width.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NetInfo"
+          }
+        },
+        "watch": {
+          "description": "What can be watched: each watched net's name and width.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NetInfo"
+          }
+        }
+      },
+      "required": [
+        "session",
+        "port",
+        "build_id",
+        "drive",
+        "watch"
+      ],
+      "$defs": {
+        "NetInfo": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "net": {
+              "type": "string"
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "format": {
+              "description": "For watched nets: the debug file's format for showing it.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "name",
+            "net",
+            "width"
+          ]
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "read_debug",
+    "description": "Reads nets of the running design through a debug session, all in one snapshot taken in a single clock cycle. Give the watched names to read (from open_debug), or none for all. Each value comes as bits (most significant first), as hex and, up to 53 bits, as a number.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "DebugReadInput",
+      "type": "object",
+      "properties": {
+        "session": {
+          "description": "The session, from open_debug.",
+          "type": "string"
+        },
+        "names": {
+          "description": "The watched nets to read, by name. Omitted means all.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "default": null
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "session"
+      ]
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "DebugReadOutput",
+      "type": "object",
+      "properties": {
+        "values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NetValue"
+          }
+        }
+      },
+      "required": [
+        "values"
+      ],
+      "$defs": {
+        "NetValue": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "net": {
+              "type": "string"
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "value": {
+              "description": "The value as a number, when it has 53 bits or fewer.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "hex": {
+              "description": "The value in hex, such as 0x5b8d7f.",
+              "type": "string"
+            },
+            "bits": {
+              "description": "The bits, most significant first.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "net",
+            "width",
+            "hex",
+            "bits"
+          ]
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "write_debug",
+    "description": "Drives a net of the running design through a debug session: one of its drive names from open_debug. Writing takes the net over from the design until release; release gives it back. The value is a number, or a string in hex (0x..), binary (0b..) or decimal, and must fit the net's width. pulse, for a one-bit net, flips its value for one clock, whether it is driven or released, and leaves it as it was.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "DebugWriteInput",
+      "type": "object",
+      "properties": {
+        "session": {
+          "description": "The session, from open_debug.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The net to drive, by its name in the debug file's drive list.",
+          "type": "string"
+        },
+        "value": {
+          "description": "The value to drive. Required unless release is true.",
+          "default": null
+        },
+        "release": {
+          "description": "Give an override net back to the design. Defaults to false.",
+          "type": "boolean",
+          "default": false
+        },
+        "pulse": {
+          "description": "For a one-bit net: flip its value for one clock, driven or released,\nthen leave it as it was. Defaults to false.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "session",
+        "name"
+      ]
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "DebugWriteOutput",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "driven": {
+          "description": "True while the debugger drives the net.",
+          "type": "boolean"
+        },
+        "hex": {
+          "description": "The value the debugger drives, read back from it, in hex; omitted\nwhen it doesn't drive the net.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "driven"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "close_debug",
+    "description": "Ends a debug session: releases every override, so the design runs on its own, and frees the serial port.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "DebugCloseInput",
+      "type": "object",
+      "properties": {
+        "session": {
+          "description": "The session, from open_debug.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "session"
+      ]
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "DebugCloseOutput",
+      "type": "object",
+      "properties": {
+        "released": {
+          "description": "False when the overrides couldn't be released, such as with the\nboard unplugged.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "released"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "open_debug_panel",
+    "description": "Opens an interactive panel for a debug session in the browser: it shows the watched nets live (as hex, decimal and bits) and has controls to drive each driven net and release it. Logix Engine serves it on this computer only, at 127.0.0.1, with a random token in its address. The panel uses the same session as read_debug and write_debug, so both can be used at once. Returns the address; with open false it only returns it, such as for a host that shows pages itself.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "DebugPanelInput",
+      "type": "object",
+      "properties": {
+        "session": {
+          "description": "The session, from open_debug.",
+          "type": "string"
+        },
+        "open": {
+          "description": "Open the panel in the default browser. Defaults to true.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "session"
+      ]
+    },
+    "outputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "DebugPanelOutput",
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "The panel's address. It works while Logix Engine runs, for any open\nsession (the page can switch between them).",
+          "type": "string"
+        },
+        "opened": {
+          "description": "True when the browser was asked to open it.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "url",
+        "opened"
+      ]
     },
     "annotations": {
       "readOnlyHint": false,

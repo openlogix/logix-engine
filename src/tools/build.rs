@@ -106,6 +106,19 @@ pub struct BuildInput {
     /// to false.
     #[serde(default)]
     pub lint: bool,
+    /// A debug build: the Logix debugger inserted into the design, so a
+    /// host can watch and drive its nets on the board while it runs
+    /// (open_debug, read_debug, write_debug; docs/debugger.md). The debug
+    /// file, relative to the source folder, such as debug.toml: the nets to
+    /// watch and drive, by instance path from the top module (list_nets
+    /// lists them), and the clock the debugger runs on. The debugger talks
+    /// over the board's UART, so the design must not use its pins. The
+    /// sources are unchanged; the build writes debug_map.json next to the
+    /// bitstream and returns debug. Use a build folder of its own, such as
+    /// _build_debug, so a normal build keeps its own. Omitted means a
+    /// normal build.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub debug_file: Option<String>,
 }
 
 /// The build result.
@@ -166,6 +179,10 @@ pub struct BuildOutput {
     /// a shell line that runs it again without the engine, such as for a bug
     /// report to the tool's developers.
     pub commands: Vec<crate::commands::CommandRecord>,
+    /// For a debug build (debug_file): its debug map and what the debugger
+    /// watches and drives. Omitted for a normal build.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub debug: Option<crate::debug::build::DebugBuildInfo>,
 }
 
 fn identifier() -> &'static Regex {
@@ -296,6 +313,9 @@ pub async fn run(
     input: BuildInput,
     call: &Call,
 ) -> Result<BuildOutput, ToolError> {
+    if input.debug_file.is_some() {
+        return debug_run(state, input, call).await;
+    }
     let lint_request = input.lint.then(|| super::lint::LintInput {
         board: input.board.clone(),
         board_variant: input.board_variant.clone(),
@@ -361,7 +381,61 @@ pub async fn run(
         diagnostics: merge_diagnostics(linted, r.warnings.clone()),
         checked_files: checked,
         warnings: r.warnings,
+        debug: None,
     })
+}
+
+/// A debug build (debug_file): lint the design's own sources first when
+/// asked, then crate::debug::build, whose own build of the generated
+/// sources runs without lint.
+async fn debug_run(
+    state: &EngineState,
+    mut input: BuildInput,
+    call: &Call,
+) -> Result<BuildOutput, ToolError> {
+    let debug_file = input.debug_file.take().unwrap_or_default();
+    let mut linted = Vec::new();
+    let mut after = None;
+    if input.lint {
+        input.lint = false;
+        let stage = Arc::new(Stage::new(call.progress.clone(), 0.0));
+        let lint_call = call.with_progress(stage.clone());
+        let lint_input = super::lint::LintInput {
+            board: input.board.clone(),
+            board_variant: input.board_variant.clone(),
+            custom_boards_folder: input.custom_boards_folder.clone(),
+            display_paths: None,
+            top_module: Some(input.top_module.clone()),
+            source_folder: input.source_folder.clone(),
+            source_files: input.source_files.clone(),
+            testbench_files: Vec::new(),
+            defines: input.defines.clone(),
+            synthesize: true,
+            verbose: input.verbose,
+        };
+        linted = match super::lint::check(lint_input) {
+            Ok(req) => match crate::sim::lint::lint(state, req, &lint_call).await {
+                Ok(r) => r.diagnostics,
+                Err(e) if e.category == crate::errors::Category::Cancelled => return Err(e),
+                Err(e) => vec![lint_failed(&e)],
+            },
+            Err(e) => vec![lint_failed(&e)],
+        };
+        after = Some(call.with_progress(Arc::new(Stage::new(call.progress.clone(), stage.end()))));
+    }
+    let call = after.as_ref().unwrap_or(call);
+    match crate::debug::build::run(state, input, debug_file, call).await {
+        Ok(mut r) => {
+            r.diagnostics = merge_diagnostics(linted, std::mem::take(&mut r.diagnostics));
+            Ok(r)
+        }
+        Err(mut e) => {
+            if e.category != crate::errors::Category::Cancelled {
+                e.diagnostics = merge_diagnostics(linted, std::mem::take(&mut e.diagnostics));
+            }
+            Err(e)
+        }
+    }
 }
 
 /// Lint's problems, then the build's, without the build problems lint

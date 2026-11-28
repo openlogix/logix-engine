@@ -280,8 +280,12 @@ pub async fn run_with_programmers(
     // Serial sessions on this board close while it's written, and reopen
     // after (crate::serial).
     let pause = crate::serial::sessions().pause(&device);
+    // So do debug sessions on it (crate::debug::session), which check the
+    // build ID again when they reconnect.
+    let debug_pause = crate::debug::session::pause_device(&device);
     let run = run_tool_with(&program, &args, &folder, &bin, &stop, &on_line).await;
     drop(pause);
+    drop(debug_pause);
     match run {
         Ok(r) if r.status.success() => {
             if custom.is_none()

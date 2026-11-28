@@ -16,6 +16,7 @@ pub mod get_engine_info;
 pub mod install_driver;
 pub mod lint;
 pub mod list_devices;
+pub mod list_nets;
 pub mod open_waveform;
 pub mod program_board;
 pub mod serial;
@@ -172,7 +173,7 @@ pub fn definition<T: EngineTool>() -> Tool {
 /// here (a test checks it): simulate and test were missing, so a client
 /// whose first call was one of them got "isn't a board in the catalog",
 /// found 2026-11-21 (Logix IDE always loads the board list first).
-const READS_BOARDS: [&str; 11] = [
+const READS_BOARDS: [&str; 12] = [
     get_catalog::GetCatalog::NAME,
     compare_boards::CompareBoards::NAME,
     build::Build::NAME,
@@ -184,6 +185,7 @@ const READS_BOARDS: [&str; 11] = [
     program_board::ProgramBoard::NAME,
     install_driver::InstallDriver::NAME,
     uninstall_driver::UninstallDriver::NAME,
+    list_nets::ListNets::NAME,
 ];
 
 pub fn all_definitions() -> Vec<Tool> {
@@ -211,7 +213,22 @@ pub fn all_definitions() -> Vec<Tool> {
         definition::<serial::ReadSerial>(),
         definition::<serial::WriteSerial>(),
         definition::<serial::CloseSerial>(),
+        definition::<list_nets::ListNets>(),
+        definition::<crate::debug::session::DebugOpen>(),
+        definition::<crate::debug::session::DebugRead>(),
+        definition::<crate::debug::session::DebugWrite>(),
+        definition::<crate::debug::session::DebugClose>(),
+        definition::<crate::debug::panel::DebugPanel>(),
     ]
+}
+
+/// Runs a tool's blocking work, such as serial I/O, on a thread of its own.
+async fn blocking<O: Send + 'static>(
+    f: impl FnOnce() -> Result<O, ToolError> + Send + 'static,
+) -> Result<O, ToolError> {
+    tokio::task::spawn_blocking(f)
+        .await
+        .unwrap_or_else(|e| Err(ToolError::engine(format!("The tool's thread failed: {e}"))))
 }
 
 /// Parses a tool's arguments. A request that doesn't match the input schema
@@ -276,6 +293,8 @@ pub async fn call(
     arguments: Option<JsonObject>,
     call: &Call,
 ) -> Option<CallToolResult> {
+    use crate::debug::panel::DebugPanel;
+    use crate::debug::session::{self as debug, DebugClose, DebugOpen, DebugRead, DebugWrite};
     use build::Build;
     use check_updates::CheckUpdates;
     use clean_build::CleanBuild;
@@ -290,6 +309,7 @@ pub async fn call(
     use install_driver::InstallDriver;
     use lint::Lint;
     use list_devices::ListDevices;
+    use list_nets::ListNets;
     use open_waveform::OpenWaveform;
     use program_board::ProgramBoard;
     use serial::{CloseSerial, OpenSerial, ReadSerial, WriteSerial};
@@ -322,8 +342,8 @@ pub async fn call(
     // that doesn't, such as get_catalog with a local catalog folder, works
     // anyway. download_packages and check_updates read it themselves (they
     // may use the network even with automatic download off), and
-    // get_engine_info, clean_build, clean_logs and the serial tools use no
-    // packages.
+    // get_engine_info, clean_build, clean_logs, the serial tools and the
+    // debug session tools use no packages.
     if ![
         GetEngineInfo::NAME,
         CleanBuild::NAME,
@@ -334,6 +354,11 @@ pub async fn call(
         ReadSerial::NAME,
         WriteSerial::NAME,
         CloseSerial::NAME,
+        DebugOpen::NAME,
+        DebugRead::NAME,
+        DebugWrite::NAME,
+        DebugClose::NAME,
+        DebugPanel::NAME,
         DownloadPackages::NAME,
         CheckUpdates::NAME,
     ]
@@ -535,6 +560,50 @@ pub async fn call(
         CloseSerial::NAME => to_call_result(
             display,
             parse_input::<CloseSerial>(arguments).and_then(serial::close),
+        ),
+        ListNets::NAME => to_call_result(
+            display,
+            with_commands(
+                match parse_input::<ListNets>(arguments) {
+                    Ok(input) => list_nets::run(state, input, call).await,
+                    Err(e) => Err(e),
+                },
+                call,
+            ),
+        ),
+        // The session tools wait on the board's serial port: off the async
+        // threads.
+        DebugOpen::NAME => to_call_result(
+            display,
+            match parse_input::<DebugOpen>(arguments) {
+                Ok(input) => blocking(move || debug::open(input)).await,
+                Err(e) => Err(e),
+            },
+        ),
+        DebugRead::NAME => to_call_result(
+            display,
+            match parse_input::<DebugRead>(arguments) {
+                Ok(input) => blocking(move || debug::read(input)).await,
+                Err(e) => Err(e),
+            },
+        ),
+        DebugWrite::NAME => to_call_result(
+            display,
+            match parse_input::<DebugWrite>(arguments) {
+                Ok(input) => blocking(move || debug::write(input)).await,
+                Err(e) => Err(e),
+            },
+        ),
+        DebugClose::NAME => to_call_result(
+            display,
+            parse_input::<DebugClose>(arguments).and_then(debug::close),
+        ),
+        DebugPanel::NAME => to_call_result(
+            display,
+            match parse_input::<DebugPanel>(arguments) {
+                Ok(input) => crate::debug::panel::run(input).await,
+                Err(e) => Err(e),
+            },
         ),
         _ => return None,
     };

@@ -110,6 +110,7 @@ The engine provides the core FPGA operations that frontends build on. The table 
 | Simulate | Run a testbench and show the waveforms |
 | Test | Run testbenches automatically and report pass or fail |
 | Program board | Program the bitstream to the board |
+| Debug | Build with the Logix debugger inserted, then watch and drive chosen nets while the design runs on the board ([the debugger's design](debugger.md)) |
 | Devices and drivers | Manage drivers and devices that are required to communicate with the FPGA boards. |
 | Catalog | Provide and manage a standard catalog of known FPGAs and boards, though operations will not be restricted to those items. |
 
