@@ -1562,7 +1562,7 @@ A debug build adds a small debugger, the Logix debugger, to the user's design, s
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `nets` | list of objects | The top module's named nets after the design is read and flattened, sorted by path: `path` (as debug files name it, from the top module, such as `main.u_counter.count`), `width` (bits) and `kind` (`input`, `output` or `inout` for the top module's ports, `internal` otherwise) |
+| `nets` | list of objects | The top module's named nets after the design is read and flattened, sorted by path: `path` (as debug files name it, from the top module, such as `main.u_counter.count`), `width` (bits) and `kind` (`input`, `output` or `inout` for the top module's ports, `internal` otherwise), `can_watch` and `can_drive` (whether a debug file may watch or drive it: a net wired to a pad-only cell port, such as the RGB LED driver's outputs, can be neither, and the top module's ports can't be driven) and `why_not`, a sentence saying why when either is false (absent otherwise), for a host to show |
 
 `list_nets` runs only yosys's read and elaboration (no synthesis), so it's quick. A design that doesn't parse is a design error.
 

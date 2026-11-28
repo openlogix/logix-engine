@@ -8046,7 +8046,7 @@
   },
   {
     "name": "list_nets",
-    "description": "Lists the nets of a design that a debug file can watch or drive: each named net of the top module after the design is read and flattened, with its path as debug files name it (from the top module, such as top.u_counter.count), its width in bits and its kind (input, output or inout for the top module's ports, internal otherwise). It only reads and elaborates the design (no synthesis), so it is quick. The board is needed for its FPGA's cell library.",
+    "description": "Lists the nets of a design that a debug file can watch or drive: each named net of the top module after the design is read and flattened, with its path as debug files name it (from the top module, such as top.u_counter.count), its width in bits, its kind (input, output or inout for the top module's ports, internal otherwise), whether a debug file can watch it and drive it, and why_not, the reason when it can't do both (a port of the top module can be watched but not driven; a net wired to a cell port only the FPGA's pin may take, such as the iCE40 UltraPlus RGB LED driver's outputs, can be neither). It only reads and elaborates the design (no synthesis), so it is quick. The board is needed for its FPGA's cell library.",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "ListNetsInput",
@@ -8163,12 +8163,29 @@
             "kind": {
               "description": "input, output or inout for a port of the top module; internal otherwise.",
               "type": "string"
+            },
+            "can_watch": {
+              "description": "Whether a debug file can watch it.",
+              "type": "boolean"
+            },
+            "can_drive": {
+              "description": "Whether a debug file can drive it.",
+              "type": "boolean"
+            },
+            "why_not": {
+              "description": "Why it can't be watched or driven, when it can't be both.",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [
             "path",
             "width",
-            "kind"
+            "kind",
+            "can_watch",
+            "can_drive"
           ]
         }
       }
