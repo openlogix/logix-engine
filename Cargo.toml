@@ -34,8 +34,10 @@ serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.11"
 tar = "0.4"
 time = { version = "0.3", features = ["formatting", "macros", "local-offset"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "process", "sync", "time", "fs"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "io-util", "net", "process", "sync", "time", "fs"] }
 tokio-util = "0.7"
+tempfile = "3"
+toml = "0.9"
 
 # Windows: a Job Object per tool, so Stop ends its whole process tree.
 [target.'cfg(windows)'.dependencies]
@@ -44,7 +46,6 @@ windows-sys = { version = "0.61", features = ["Win32_Devices_DeviceAndDriverInst
 [dev-dependencies]
 jsonschema = "0.60"
 rmcp = { version = "3.8", features = ["client", "transport-child-process"] }
-tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "process"] }
 
 [profile.release]

@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Logix debug configuration, version 1",
+  "description": "A debug configuration file: which nets the debugger reads and drives, how\nit reaches the host and which clock it runs on.",
+  "type": "object",
+  "properties": {
+    "clock": {
+      "description": "The clock the debugger and its UART run on: a top-level input port of\nthe design, such as sys_clk. Every watched and driven net must be on\nit.",
+      "type": "string"
+    },
+    "clock_mhz": {
+      "description": "The clock's frequency in MHz. Needed only when the clock port isn't\non the board's clock pin, whose frequency the catalog gives.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "format": "double"
+    },
+    "uplink": {
+      "description": "How the debugger reaches the host: a UART, named as a resource of the\nboard, or by its pins.",
+      "$ref": "#/$defs/Uplink"
+    },
+    "drive": {
+      "description": "Nets the host can drive: take them over from the design, or drive\nthem alone, and release them.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DriveNet"
+      },
+      "default": []
+    },
+    "watch": {
+      "description": "Nets the host reads.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/WatchNet"
+      },
+      "default": []
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "clock",
+    "uplink"
+  ],
+  "$defs": {
+    "Uplink": {
+      "description": "The link to the host: give resource, or tx and rx.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "description": "The kind of link: uart, the only one in version 1.",
+          "$ref": "#/$defs/UplinkKind"
+        },
+        "resource": {
+          "description": "The board's UART, by its resource name in the catalog (get_catalog's\nresources), such as uart: the debugger uses its tx and rx pins.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tx": {
+          "description": "Instead of resource, the FPGA pin the debugger transmits on, such as\na PMOD pin wired to a USB serial adapter's RX.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rx": {
+          "description": "Instead of resource, the FPGA pin the debugger receives on.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "baud": {
+          "description": "Bits per second. Defaults to 115200.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ]
+    },
+    "UplinkKind": {
+      "type": "string",
+      "enum": [
+        "uart"
+      ]
+    },
+    "DriveNet": {
+      "description": "A net the debugger drives.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "The host's name for it. Defaults to the net's path.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "net": {
+          "description": "The net, named as for watch; a list's nets are driven and released\ntogether, and can't include pins.",
+          "$ref": "#/$defs/NetSpec"
+        },
+        "format": {
+          "description": "How hosts such as the debug panel show and read its value at first: hex, dec\nor bin. Omitted means dec for one bit and hex for more.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueFormat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "net"
+      ]
+    },
+    "NetSpec": {
+      "description": "A net: one path, or a list of one-bit nets and pins combined.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "ValueFormat": {
+      "description": "How a watched value is shown.",
+      "type": "string",
+      "enum": [
+        "hex",
+        "dec",
+        "bin"
+      ]
+    },
+    "WatchNet": {
+      "description": "A net the debugger reads.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "The host's name for it. Defaults to the net's path.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "net": {
+          "description": "The net, of any width, by its instance path from the top module,\nstarting with the top module's name, such as main.u_ctrl.state, or\nmain.blink for a net in the top module itself; a package pin as\npin.18; or a list of one-bit nets and pins combined into one bus, such\nas [\"pin.21\", \"pin.20\", \"pin.19\", \"pin.18\"], the first the most\nsignificant, as in a Verilog concatenation (a list needs a name).",
+          "$ref": "#/$defs/NetSpec"
+        },
+        "format": {
+          "description": "How hosts such as the debug panel show its value at first: hex, dec\nor bin. Omitted means dec for one bit and hex for more.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueFormat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "net"
+      ]
+    }
+  },
+  "$id": "https://www.openlogix.org/schemas/logix-debug-v1.json"
+}
