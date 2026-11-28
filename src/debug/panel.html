@@ -23,16 +23,25 @@
     margin: 0; background: var(--bg); color: var(--text);
     font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  header {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px;
-    padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel);
+  /* One toolbar across the window, as Logix Waveforms' and Logix
+     Diagrams': the window's title names the panel, so the page has no
+     title of its own. The refresh controls at the left, what the session
+     is connected to at the right; it wraps only in a narrow window. */
+  header.bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+    padding: 10px 20px; background: var(--bg);
   }
-  h1 { font-size: 16px; margin: 0; font-weight: 600; }
-  .meta { color: var(--muted); font-size: 13px; }
+  header.bar .right { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-left: auto; }
+  header.bar button, header.bar select {
+    height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--text); font-size: 13px;
+  }
+  header.bar select { padding: 0 6px; }
+  header.bar button:hover { border-color: var(--accent); }
+  header.bar button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .meta { color: var(--muted); font-size: 13px; white-space: nowrap; }
   .meta b { color: var(--text); font-weight: 500; font-family: var(--mono); }
-  /* The refresh controls: always a row of their own, under the title. */
-  .refresh-row { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  main { padding: 16px 20px 36px; display: grid; gap: 16px; max-width: 1100px; }
+  main { padding: 6px 20px 36px; display: grid; gap: 16px; max-width: 1100px; }
   /* Collapsible sections: the title folds and unfolds its table. */
   details.section > summary {
     margin: 0 0 8px; font-size: 16px; font-weight: 600;
@@ -97,8 +106,8 @@
   /* The panel's status, a badge: live, paused, stale or offline. */
   #status {
     display: inline-flex; align-items: center; gap: 7px;
-    padding: 3px 12px; border-radius: 999px; border: 1px solid var(--line);
-    font-size: 14px; font-weight: 600; color: var(--muted);
+    height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line);
+    font-size: 13px; font-weight: 600; color: var(--muted);
   }
   #status::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
   #status.live { color: var(--on); border-color: var(--on); background: color-mix(in srgb, var(--on) 12%, transparent); }
@@ -138,31 +147,30 @@
 </style>
 </head>
 <body>
-<header>
-  <h1>Logix Debug</h1>
+<header class="bar">
   <span id="status"></span>
-  <!-- Shown only when several debug sessions are open, such as two boards. -->
-  <span class="meta" id="session-box" hidden>Session <select id="session"></select></span>
-  <span class="meta">Board <b id="board">–</b></span>
-  <span class="meta">Port <b id="port">–</b></span>
-  <div class="refresh-row">
-    <!-- Not round periods: a design's own periods, such as a blinky's half
-         second, would otherwise show the same phase at every read. -->
-    <select id="rate" title="Refresh rate">
-      <option value="19">50 per second</option>
-      <option value="47">20 per second</option>
-      <option value="97">10 per second</option>
-      <option value="197">5 per second</option>
-      <option value="491">2 per second</option>
-      <option value="973" selected>1 per second</option>
-      <option value="1973">every 2 seconds</option>
-      <option value="4931">every 5 seconds</option>
-      <option value="9967">every 10 seconds</option>
-      <option value="29959">every 30 seconds</option>
-      <option value="59957">every 60 seconds</option>
-    </select>
-    <button id="pause" title="Stop or restart the live updates">Pause</button>
-    <button id="refresh">Read now</button>
+  <!-- Not round periods: a design's own periods, such as a blinky's half
+       second, would otherwise show the same phase at every read. -->
+  <select id="rate" title="Refresh rate">
+    <option value="19">50 per second</option>
+    <option value="47">20 per second</option>
+    <option value="97">10 per second</option>
+    <option value="197">5 per second</option>
+    <option value="491">2 per second</option>
+    <option value="973" selected>1 per second</option>
+    <option value="1973">every 2 seconds</option>
+    <option value="4931">every 5 seconds</option>
+    <option value="9967">every 10 seconds</option>
+    <option value="29959">every 30 seconds</option>
+    <option value="59957">every 60 seconds</option>
+  </select>
+  <button id="pause" title="Stop or restart the live updates">Pause</button>
+  <button id="refresh" title="Read the watched nets once, now">Read now</button>
+  <div class="right">
+    <!-- Shown only when several debug sessions are open, such as two boards. -->
+    <span class="meta" id="session-box" hidden>Session <select id="session"></select></span>
+    <span class="meta">Board <b id="board">–</b></span>
+    <span class="meta">Port <b id="port">–</b></span>
   </div>
 </header>
 <main>
