@@ -194,7 +194,7 @@
         <option value="29959">every 30 seconds</option>
         <option value="59957">every 60 seconds</option>
       </select>
-      <span class="gap"></span>Last
+      <span class="gap"></span>Show
       <select id="plot-window" title="How much time the plot shows">
         <option value="10000">10 seconds</option>
         <option value="30000" selected>30 seconds</option>
@@ -744,6 +744,8 @@
     g.strokeStyle = line;
     g.lineWidth = 1;
     g.beginPath(); g.moveTo(0, HEAD_H - 0.5); g.lineTo(cssW, HEAD_H - 0.5); g.stroke();
+    // A column line between the names and their numbers of bits.
+    g.beginPath(); g.moveTo(NAME_W - 0.5, 0); g.lineTo(NAME_W - 0.5, HEAD_H + Math.max(1, rows.length) * ROW_H); g.stroke();
     g.font = "13px system-ui, -apple-system, sans-serif";
     if (!rows.length) {
       g.fillStyle = muted;
