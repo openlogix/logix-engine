@@ -221,7 +221,6 @@ pub fn parse(text: &str) -> Result<DebugConfig, String> {
     if config.watch.is_empty() && config.drive.is_empty() {
         return Err("The file names no nets: add some to watch or drive.".into());
     }
-    let mut names = std::collections::BTreeSet::new();
     for p in config
         .watch
         .iter()
@@ -238,11 +237,16 @@ pub fn parse(text: &str) -> Result<DebugConfig, String> {
             ));
         }
     }
-    for (net, name) in config
+    // Host names: one per watch entry and one per drive entry. A watch
+    // and a drive entry of the same net may share one (their default, the
+    // net's path): the host reads one and writes the other, so they never
+    // meet. Any other repeat is an error.
+    let mut names: [std::collections::BTreeMap<&str, &str>; 2] = Default::default();
+    for (k, kind, net, name) in config
         .watch
         .iter()
-        .map(|i| (&i.net, &i.name))
-        .chain(config.drive.iter().map(|o| (&o.net, &o.name)))
+        .map(|i| (0, "watch", &i.net, &i.name))
+        .chain(config.drive.iter().map(|o| (1, "drive", &o.net, &o.name)))
     {
         if !net.starts_with('{') {
             check_net(net)?;
@@ -251,10 +255,16 @@ pub fn parse(text: &str) -> Result<DebugConfig, String> {
         if host.is_empty() {
             return Err(format!("The name of net {net:?} is empty."));
         }
-        // A watched and a driven entry may share a net, but not a host name.
-        if !names.insert(host.to_string()) {
+        if names[k].insert(host, net).is_some() {
             return Err(format!(
-                "The name {host:?} is used twice: give one of them another name."
+                "Two {kind} entries are named {host:?}: give one of them another name, or remove it."
+            ));
+        }
+        if let Some(other) = names[1 - k].get(host)
+            && *other != net.as_str()
+        {
+            return Err(format!(
+                "The watch and drive entries of {other} and {net} are both named {host:?}: give one of them another name."
             ));
         }
     }
@@ -377,6 +387,16 @@ name = "two_pins"
     }
 
     #[test]
+    fn a_net_watched_and_driven_shares_its_name() {
+        // The net picker writes both with their default names.
+        let c = parse_json(
+            r#"{"clock":"c","uplink":{"kind":"uart","resource":"uart"},"watch":[{"net":"main.led"}],"drive":[{"net":"main.led"}]}"#,
+        )
+        .unwrap();
+        assert_eq!((c.watch.len(), c.drive.len()), (1, 1));
+    }
+
+    #[test]
     fn syntax_errors_name_the_line() {
         let e = parse("clock = \"c\"\nuplink = {\n").unwrap_err();
         assert!(e.contains("line 2"), "{e}");
@@ -411,7 +431,11 @@ name = "two_pins"
             ),
             (
                 r#"{"clock":"c","uplink":{"kind":"uart","resource":"uart"},"watch":[{"net":"a"},{"net":"b","name":"a"}]}"#,
-                "twice",
+                "Two watch entries",
+            ),
+            (
+                r#"{"clock":"c","uplink":{"kind":"uart","resource":"uart"},"watch":[{"net":"a"}],"drive":[{"net":"b","name":"a"}]}"#,
+                "both named",
             ),
             (
                 r#"{"clock":"c","uplink":{"kind":"uart","resource":"uart"},"watch":[{"net":"a"}],"extra":1}"#,

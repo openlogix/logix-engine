@@ -49,6 +49,7 @@
   /* Each table, and its box, as wide as its content. */
   .card { display: inline-block; max-width: 100%; vertical-align: top; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
   .scroll { overflow-x: auto; }
+  [hidden] { display: none !important; }
   table { border-collapse: collapse; }
   /* Cells' side padding: --pad-x, wider in the Watch table. */
   table { --pad-x: 20px; }
@@ -156,7 +157,7 @@
   <details class="section" id="section-drive" open>
     <summary>Drive</summary>
     <div class="card">
-      <div class="scroll"><table id="drive">
+      <div class="scroll" id="drive-table"><table id="drive">
         <thead><tr><th>Name</th><th class="num">Bits</th><th class="center">Format</th><th>State</th><th>Value</th></tr></thead>
         <tbody></tbody>
       </table></div>
@@ -166,7 +167,7 @@
   <details class="section" id="section-watch" open>
     <summary>Watch</summary>
     <div class="card">
-      <div class="scroll"><table id="watch">
+      <div class="scroll" id="watch-table"><table id="watch">
         <thead><tr><th>Name</th><th class="num">Bits</th><th class="center">Format</th><th class="num">Value</th></tr></thead>
         <tbody></tbody>
       </table></div>
@@ -175,7 +176,9 @@
   </details>
   <details class="section" id="section-plot" open>
     <summary>Plot</summary>
-    <div class="plot-tools">
+    <!-- With no watched nets, only a message, no controls. -->
+    <div class="card" id="no-plot" hidden><div class="empty">This build watches no nets.</div></div>
+    <div class="plot-tools" id="plot-tools">
       <!-- What the panel reads, at its refresh rate: a strip chart, not a
            logic analyzer; changes faster than the refresh don't show. -->
       Last
@@ -188,7 +191,7 @@
       <button id="plot-clear" title="Start the plot over">Clear</button>
       <span>Sampled at the refresh rate: faster changes don't show.</span>
     </div>
-    <div class="card plot-card"><canvas id="plot" height="60"></canvas></div>
+    <div class="card plot-card" id="plot-card"><canvas id="plot" height="60"></canvas></div>
   </details>
 </main>
 <script>
@@ -447,8 +450,15 @@
         fmtCell, state, ctl);
       ob.append(tr);
     }
-    $("no-watch").hidden = info.watch.length > 0;
-    $("no-drive").hidden = info.drive.length > 0;
+    // A section with no nets shows only its message: no table, no plot.
+    const watching = info.watch.length > 0, driving = info.drive.length > 0;
+    $("no-watch").hidden = watching;
+    $("watch-table").hidden = !watching;
+    $("no-plot").hidden = watching;
+    $("plot-tools").hidden = !watching;
+    $("plot-card").hidden = !watching;
+    $("no-drive").hidden = driving;
+    $("drive-table").hidden = !driving;
   }
 
   // A drive row's state, in its format: read back from the board, or, when
