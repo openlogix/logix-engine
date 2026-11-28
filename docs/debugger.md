@@ -480,7 +480,7 @@ debug map. All are soft-agent extension tools in the engine's style
 | `read_debug` | Reads named nets, in one snapshot | Values as numbers and as bit strings, with widths |
 | `write_debug` | Writes a named net, releases an override back to the design, or pulses a one-bit net | Refuses names that aren't in drive, and pulses on nets wider than one bit |
 | `close_debug` | Ends the session | |
-| `open_debug_panel` | Opens an interactive panel for a session in the browser | Drive first, then Watch, which refreshes live and can be paused, then Plot, a live strip chart of the watched values; each watched row shows its value in a format chosen per row (hex, decimal or binary); each driven net has value and release controls (0, 1 and Pulse buttons for one bit; a pulse the board took flashes the row's state) |
+| `open_debug_panel` | Opens an interactive panel for a session in the browser | Drive first, then Watch, a live strip chart of the watched values that can be paused, with each net's name, bits, trace and value, whose format (hex, decimal or binary) a right-click on it chooses; each driven net has value and release controls (0, 1 and Pulse buttons for one bit; a pulse the board took flashes the row's state) |
 
 - **The port is shared.** The debugger owns the UART while a session is open,
   so the engine's `open_serial` on the same port is refused in version 1. A
@@ -499,7 +499,7 @@ debug map. All are soft-agent extension tools in the engine's style
   clears counters, with a tool of its own or as part of `write_debug`; to
   be decided with their protocol commands. Counters are read with
   `read_debug`, in the same snapshot as the watched nets, so the panel's
-  Watch table and Plot show them as they are.
+  Watch section shows them as they are.
 - **Capture phase:** a tool of its own, such as `capture_debug`, arms a capture with a trigger, and its
   result is a VCD file in the build folder, so the engine's `open_waveform`
   shows it with no new viewer.
@@ -976,17 +976,25 @@ see the cost to-do under To do before porting.
   that stops arriving is dropped after 25 to 50 byte times. The port isn't
   locked against the engine's serial tools, so don't open both on one port.
 - **Progress:** `debug_build` reports no progress while it runs yet.
-- **The plot:** the panel's Plot section draws every read's watched values
-  over the last 10 seconds to 5 minutes: one bit as a high/low trace, more
+- **The toolbar:** one row, as in Logix Waveforms and Logix Diagrams, with no
+  page name (the window title says it): the status, Pause or Resume and
+  Read now, then the board and port at the right; it wraps on narrow
+  windows. The refresh rate is in the Watch section, next to the plot's
+  time window.
+- **The Watch section:** the panel draws every read's watched values,
+  a row per net with its name, its number of bits and its value at the
+  right (a right-click on the value chooses hex, decimal or binary,
+  remembered in that browser), over the last 10 seconds to 5 minutes: one bit as a high/low trace, more
   as a stepped line scaled to the values in view, with a hover cursor for a
   moment's time and values. A value holds until the next read, a failed
   read, a pause, or the time the status stops being Live (three refresh
   periods, at least 5 s), so where reads failed, the board was unplugged or the panel
-  was paused, the plot is empty, as before the first read. It samples at
+  was paused, the plot is empty, as before the first read. Paused, the
+  plot stays still, and a Read now moves it on to end at that read. It samples at
   the refresh rate (up to 50 a second), so it is a strip chart, not a logic analyzer: changes faster
   than the refresh don't show, and fast counters look like sawtooths. The
   capture phase is for those. A build that watches no nets shows only a
-  message in Watch and Plot (no table, no plot controls), as Drive does with
+  message in Watch (no plot controls), as Drive does with
   no driven nets.
 - **The panel:** `src/debug/panel.rs` serves `panel.html` from the
   soft-agent process on 127.0.0.1, on a port the system picks, while
