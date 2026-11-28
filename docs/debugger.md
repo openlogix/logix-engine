@@ -198,7 +198,10 @@ net = "main.u_ctrl.state"
   `watch` the nets it reads (probe\_in, probes). They were `output` and
   `input` in earlier drafts, which read backwards from the design's side.
   `name` is the host's name for each (defaults to the net's path); widths
-  come from the design, not the file. Watching a net that is also driven
+  come from the design, not the file. Names are unique within `watch` and
+  within `drive`; a watch and a drive entry share one only when they name
+  the same net, as both do by default (since 2026-11-27; such a pair was
+  refused, so a net both watched and driven needed a name of its own). Watching a net that is also driven
   reads what the design sees of it: the host's value while driven, the
   design's own while released (since 2026-11-25; it read the design's own
   value only, so a driven constant never changed in Watch).
