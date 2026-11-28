@@ -14,6 +14,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::debug::build::{cells_sim, read_json};
+use crate::debug::pads::unreachable;
 use crate::errors::{Category, ToolError};
 use crate::state::EngineState;
 use crate::tools::build as engine_build;
@@ -26,8 +27,11 @@ impl EngineTool for ListNets {
     const DESCRIPTION: &'static str = "Lists the nets of a design that a debug file can watch \
         or drive: each named net of the top module after the design is read and flattened, \
         with its path as debug files name it (from the top module, such as \
-        top.u_counter.count), its width in bits and its kind (input, output or inout for the \
-        top module's ports, internal otherwise). It only reads and elaborates the design (no \
+        top.u_counter.count), its width in bits, its kind (input, output or inout for the \
+        top module's ports, internal otherwise), whether a debug file can watch it and drive \
+        it, and why_not, the reason when it can't do both (a port of the top module can be \
+        watched but not driven; a net wired to a cell port only the FPGA's pin may take, \
+        such as the iCE40 UltraPlus RGB LED driver's outputs, can be neither). It only reads and elaborates the design (no \
         synthesis), so it is quick. The board is needed for its FPGA's cell library.";
     const READ_ONLY: bool = true;
     type Input = ListNetsInput;
@@ -70,6 +74,13 @@ pub struct Net {
     pub width: usize,
     /// input, output or inout for a port of the top module; internal otherwise.
     pub kind: String,
+    /// Whether a debug file can watch it.
+    pub can_watch: bool,
+    /// Whether a debug file can drive it.
+    pub can_drive: bool,
+    /// Why it can't be watched or driven, when it can't be both.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub why_not: Option<String>,
 }
 
 pub async fn run(
@@ -165,10 +176,20 @@ fn nets(json: &serde_json::Value, top: &str) -> Vec<Net> {
                 .as_str()
                 .unwrap_or("internal")
                 .to_string();
+            let pad = unreachable(module, &n["bits"], top);
+            let port = kind != "internal";
+            let why_not = pad.clone().or_else(|| {
+                port.then(|| {
+                    "It is a port of the top module: debug files can watch it, but drive internal nets only.".to_string()
+                })
+            });
             Net {
                 path: format!("{top}.{name}"),
                 width,
                 kind,
+                can_watch: pad.is_none(),
+                can_drive: pad.is_none() && !port,
+                why_not,
             }
         })
         .collect();
@@ -198,5 +219,27 @@ mod tests {
         assert_eq!(n[1].path, "top.u_cnt.count");
         assert_eq!(n[1].width, 4);
         assert_eq!(n[1].kind, "internal");
+        assert!(n[0].can_watch && !n[0].can_drive && n[0].why_not.is_some());
+        assert!(n[1].can_watch && n[1].can_drive && n[1].why_not.is_none());
+    }
+
+    #[test]
+    fn nets_on_pad_only_ports_can_be_neither() {
+        let j = json!({"modules": {"top": {
+            "ports": {"rgb": {"direction": "output", "bits": [2, 3, 4]}},
+            "cells": {"drv": {"type": "SB_RGBA_DRV", "connections": {
+                "RGB0": [2], "RGB1": [3], "RGB2": [4], "RGB0PWM": [5]
+            }}},
+            "netnames": {
+                "rgb": {"hide_name": 0, "bits": [2, 3, 4]},
+                "on": {"hide_name": 0, "bits": [5]}
+            }
+        }}});
+        let n = nets(&j, "top");
+        assert_eq!(n[0].path, "top.on");
+        assert!(n[0].can_watch && n[0].can_drive);
+        assert_eq!(n[1].path, "top.rgb");
+        assert!(!n[1].can_watch && !n[1].can_drive);
+        assert!(n[1].why_not.as_deref().unwrap().contains("top.on"));
     }
 }

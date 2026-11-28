@@ -185,6 +185,16 @@ net = "main.u_ctrl.state"
   path (`main.u_counter.count`, 23 bits, or `main.blink`, one); its width
   comes from the design. Until 2026-11-25 one-bit nets used `net` and
   wider ones `bus`; the two are now one key.
+  A net wired to a cell port that only an FPGA pin may take can't be
+  watched or driven: an I/O buffer's pad (such as `SB_IO`'s
+  `PACKAGE_PIN`) or the outputs of the iCE40 UltraPlus RGB LED driver
+  (`SB_RGBA_DRV`'s `RGB0` to `RGB2`), whose inputs (`RGB0PWM` and so on)
+  are the nets to name instead. The build refuses them with that reason,
+  at the line that names them, before synthesis (the place and route
+  would otherwise fail with a message that doesn't name the debugger),
+  and `list_nets` marks them (`can_watch` and `can_drive` false, with
+  `why_not`). The top module's ports can be watched, but not driven
+  (`can_drive` false).
 - A `net` can also be a list that combines one-bit nets and pins into one
   bus, for watch and drive alike: `net = ["pin.21", "pin.20", "pin.19",
   "pin.18"]` with `name = "switches_n"`. The first member is the
@@ -462,7 +472,7 @@ debug map. All are soft-agent extension tools in the engine's style
 | Tool | Does | Notes |
 | --- | --- | --- |
 | `build` with `debug_file` | Builds with a debug file: inserts the debugger, then the usual synthesis, place and route, packing | `build`'s fields, plus `debug_file`; writes `debug_map.json` and reports the debugger's resources apart (`debug`) |
-| `list_nets` | Lists the design's nets a debug file can name, for a host's net picker (Q15) | The design's fields, as for `build`; returns each net's path, width and kind |
+| `list_nets` | Lists the design's nets a debug file can name, for a host's net picker (Q15) | The design's fields, as for `build`; returns each net's path, width and kind, and `can_watch`, `can_drive` and `why_not` (why a net can't be watched or driven) |
 | `open_debug` | Opens a session on a board's debugger, from a build folder and a serial port, and optionally the board's `device` (its ID from `list_devices`, as for `open_serial`) | Reads the debugger's build ID first and refuses a mismatch (R8); with `device`, finds the port again after an unplug, even under another name |
 | `read_debug` | Reads named nets, in one snapshot | Values as numbers and as bit strings, with widths |
 | `write_debug` | Writes a named net, releases an override back to the design, or pulses a one-bit net | Refuses names that aren't in drive, and pulses on nets wider than one bit |

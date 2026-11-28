@@ -235,7 +235,17 @@ pub async fn run(
         .into_iter()
         .filter(|(n, _)| !pin_ports.contains_key(n))
         .collect();
-    let mut design = prepass(&input, toolchain, &nets, &src, &gen_dir, &bin, call).await?;
+    let mut design = prepass(
+        &input,
+        &config_text,
+        toolchain,
+        &nets,
+        &src,
+        &gen_dir,
+        &bin,
+        call,
+    )
+    .await?;
     for pin in pin_ports.keys() {
         design.widths.insert(pin.clone(), 1);
     }
@@ -781,8 +791,10 @@ fn pattern(net: &str) -> String {
     format!("w:{}", net.replace(['[', ']'], "?"))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn prepass(
     input: &DebugBuildInput,
+    config_text: &str,
     toolchain: Toolchain,
     nets: &[(String, bool)],
     src: &Path,
@@ -859,6 +871,27 @@ async fn prepass(
     let pre = read_json(&gen_dir.join("pre.json"))?;
     let post = read_json(&gen_dir.join("post.json"))?;
     let top = &input.top_module;
+    // Nets only the FPGA's pins may take, refused here rather than by the
+    // place and route, in the debug file's terms.
+    let pre_top = &pre["modules"][top];
+    for (net, _) in nets {
+        let bits = &pre_top["netnames"][net]["bits"];
+        if let Some(why) = crate::debug::pads::unreachable(pre_top, bits, top) {
+            let full = format!("{top}.{net}");
+            let quoted = format!("\"{full}\"");
+            let line = config_text
+                .lines()
+                .position(|l| l.contains(&quoted))
+                .map_or(1, |i| i as u32 + 1);
+            let message = format!("The debugger can't watch or drive {full}. {why}");
+            let mut err = ToolError::new(
+                Category::Design,
+                format!("{}: {message} (at line {line}).", input.debug_file),
+            );
+            err.diagnostics = vec![diagnostic(&input.debug_file, line, &message)];
+            return Err(err);
+        }
+    }
     let own: Vec<String> = pre["modules"][top]["ports"]
         .as_object()
         .map(|m| m.keys().cloned().collect())
