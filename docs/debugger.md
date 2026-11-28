@@ -967,9 +967,10 @@ see the cost to-do under To do before porting.
   locked against the engine's serial tools, so don't open both on one port.
 - **Progress:** `debug_build` reports no progress while it runs yet.
 - **The toolbar:** one row, as in Logix Waveforms and Logix Diagrams, with no
-  page name (the window title says it): the status, the refresh rate, Pause
-  or Resume and Read now, then the board and port at the right. It wraps on
-  narrow windows.
+  page name (the window title says it): the status, Pause or Resume and
+  Read now, then the board and port at the right; it wraps on narrow
+  windows. The refresh rate is in the Watch section, next to the plot's
+  time window.
 - **The Watch section:** the panel draws every read's watched values,
   a row per net with its name, its number of bits and its value at the
   right (a right-click on the value chooses hex, decimal or binary,

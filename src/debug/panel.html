@@ -127,6 +127,7 @@
   #error-close:hover { opacity: 1; }
   .empty { padding: 12px 14px; color: var(--muted); }
   /* Watch: a live plot as wide as the page, a row per watched net. */
+  .plot-tools .gap { width: 8px; }
   .plot-tools { display: flex; gap: 8px; align-items: center; margin: 0 0 8px; color: var(--muted); font-size: 13px; }
   .plot-card { display: block; position: relative; }
   #plot { display: block; width: 100%; cursor: crosshair; }
@@ -149,21 +150,6 @@
 <body>
 <header class="bar">
   <span id="status"></span>
-  <!-- Not round periods: a design's own periods, such as a blinky's half
-       second, would otherwise show the same phase at every read. -->
-  <select id="rate" title="Refresh rate">
-    <option value="19">50 per second</option>
-    <option value="47">20 per second</option>
-    <option value="97">10 per second</option>
-    <option value="197">5 per second</option>
-    <option value="491">2 per second</option>
-    <option value="973" selected>1 per second</option>
-    <option value="1973">every 2 seconds</option>
-    <option value="4931">every 5 seconds</option>
-    <option value="9967">every 10 seconds</option>
-    <option value="29959">every 30 seconds</option>
-    <option value="59957">every 60 seconds</option>
-  </select>
   <button id="pause" title="Stop or restart the live updates">Pause</button>
   <button id="refresh" title="Read the watched nets once, now">Read now</button>
   <div class="right">
@@ -192,7 +178,23 @@
     <div class="plot-tools" id="plot-tools">
       <!-- What the panel reads, at its refresh rate: a strip chart, not a
            logic analyzer; changes faster than the refresh don't show. -->
-      Last
+      Refresh
+      <!-- Not round periods: a design's own periods, such as a blinky's half
+           second, would otherwise show the same phase at every read. -->
+      <select id="rate" title="Refresh rate">
+        <option value="19">50 per second</option>
+        <option value="47">20 per second</option>
+        <option value="97">10 per second</option>
+        <option value="197">5 per second</option>
+        <option value="491">2 per second</option>
+        <option value="973" selected>1 per second</option>
+        <option value="1973">every 2 seconds</option>
+        <option value="4931">every 5 seconds</option>
+        <option value="9967">every 10 seconds</option>
+        <option value="29959">every 30 seconds</option>
+        <option value="59957">every 60 seconds</option>
+      </select>
+      <span class="gap"></span>Last
       <select id="plot-window" title="How much time the plot shows">
         <option value="10000">10 seconds</option>
         <option value="30000" selected>30 seconds</option>
@@ -200,7 +202,6 @@
         <option value="300000">5 minutes</option>
       </select>
       <button id="plot-clear" title="Start the plot over">Clear</button>
-      <span>Sampled at the refresh rate: faster changes don't show.</span>
     </div>
     <div class="card plot-card" id="plot-card"><canvas id="plot" height="60"></canvas></div>
   </details>
