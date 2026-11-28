@@ -11,7 +11,7 @@
     --on: #1f9d55; --off: #8a8a84; --warn-bg: #fdecea; --warn: #a12a1f;
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     /* Watched rows' colors, as Logix Waveforms' signal colors. */
-    --s1: #0f8a66; --s2: #2463c7; --s3: #b25b06; --s4: #8a3fd0; --s5: #c23478; --s6: #0d7891;
+    --s1: #0f8a66; --s2: #2463c7; --s3: #b25b06; --s4: #8a3fd0; --s5: #c23478; --s6: #0d7891; --s7: var(--text);
     --sel: color-mix(in srgb, var(--accent) 9%, var(--panel));
   }
   @media (prefers-color-scheme: dark) {
@@ -375,7 +375,8 @@
   }
   const isSelected = (section, name) => selected?.section === section && selected.name === name;
 
-  // Rows' colors (1 to 6, the --s colors), by name, for Watch and Drive
+  // Rows' colors (1 to 7, the --s colors: Logix Waveforms' six, then
+  // black, which is the text color, so white in the dark theme), by name, for Watch and Drive
   // rows alike, chosen with a right-click on a name; kept in this
   // browser, as the formats.
   const COLORS_KEY = "logix-debug-panel.colors";
@@ -1114,11 +1115,11 @@
     lbl.textContent = "Color";
     const sw = document.createElement("div");
     sw.className = "swatches";
-    for (let c = 1; c <= 6; c++) {
+    for (let c = 1; c <= 7; c++) {
       const b = document.createElement("button");
       b.style.setProperty("--c", `var(--s${c})`);
       b.className = colorOf(name) === c ? "on" : "";
-      b.setAttribute("aria-label", `Color ${c}`);
+      b.setAttribute("aria-label", c === 7 ? "Black" : `Color ${c}`);
       b.onclick = () => {
         saveColor(name, c);
         closeMenu();
