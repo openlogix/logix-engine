@@ -30,7 +30,8 @@
   h1 { font-size: 16px; margin: 0; font-weight: 600; }
   .meta { color: var(--muted); font-size: 13px; }
   .meta b { color: var(--text); font-weight: 500; font-family: var(--mono); }
-  .spacer { flex: 1; }
+  /* The refresh controls: always a row of their own, under the title. */
+  .refresh-row { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   main { padding: 16px 20px 36px; display: grid; gap: 16px; max-width: 1100px; }
   /* Collapsible sections: the title folds and unfolds its table. */
   details.section > summary {
@@ -133,24 +134,25 @@
   <span class="meta" id="session-box" hidden>Session <select id="session"></select></span>
   <span class="meta">Board <b id="board">–</b></span>
   <span class="meta">Port <b id="port">–</b></span>
-  <span class="spacer"></span>
-  <!-- Not round periods: a design's own periods, such as a blinky's half
-       second, would otherwise show the same phase at every read. -->
-  <select id="rate" title="Refresh rate">
-    <option value="19">50 per second</option>
-    <option value="47">20 per second</option>
-    <option value="97">10 per second</option>
-    <option value="197">5 per second</option>
-    <option value="491">2 per second</option>
-    <option value="973" selected>1 per second</option>
-    <option value="1973">every 2 seconds</option>
-    <option value="4931">every 5 seconds</option>
-    <option value="9967">every 10 seconds</option>
-    <option value="29959">every 30 seconds</option>
-    <option value="59957">every 60 seconds</option>
-  </select>
-  <button id="pause" title="Stop or restart the live updates">Pause</button>
-  <button id="refresh">Read now</button>
+  <div class="refresh-row">
+    <!-- Not round periods: a design's own periods, such as a blinky's half
+         second, would otherwise show the same phase at every read. -->
+    <select id="rate" title="Refresh rate">
+      <option value="19">50 per second</option>
+      <option value="47">20 per second</option>
+      <option value="97">10 per second</option>
+      <option value="197">5 per second</option>
+      <option value="491">2 per second</option>
+      <option value="973" selected>1 per second</option>
+      <option value="1973">every 2 seconds</option>
+      <option value="4931">every 5 seconds</option>
+      <option value="9967">every 10 seconds</option>
+      <option value="29959">every 30 seconds</option>
+      <option value="59957">every 60 seconds</option>
+    </select>
+    <button id="pause" title="Stop or restart the live updates">Pause</button>
+    <button id="refresh">Read now</button>
+  </div>
 </header>
 <main>
   <div id="error" role="alert"><span id="error-text"></span><button id="error-close" title="Dismiss" aria-label="Dismiss">×</button></div>
