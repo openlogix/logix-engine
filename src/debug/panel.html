@@ -10,12 +10,17 @@
     --line: #e3e2de; --accent: #2f6fdb; --accent-text: #ffffff;
     --on: #1f9d55; --off: #8a8a84; --warn-bg: #fdecea; --warn: #a12a1f;
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    /* Watched rows' colors, as Logix Waveforms' signal colors. */
+    --s1: #0f8a66; --s2: #2463c7; --s3: #b25b06; --s4: #8a3fd0; --s5: #c23478; --s6: #0d7891;
+    --sel: color-mix(in srgb, var(--accent) 9%, var(--panel));
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #161615; --panel: #1f1f1d; --text: #ecebe7; --muted: #9a9993;
       --line: #33332f; --accent: #5b8ff0; --accent-text: #0b0b0a;
       --on: #3ccf7a; --off: #6f6f6a; --warn-bg: #3a1d1a; --warn: #f2a59c;
+      --s1: #3ad69c; --s2: #72a9ff; --s3: #f5a43a; --s4: #bd92ff; --s5: #f477b5; --s6: #2fd0ea;
+      --sel: color-mix(in srgb, var(--accent) 16%, var(--panel));
     }
   }
   * { box-sizing: border-box; }
@@ -144,12 +149,18 @@
   }
   #fmt-menu button:hover, #fmt-menu button:focus-visible { background: var(--line); outline: none; }
   #fmt-menu .check { width: 1em; }
-  /* Rows are reordered by dragging their names. */
-  .reorder td.name, .reorder #plot.on-name { cursor: grab; }
-  body.dragging, body.dragging * { cursor: grabbing !important; user-select: none; }
+  /* Rows are selected with a click on their names and reordered by
+     dragging them, as Logix Waveforms' rows: a pointer, no grab hand, and
+     the moved row stays as it is while a line shows where it goes. */
+  td.name, #plot.on-name { cursor: pointer; user-select: none; }
+  body.dragging, body.dragging * { cursor: pointer !important; user-select: none; }
+  #drive tr.sel td { background: var(--sel); }
   #drive tr.drop-before td { box-shadow: inset 0 2px 0 var(--accent); }
   #drive tr.drop-after td { box-shadow: inset 0 -2px 0 var(--accent); }
-  #drive tr.moving td { opacity: .5; }
+  #fmt-menu .lbl { padding: 4px 10px 6px; color: var(--muted); font-size: 12px; }
+  #fmt-menu .swatches { display: flex; gap: 8px; padding: 0 10px 6px; }
+  #fmt-menu .swatches button { width: 22px; height: 22px; padding: 0; border-radius: 6px; background: var(--c); }
+  #fmt-menu .swatches button.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--c); }
   select.fmt { font-size: 13px; padding: 1px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
 </style>
 </head>
@@ -344,6 +355,28 @@
     try { localStorage.setItem(FORMATS_KEY, JSON.stringify(formats)); } catch { /* kept for this page only */ }
   }
 
+  // The selected row, { section: "drive" | "watch", name }, shown with a
+  // tinted background, as Logix Waveforms' selected rows.
+  let selected = null;
+  function select(section, name) {
+    selected = { section, name };
+    document.querySelectorAll("#drive tr.sel").forEach((r) => r.classList.remove("sel"));
+    if (section === "drive") document.querySelector(`#drive tr[data-name="${CSS.escape(name)}"]`)?.classList.add("sel");
+    drawPlot();
+  }
+  const isSelected = (section, name) => selected?.section === section && selected.name === name;
+
+  // Watched rows' colors (1 to 6, the --s colors), chosen with a
+  // right-click on a name; kept in this browser, as the formats.
+  const COLORS_KEY = "logix-debug-panel.colors";
+  let colors = {};
+  try { colors = JSON.parse(localStorage.getItem(COLORS_KEY) || "{}") || {}; } catch { colors = {}; }
+  const colorOf = (name) => colors[name] || 1;
+  function saveColor(name, c) {
+    colors[name] = c;
+    try { localStorage.setItem(COLORS_KEY, JSON.stringify(colors)); } catch { /* kept for this page only */ }
+  }
+
   // A value, from its bits (most significant first), in a format.
   function shown(bits, fmt) {
     if (!bits) return "";
@@ -442,6 +475,7 @@
     for (const o of ordered(info.drive, saved.drive)) {
       const tr = document.createElement("tr");
       tr.dataset.name = o.name;
+      if (isSelected("drive", o.name)) tr.classList.add("sel");
       const state = cell("");
       state.className = "state";
       const ctl = document.createElement("td");
@@ -520,16 +554,17 @@
   // Dragging a drive row by its name.
   $("drive").addEventListener("mousedown", (e) => {
     const td = e.target.closest("td.name");
-    if (e.button !== 0 || !td || !$("section-drive").classList.contains("reorder")) return;
+    if (e.button !== 0 || !td) return;
+    if (!$("section-drive").classList.contains("reorder")) { select("drive", td.parentElement.dataset.name); return; }
     e.preventDefault();
     const tr = td.parentElement, body = tr.parentElement;
+    select("drive", tr.dataset.name);
     const y0 = e.clientY;
     let target = null;  // [row, "before" | "after"]
     const clear = () => body.querySelectorAll(".drop-before, .drop-after").forEach((r) => r.classList.remove("drop-before", "drop-after"));
     const move = (m) => {
       if (!target && Math.abs(m.clientY - y0) < 4) return;
       document.body.classList.add("dragging");
-      tr.classList.add("moving");
       tip.style.display = "none";
       const rows = [...body.rows];
       let over = rows.find((r) => m.clientY < r.getBoundingClientRect().top + r.offsetHeight / 2);
@@ -541,7 +576,6 @@
       document.removeEventListener("mousemove", move);
       document.removeEventListener("mouseup", up);
       document.body.classList.remove("dragging");
-      tr.classList.remove("moving");
       clear();
       if (!target) return;
       const before = driveNames().join("\n");
@@ -780,8 +814,14 @@
     if (samples.length && !samples[samples.length - 1].gap) keep({ t, gap: true });
   }
 
+  // A color token, resolved (a token made with color-mix() of other
+  // tokens comes back as its formula, which a canvas can't read).
+  const probe = document.createElement("span");
+  probe.hidden = true;
+  document.body.append(probe);
   function cssVar(name) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    probe.style.color = `var(${name})`;
+    return getComputedStyle(probe).color;
   }
 
   // The watched rows, with their formats.
@@ -820,13 +860,13 @@
     const g = canvas.getContext("2d");
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, cssW, cssH);
-    const text = cssVar("--text"), muted = cssVar("--muted"), line = cssVar("--line"), trace = cssVar("--on"), accent = cssVar("--accent");
+    const text = cssVar("--text"), muted = cssVar("--muted"), line = cssVar("--line"), accent = cssVar("--accent");
     const mono = getComputedStyle(document.body).getPropertyValue("--mono") || "monospace";
     // The name column fits the longest name; the value column the widest
     // value a row can show in its format (all its bits at 1), with room
     // on its left so values stand apart from the traces.
     g.font = "13px system-ui, -apple-system, sans-serif";
-    NAME_W = Math.ceil(Math.max(g.measureText("Name").width, ...rows.map((r) => g.measureText(r.name).width)) + 24);
+    NAME_W = Math.ceil(Math.max(g.measureText("Name").width, ...rows.map((r) => g.measureText(r.name).width + 16)) + 24);
     NAME_W = Math.min(Math.max(NAME_W, 80), 320);
     LABEL_W = NAME_W + BITS_W;
     g.font = `13px ${mono}`;
@@ -871,8 +911,19 @@
       g.strokeStyle = line;
       g.lineWidth = 1;
       g.beginPath(); g.moveTo(0, top + ROW_H + 0.5); g.lineTo(cssW, top + ROW_H + 0.5); g.stroke();
+      const color = cssVar(`--s${colorOf(row.name)}`);
+      // The selected row: a tinted background and a bar of its color.
+      if (isSelected("watch", row.name)) {
+        g.fillStyle = cssVar("--sel");
+        g.fillRect(0, top, cssW, ROW_H);
+        g.fillStyle = color;
+        g.fillRect(0, top, 2, ROW_H);
+      }
+      // The row's color, as a dot before its name.
+      g.fillStyle = color;
+      g.beginPath(); g.roundRect(12, top + ROW_H / 2 - 4, 8, 8, 3); g.fill();
       g.fillStyle = text;
-      g.fillText(row.name, 12, top + ROW_H / 2, NAME_W - 24);
+      g.fillText(row.name, 28, top + ROW_H / 2, NAME_W - 40);
       g.fillStyle = muted;
       g.textAlign = "right";
       g.fillText(String(row.width), NAME_W + BITS_W - 12, top + ROW_H / 2);
@@ -890,7 +941,7 @@
         const yOf = (n) => (hi === lo ? (yHi + yLo) / 2 : yLo - ((n - lo) / (hi - lo)) * (yLo - yHi));
         g.save();
         g.beginPath(); g.rect(x0, top, x1 - x0, ROW_H); g.clip();
-        g.strokeStyle = trace;
+        g.strokeStyle = color;
         g.lineWidth = 1.5;
         g.beginPath();
         pts.forEach((p, k) => {
@@ -972,8 +1023,10 @@
   let rowDrag = null;
   $("plot").addEventListener("mousedown", (e) => {
     const spot = plotSpot(e);
-    if (e.button !== 0 || !spot.row || spot.col !== "name" || watchRows.length < 2) return;
+    if (e.button !== 0 || !spot.row || spot.col !== "name") return;
     e.preventDefault();
+    select("watch", spot.row.name);
+    if (watchRows.length < 2) return;
     rowDrag = { from: watchRows.indexOf(spot.row), to: null, y0: e.clientY };
     const move = (m) => {
       if (rowDrag.to === null && Math.abs(m.clientY - rowDrag.y0) < 4) return;
@@ -1009,7 +1062,7 @@
     tip.textContent = text;
     tip.classList.toggle("mono", spot.col === "name");
     tip.style.display = text ? "block" : "none";
-    const onName = Boolean(spot.row) && spot.col === "name" && watchRows.length > 1;
+    const onName = Boolean(spot.row) && spot.col === "name";
     $("plot").classList.toggle("on-name", onName);
     $("plot").style.cursor = spot.col === "trace" ? "crosshair" : spot.row && spot.col === "value" ? "context-menu" : onName ? "" : "default";
     drawPlot();
@@ -1021,6 +1074,7 @@
   function closeMenu() { menu.style.display = "none"; }
   $("plot").addEventListener("contextmenu", (e) => {
     const { row, col } = plotSpot(e);
+    if (row && col === "name") { e.preventDefault(); colorMenu(row, e); return; }
     if (!row || col !== "value") return;
     e.preventDefault();
     tip.style.display = "none";
@@ -1042,6 +1096,29 @@
     menu.style.top = `${Math.max(8, Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 8))}px`;
     menu.querySelector("button[aria-checked=true]")?.focus();
   });
+  // A right-click on a watched name: its color, as in Logix Waveforms.
+  function colorMenu(row, e) {
+    tip.style.display = "none";
+    select("watch", row.name);
+    const lbl = document.createElement("div");
+    lbl.className = "lbl";
+    lbl.textContent = "Color";
+    const sw = document.createElement("div");
+    sw.className = "swatches";
+    for (let c = 1; c <= 6; c++) {
+      const b = document.createElement("button");
+      b.style.setProperty("--c", `var(--s${c})`);
+      b.className = colorOf(row.name) === c ? "on" : "";
+      b.setAttribute("aria-label", `Color ${c}`);
+      b.onclick = () => { saveColor(row.name, c); closeMenu(); drawPlot(); };
+      sw.append(b);
+    }
+    menu.replaceChildren(lbl, sw);
+    menu.style.display = "block";
+    menu.style.left = `${Math.max(8, Math.min(e.clientX, window.innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 8))}px`;
+    sw.querySelector(".on")?.focus();
+  }
   document.addEventListener("mousedown", (e) => { if (!menu.contains(e.target)) closeMenu(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
   window.addEventListener("blur", closeMenu);

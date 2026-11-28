@@ -994,7 +994,8 @@ see the cost to-do under To do before porting.
 - **The Watch section:** the panel draws every read's watched values,
   a row per net with its name, its number of bits and its value at the
   right (a right-click on the value chooses hex, decimal or binary,
-  remembered in that browser), over the last 10 seconds to 5 minutes: one bit as a high/low trace, more
+  and a right-click on the name chooses the row's color from the
+  waveform viewer's six, both remembered in that browser), over the last 10 seconds to 5 minutes: one bit as a high/low trace, more
   as a stepped line scaled to the values in view, with a hover cursor for a
   moment's time and values. A value holds until the next read, a failed
   read, a pause, or the time the status stops being Live (three refresh
@@ -1007,8 +1008,10 @@ see the cost to-do under To do before porting.
   message in Watch (no plot controls), as Drive does with
   no driven nets.
 - **Order and layout:** rows start in the debug file's order, with the
-  file's `[panel]` rate and span. Dragging a Watch or Drive row by its
-  name moves it within its section. In a plain browser the order is kept
+  file's `[panel]` rate and span. A click on a row's name selects it
+  (one row at a time, shaded), and dragging a Watch or Drive row by its
+  name moves it within its section, with a pointer cursor and a line
+  showing where it goes, as in the waveform viewer. In a plain browser the order is kept
   per build in that browser; in a host that offers `saveDebugLayout`
   (Logix IDE), every change of order, rate or span is passed to the host
   as `{watch, drive, refresh_ms, window_s}` (rows by their `name`, else
