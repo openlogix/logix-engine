@@ -155,6 +155,9 @@
   td.name, #plot.on-name { cursor: pointer; user-select: none; }
   body.dragging, body.dragging * { cursor: pointer !important; user-select: none; }
   #drive tr.sel td { background: var(--sel); }
+  /* A row's color (--row, one of the --s colors) on its name and bits. */
+  #drive td.name, #drive td.num { color: var(--row, var(--text)); }
+  #drive tr.sel td:first-child { box-shadow: inset 2px 0 0 var(--row); }
   #drive tr.drop-before td { box-shadow: inset 0 2px 0 var(--accent); }
   #drive tr.drop-after td { box-shadow: inset 0 -2px 0 var(--accent); }
   #fmt-menu .lbl { padding: 4px 10px 6px; color: var(--muted); font-size: 12px; }
@@ -366,8 +369,9 @@
   }
   const isSelected = (section, name) => selected?.section === section && selected.name === name;
 
-  // Watched rows' colors (1 to 6, the --s colors), chosen with a
-  // right-click on a name; kept in this browser, as the formats.
+  // Rows' colors (1 to 6, the --s colors), by name, for Watch and Drive
+  // rows alike, chosen with a right-click on a name; kept in this
+  // browser, as the formats.
   const COLORS_KEY = "logix-debug-panel.colors";
   let colors = {};
   try { colors = JSON.parse(localStorage.getItem(COLORS_KEY) || "{}") || {}; } catch { colors = {}; }
@@ -476,6 +480,7 @@
       const tr = document.createElement("tr");
       tr.dataset.name = o.name;
       if (isSelected("drive", o.name)) tr.classList.add("sel");
+      tr.style.setProperty("--row", `var(--s${colorOf(o.name)})`);
       const state = cell("");
       state.className = "state";
       const ctl = document.createElement("td");
@@ -866,7 +871,7 @@
     // value a row can show in its format (all its bits at 1), with room
     // on its left so values stand apart from the traces.
     g.font = "13px system-ui, -apple-system, sans-serif";
-    NAME_W = Math.ceil(Math.max(g.measureText("Name").width, ...rows.map((r) => g.measureText(r.name).width + 16)) + 24);
+    NAME_W = Math.ceil(Math.max(g.measureText("Name").width, ...rows.map((r) => g.measureText(r.name).width)) + 24);
     NAME_W = Math.min(Math.max(NAME_W, 80), 320);
     LABEL_W = NAME_W + BITS_W;
     g.font = `13px ${mono}`;
@@ -919,12 +924,9 @@
         g.fillStyle = color;
         g.fillRect(0, top, 2, ROW_H);
       }
-      // The row's color, as a dot before its name.
+      // The whole row in its color: name, bits, trace and value.
       g.fillStyle = color;
-      g.beginPath(); g.roundRect(12, top + ROW_H / 2 - 4, 8, 8, 3); g.fill();
-      g.fillStyle = text;
-      g.fillText(row.name, 28, top + ROW_H / 2, NAME_W - 40);
-      g.fillStyle = muted;
+      g.fillText(row.name, 12, top + ROW_H / 2, NAME_W - 24);
       g.textAlign = "right";
       g.fillText(String(row.width), NAME_W + BITS_W - 12, top + ROW_H / 2);
       g.textAlign = "left";
@@ -961,8 +963,8 @@
       }
       const b = shownAt?.bits[row.name];
       if (b !== undefined) {
-        g.fillStyle = hoverT !== null ? accent : text;
-        g.font = `13px ${mono}`;
+        g.fillStyle = color;
+        g.font = `${hoverT !== null ? "600 " : ""}13px ${mono}`;
         g.textAlign = "right";
         g.fillText(shown(b, row.fmt), cssW - 12, top + ROW_H / 2, VALUE_W - 36);
         g.textAlign = "left";
@@ -1074,7 +1076,7 @@
   function closeMenu() { menu.style.display = "none"; }
   $("plot").addEventListener("contextmenu", (e) => {
     const { row, col } = plotSpot(e);
-    if (row && col === "name") { e.preventDefault(); colorMenu(row, e); return; }
+    if (row && col === "name") { e.preventDefault(); colorMenu("watch", row.name, e); return; }
     if (!row || col !== "value") return;
     e.preventDefault();
     tip.style.display = "none";
@@ -1096,10 +1098,11 @@
     menu.style.top = `${Math.max(8, Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 8))}px`;
     menu.querySelector("button[aria-checked=true]")?.focus();
   });
-  // A right-click on a watched name: its color, as in Logix Waveforms.
-  function colorMenu(row, e) {
+  // A right-click on a row's name, watched or driven: its color, as in
+  // Logix Waveforms.
+  function colorMenu(section, name, e) {
     tip.style.display = "none";
-    select("watch", row.name);
+    select(section, name);
     const lbl = document.createElement("div");
     lbl.className = "lbl";
     lbl.textContent = "Color";
@@ -1108,9 +1111,14 @@
     for (let c = 1; c <= 6; c++) {
       const b = document.createElement("button");
       b.style.setProperty("--c", `var(--s${c})`);
-      b.className = colorOf(row.name) === c ? "on" : "";
+      b.className = colorOf(name) === c ? "on" : "";
       b.setAttribute("aria-label", `Color ${c}`);
-      b.onclick = () => { saveColor(row.name, c); closeMenu(); drawPlot(); };
+      b.onclick = () => {
+        saveColor(name, c);
+        closeMenu();
+        document.querySelector(`#drive tr[data-name="${CSS.escape(name)}"]`)?.style.setProperty("--row", `var(--s${c})`);
+        drawPlot();
+      };
       sw.append(b);
     }
     menu.replaceChildren(lbl, sw);
@@ -1119,6 +1127,12 @@
     menu.style.top = `${Math.max(8, Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 8))}px`;
     sw.querySelector(".on")?.focus();
   }
+  $("drive").addEventListener("contextmenu", (e) => {
+    const td = e.target.closest("td.name");
+    if (!td) return;
+    e.preventDefault();
+    colorMenu("drive", td.parentElement.dataset.name, e);
+  });
   document.addEventListener("mousedown", (e) => { if (!menu.contains(e.target)) closeMenu(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
   window.addEventListener("blur", closeMenu);
