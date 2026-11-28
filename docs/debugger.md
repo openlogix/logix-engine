@@ -995,7 +995,7 @@ see the cost to-do under To do before porting.
   a row per net with its name, its number of bits and its value at the
   right (a right-click on the value chooses hex, decimal or binary,
   and a right-click on the name chooses the row's color from the
-  waveform viewer's six or black (white in the dark theme), for its name, bits, trace and value, both
+  waveform viewer's six or black (the default; white in the dark theme), for its name, bits, trace and value, both
   remembered in that browser; a right-click on a Drive row's name
   colors its whole line the same way), over the last 10 seconds to 5 minutes: one bit as a high/low trace, more
   as a stepped line scaled to the values in view, with a hover cursor for a

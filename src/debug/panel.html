@@ -376,13 +376,20 @@
   const isSelected = (section, name) => selected?.section === section && selected.name === name;
 
   // Rows' colors (1 to 7, the --s colors: Logix Waveforms' six, then
-  // black, which is the text color, so white in the dark theme), by name, for Watch and Drive
+  // black, the default, which is the text color, so white in the dark
+  // theme), by name, for Watch and Drive
   // rows alike, chosen with a right-click on a name; kept in this
   // browser, as the formats.
   const COLORS_KEY = "logix-debug-panel.colors";
   let colors = {};
   try { colors = JSON.parse(localStorage.getItem(COLORS_KEY) || "{}") || {}; } catch { colors = {}; }
-  const colorOf = (name) => colors[name] || 1;
+  const colorOf = (name) => colors[name] || 7;
+  // A Drive row's --row: unset for black, so its state keeps the usual
+  // driven and released colors.
+  function rowColor(tr, c) {
+    if (c === 7) tr.style.removeProperty("--row");
+    else tr.style.setProperty("--row", `var(--s${c})`);
+  }
   function saveColor(name, c) {
     colors[name] = c;
     try { localStorage.setItem(COLORS_KEY, JSON.stringify(colors)); } catch { /* kept for this page only */ }
@@ -487,7 +494,7 @@
       const tr = document.createElement("tr");
       tr.dataset.name = o.name;
       if (isSelected("drive", o.name)) tr.classList.add("sel");
-      tr.style.setProperty("--row", `var(--s${colorOf(o.name)})`);
+      rowColor(tr, colorOf(o.name));
       const state = cell("");
       state.className = "state";
       const ctl = document.createElement("td");
@@ -1123,7 +1130,8 @@
       b.onclick = () => {
         saveColor(name, c);
         closeMenu();
-        document.querySelector(`#drive tr[data-name="${CSS.escape(name)}"]`)?.style.setProperty("--row", `var(--s${c})`);
+        const tr = document.querySelector(`#drive tr[data-name="${CSS.escape(name)}"]`);
+        if (tr) rowColor(tr, c);
         drawPlot();
       };
       sw.append(b);
