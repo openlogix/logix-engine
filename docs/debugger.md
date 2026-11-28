@@ -972,7 +972,8 @@ see the cost to-do under To do before porting.
   moment's time and values. A value holds until the next read, a failed
   read, a pause, or the time the status stops being Live (three refresh
   periods, at least 5 s), so where reads failed, the board was unplugged or the panel
-  was paused, the plot is empty, as before the first read. It samples at
+  was paused, the plot is empty, as before the first read. Paused, the
+  plot stays still, and a Read now moves it on to end at that read. It samples at
   the refresh rate (up to 50 a second), so it is a strip chart, not a logic analyzer: changes faster
   than the refresh don't show, and fast counters look like sawtooths. The
   capture phase is for those. A build that watches no nets shows only a

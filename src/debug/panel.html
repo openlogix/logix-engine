@@ -639,7 +639,14 @@
     schedule();
   };
   $("rate").onchange = schedule;
-  $("refresh").onclick = () => refresh(true);
+  $("refresh").onclick = async () => {
+    // Paused: the values from before the pause end at it, and the plot
+    // moves on to end at this read, so it shows.
+    if (paused && samples.length && samples[samples.length - 1].t < pausedAt) addGap(pausedAt);
+    const before = lastRead;
+    await refresh(true);
+    if (paused && lastRead !== before) { pausedAt = lastRead; drawPlot(); }
+  };
 
   api("/api/about").then((about) => { if (about.name) server = about; }).catch(() => {});
   // --- The live plot -------------------------------------------------------
@@ -647,7 +654,8 @@
   // window; drawn as a row per net: one bit as a high/low trace, more as a
   // stepped line scaled to the values in view, with the value at the right
   // in the row's format. A pointer over it shows that moment's time and
-  // values. Paused, it stays at the moment of the pause.
+  // values. Paused, it stays at the moment of the pause, or of the last
+  // read made with Read now.
 
   const PLOT_KEEP = 300000;  // ms: the longest window
   let samples = [];          // { t, bits: { name: "0101" } }
