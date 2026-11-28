@@ -155,8 +155,14 @@
   td.name, #plot.on-name { cursor: pointer; user-select: none; }
   body.dragging, body.dragging * { cursor: pointer !important; user-select: none; }
   #drive tr.sel td { background: var(--sel); }
-  /* A row's color (--row, one of the --s colors) on its name and bits. */
-  #drive td.name, #drive td.num { color: var(--row, var(--text)); }
+  /* A row's color (--row, one of the --s colors) on its whole line: the
+     name, the bits, the format, the state and the controls' text. A driven
+     state keeps its border and gets a light tint, so it still stands out
+     from a released one. */
+  #drive td, #drive select, #drive input[type=text], #drive button,
+  #drive .pill.on, #drive .pill.off { color: var(--row, var(--text)); }
+  #drive input[type=text]::placeholder { color: color-mix(in srgb, var(--row, var(--muted)) 55%, transparent); }
+  #drive .pill.on { border-color: var(--row, var(--on)); background: color-mix(in srgb, var(--row, var(--on)) 12%, transparent); }
   #drive tr.sel td:first-child { box-shadow: inset 2px 0 0 var(--row); }
   #drive tr.drop-before td { box-shadow: inset 0 2px 0 var(--accent); }
   #drive tr.drop-after td { box-shadow: inset 0 -2px 0 var(--accent); }
