@@ -643,7 +643,8 @@
     if (td.textContent !== text) td.textContent = text;
   }
 
-  function render(state) {
+  // t: when the board was read (the request's middle), for the plot.
+  function render(state, t = Date.now()) {
     const info = state.info;
     const key = `${info.session}/${info.build_id}`;
     if (key !== built) { build(info); built = key; }
@@ -658,7 +659,7 @@
       showDriveState(tr);
     }
     if (state.values.length) {
-      lastRead = Date.now();
+      lastRead = t;
       showStatus();
       addSample(lastRead, state.values);
     }
@@ -668,7 +669,9 @@
     if (busy || !session) return;
     busy = true;
     try {
-      render(await api(`/api/state?session=${encodeURIComponent(session)}&read=${read ? 1 : 0}`));
+      const sent = Date.now();
+      const state = await api(`/api/state?session=${encodeURIComponent(session)}&read=${read ? 1 : 0}`);
+      render(state, Math.round((sent + Date.now()) / 2));
       showError(null);
     } catch (e) {
       showError(e);
@@ -730,9 +733,28 @@
   }
   setInterval(showStatus, 1000);
 
+  // Reads at the refresh rate, on a steady beat: each read is due one
+  // period after the one before it was due, not after it ended, so a
+  // slower read doesn't push the next ones late. One that ran past its
+  // successor's turn is followed at once, and the beat goes on from there;
+  // one that comes while another call has the board waits for it, rather
+  // than being skipped.
+  let due = 0;
   function schedule() {
-    clearInterval(timer);
-    if (!paused) timer = setInterval(() => refresh(true), Number($("rate").value));
+    clearTimeout(timer);
+    timer = null;
+    if (paused) return;
+    due = Date.now() + Number($("rate").value);
+    timer = setTimeout(tick, due - Date.now());
+  }
+  async function tick() {
+    const mine = timer;
+    if (busy) { timer = setTimeout(tick, 5); return; }
+    await refresh(true);
+    if (paused || timer !== mine) return;  // paused or rescheduled meanwhile
+    const now = Date.now();
+    due = Math.max(due + Number($("rate").value), now);
+    timer = setTimeout(tick, due - now);
   }
 
   async function sessions() {
@@ -867,7 +889,16 @@
     return null;
   }
 
+  // Draws at the next frame, once however many asked since the last:
+  // a pointer moving over the plot doesn't hold up the reads.
+  let drawQueued = false;
   function drawPlot() {
+    if (drawQueued) return;
+    drawQueued = true;
+    requestAnimationFrame(() => { drawQueued = false; drawNow(); });
+  }
+
+  function drawNow() {
     const canvas = $("plot");
     if (!$("section-watch").open) return;
     const rows = plotRows();
